@@ -91,6 +91,11 @@ namespace UnderStatic.Visuals
             {
                 renderer.sharedMaterial = category switch
                 {
+                    PartCategory.Motor => renderer.gameObject.name.Contains(
+                        "MotorCondition",
+                        StringComparison.OrdinalIgnoreCase)
+                            ? kit.MaterialFor(PsxSurface.Warning)
+                            : kit.MaterialFor(PsxSurface.PaintedMetal),
                     PartCategory.Propeller => kit.MaterialFor(PsxSurface.Rubber),
                     PartCategory.Camera => renderer.gameObject.name.Contains("Lens", StringComparison.OrdinalIgnoreCase)
                         ? kit.MaterialFor(PsxSurface.Lens)

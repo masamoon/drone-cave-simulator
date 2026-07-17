@@ -217,7 +217,8 @@ namespace UnderStatic.Lab
                     motorDefinition,
                     !startDisassembled && arm.Damaged ? damagedMaterial : serviceableMaterial,
                     darkMaterial,
-                    $"motor-{arm.Id}-installed");
+                    $"motor-{arm.Id}-installed",
+                    damagedMaterial);
                 if (startDisassembled)
                 {
                     motor.SetCondition(0.94f);
@@ -315,7 +316,8 @@ namespace UnderStatic.Lab
                     motorDefinition,
                     replacementMotorMaterial,
                     darkMaterial,
-                    "motor-spare-serviceable");
+                    "motor-spare-serviceable",
+                    damagedMaterial);
                 spareMotor.SetCondition(0.97f);
                 allParts.Add(spareMotor);
                 CreateServiceTray(
@@ -337,6 +339,7 @@ namespace UnderStatic.Lab
 
             var fleetActors = new List<DroneActor>();
             DroneActor marketSalvageActor = null;
+            DroneActor legacySurveyActor = null;
             if (createSafeHouse)
             {
                 var scoutActor = drone.AddComponent<DroneActor>();
@@ -349,18 +352,34 @@ namespace UnderStatic.Lab
                     "Original workshop issue");
                 fleetActors.Add(scoutActor);
 
-                var surveyActor = CreateSurveyProfessionalActor(
+                var strikeRackTemplate = allParts.First(part =>
+                    part.Definition.Category == PartCategory.StrikeRack);
+                for (var index = 1; index <= 2; index++)
+                {
+                    var expendableActor = CreateExpendableStrikeActor(
+                        drone,
+                        strikeRackTemplate,
+                        index,
+                        out var expendableParts,
+                        out var expendableSockets);
+                    allParts.AddRange(expendableParts);
+                    allSockets.AddRange(expendableSockets);
+                    fleetActors.Add(expendableActor);
+                }
+
+                legacySurveyActor = CreateSurveyProfessionalActor(
                     drone,
                     allParts,
                     allSockets,
-                    out var surveyParts,
-                    out var surveySockets);
-                allParts.AddRange(surveyParts);
-                allSockets.AddRange(surveySockets);
-                fleetActors.Add(surveyActor);
+                    out var legacySurveyParts,
+                    out var legacySurveySockets);
+                legacySurveyActor.SetStorageLocation(new DroneStorageLocation(DroneStorageLocationKind.External));
+                legacySurveyActor.gameObject.SetActive(false);
+                allParts.AddRange(legacySurveyParts);
+                allSockets.AddRange(legacySurveySockets);
 
                 marketSalvageActor = CreateUtilityFieldSalvageActor(
-                    surveyActor,
+                    scoutActor,
                     out var salvageParts,
                     out var salvageSockets);
                 allParts.AddRange(salvageParts);
@@ -418,15 +437,17 @@ namespace UnderStatic.Lab
                     playerController,
                     interactions,
                     screwdriver,
-                    saveSystem);
+                    saveSystem,
+                    diagnostic);
                 statusPanel.ConfigureServiceMode(serviceMode);
                 var fleet = SafeHouseFleetFactory.Build(fleetActors);
+                fleet.RegisterKnownActor(legacySurveyActor);
                 inventory.ConfigureFleet(fleet);
                 saveSystem.ConfigureFleet(fleet);
                 serviceMode.ConfigureFleet(fleet);
                 diagnostic.ConfigureFleet(fleet);
                 statusPanel.ConfigureFleet(fleet);
-                SafeHouseMarketFactory.Build(
+                var market = SafeHouseMarketFactory.Build(
                     inventory,
                     fleet,
                     saveSystem,
@@ -434,7 +455,13 @@ namespace UnderStatic.Lab
                     allParts,
                     fleetActors,
                     marketSalvageActor);
-                SafeHouseMissionFactory.Build(fleet, saveSystem, playerController, psxVisualKit);
+                SafeHouseMissionFactory.Build(
+                    fleet,
+                    saveSystem,
+                    playerController,
+                    market,
+                    inventory,
+                    psxVisualKit);
             }
             else
             {
@@ -684,7 +711,7 @@ namespace UnderStatic.Lab
             var profile = Resources.Load<InstallationProfile>("InstallationProfiles/Battery")
                 ?? InstallationProfile.CreateTransient(
                     InstallationProcedureType.Latch,
-                    0.22f,
+                    0.28f,
                     18f,
                     0.12f,
                     0.7f,
@@ -730,6 +757,7 @@ namespace UnderStatic.Lab
                 latch: latch,
                 feedback: audio);
             socket.SetInsertionAxis(Vector3.back);
+            socket.SetSeatedOffset(Vector3.up * 0.06f);
             sockets.Add(socket);
 
             if (startDisassembled)
@@ -1003,6 +1031,108 @@ namespace UnderStatic.Lab
             interactions.Configure(playerCamera, playerInput, sockets, screwdriver, saveSystem, audioFeedback);
             controller.Configure(cameraObject.transform, interactions);
             return player;
+        }
+
+        private static DroneActor CreateExpendableStrikeActor(
+            GameObject sourceDrone,
+            InstallablePart strikeRackTemplate,
+            int sequence,
+            out IReadOnlyList<InstallablePart> createdParts,
+            out IReadOnlyList<PartSocket> createdSockets)
+        {
+            var clone = UnityEngine.Object.Instantiate(sourceDrone);
+            clone.name = $"ExpendableStrikeDrone_{sequence:00}";
+            foreach (var child in clone.GetComponentsInChildren<Transform>(true))
+            {
+                if (child != clone.transform)
+                {
+                    child.name = $"Strike{sequence:00}_{child.name}";
+                }
+            }
+
+            var assembly = clone.GetComponent<DroneAssemblyState>();
+            assembly.ClearAll();
+            assembly.ConfigureRequirements(4, 4, 1, 1, 1);
+            var sockets = clone.GetComponentsInChildren<PartSocket>(true)
+                .OrderBy(socket => socket.LocalSocketId, StringComparer.Ordinal)
+                .ToArray();
+            var parts = clone.GetComponentsInChildren<InstallablePart>(true)
+                .Where(part => part.transform.IsChildOf(clone.transform))
+                .ToArray();
+            var partSockets = parts.ToDictionary(
+                part => part,
+                part => sockets.FirstOrDefault(socket => part.transform.IsChildOf(socket.transform)));
+            foreach (var socket in sockets)
+            {
+                socket.ClearForRestore();
+            }
+
+            var baseFrame = DroneFrameCatalog.Load("ScoutField");
+            var strikeStats = baseFrame.BaseStats;
+            strikeStats.payload = Mathf.Max(strikeStats.payload, 0.52f);
+            strikeStats.control = Mathf.Max(strikeStats.control, 0.72f);
+            var strikeFrame = DroneFrameDefinition.CreateTransient(
+                "frame.expendable-strike.field",
+                "Expendable Strike Field",
+                DroneFrameFamily.Scout,
+                EquipmentGrade.Field,
+                strikeStats,
+                180,
+                6,
+                DroneFrameDefinition.DefaultRequirements(DroneFrameFamily.Scout));
+            var actor = clone.GetComponent<DroneActor>();
+            actor.Configure(
+                strikeFrame,
+                assembly,
+                sockets,
+                $"drone.safehouse.expendable-strike.{sequence:00}",
+                new DroneStorageLocation(DroneStorageLocationKind.Locker, sequence - 1),
+                "Workshop-built one-way strike airframe");
+
+            var counters = new Dictionary<PartCategory, int>();
+            var kept = new List<InstallablePart>();
+            foreach (var part in parts)
+            {
+                var socket = partSockets[part];
+                if (socket == null || part.Definition.Category == PartCategory.StrikeRack)
+                {
+                    continue;
+                }
+
+                counters.TryGetValue(part.Definition.Category, out var categoryIndex);
+                categoryIndex++;
+                counters[part.Definition.Category] = categoryIndex;
+                part.Initialize(
+                    part.Definition,
+                    $"expendable-{sequence:00}-{part.Definition.Category.ToString().ToLowerInvariant()}-{categoryIndex:00}");
+                InstallInitially(
+                    part,
+                    socket,
+                    0.94f,
+                    part.Definition.Category == PartCategory.Battery ? 1f : part.Runtime.chargeLevel);
+                kept.Add(part);
+            }
+
+            var strikeSocket = sockets.First(socket =>
+                socket.AcceptedPrimaryCategory == PartCategory.StrikeRack);
+            var rackObject = UnityEngine.Object.Instantiate(strikeRackTemplate.gameObject);
+            rackObject.name = $"Strike{sequence:00}_IntegratedPayload";
+            rackObject.SetActive(true);
+            var rack = rackObject.GetComponent<InstallablePart>();
+            rack.Initialize(strikeRackTemplate.Definition, $"expendable-{sequence:00}-strike-rack-01");
+            var rackRuntime = rack.Runtime.Copy();
+            rackRuntime.consumableCharges = 1;
+            rack.RestoreRuntime(rackRuntime);
+            InstallInitially(rack, strikeSocket, 0.96f, 1f);
+            kept.Add(rack);
+
+            actor.Runtime.frameCondition = 0.96f;
+            actor.Runtime.isExpendableStrikeDrone = true;
+            actor.Runtime.diagnosticFaultsDisclosed = true;
+            actor.Assembly.RecordDiagnostic(true);
+            createdParts = kept;
+            createdSockets = sockets;
+            return actor;
         }
 
         private static DroneActor CreateSurveyProfessionalActor(

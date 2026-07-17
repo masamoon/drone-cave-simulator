@@ -23,6 +23,7 @@ namespace UnderStatic.Fleet
             ?? Array.Empty<InstallablePart>();
         public DroneReadinessSnapshot Readiness => assembly?.Readiness ?? default;
         public DroneStatsSnapshot Stats => CalculateStats();
+        public bool IsExpendableStrikeDrone => Runtime?.isExpendableStrikeDrone == true;
 
         public void Configure(
             DroneFrameDefinition definition,
@@ -75,6 +76,20 @@ namespace UnderStatic.Fleet
         public bool IsReadyForShelf => Readiness.IsMissionReady
             && Runtime.hasDiagnosticResult
             && Runtime.latestDiagnosticPassed;
+
+        public int ReassertOccupiedSocketPoses()
+        {
+            var reasserted = 0;
+            foreach (var socket in sockets)
+            {
+                if (socket?.ReassertOccupiedPartPose() == true)
+                {
+                    reasserted++;
+                }
+            }
+
+            return reasserted;
+        }
 
         private void BindSockets()
         {

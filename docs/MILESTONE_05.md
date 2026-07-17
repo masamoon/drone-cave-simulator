@@ -30,7 +30,9 @@ There is no arbitrary fixed “one sortie per day” counter. The practical limi
 - strike ordnance is consumed;
 - another prepared drone may perform a later sortie.
 
-Until charging is implemented, a returned depleted drone normally cannot sortie again that day. A better prepared fleet can therefore support more daily work without a hidden action-point rule.
+Returned depletion still limits same-day reuse. Beginning the next authored day performs an abstract overnight
+battery turnaround for owned aircraft; it does not repair condition or pass diagnostics. A better prepared fleet
+therefore supports more work within a day without a hidden action-point rule.
 
 The player may end operations voluntarily whenever no mission is active. Unresolved offers expire when the next authored day begins.
 
@@ -146,7 +148,7 @@ New-day offer generation is deterministic from the day seed. Authored missions m
 
 ## 10. Persistence
 
-Schema version 7 adds:
+Schema version 8 contains the version-7 mission data plus:
 
 - operational day index and seed;
 - offered mission runtime records;
@@ -155,8 +157,10 @@ Schema version 7 adds:
 - report and acknowledgement state;
 - pending return state;
 - strike-rack consumable charges.
+- expendable strike-airframe role and loss state;
+- one-time mission funds and salvage rewards.
 
-Versions 1–6 remain readable. Loading an active mission resumes its timer and preserves its assigned drone. Loading during `Returning` safely completes or waits for a valid service destination. Derived scores are recomputed and validated from current saved runtime parts rather than persisted as authoritative statistics.
+Versions 1–7 remain readable. Loading an active mission resumes its timer and preserves its assigned drone. Loading during `Returning` safely completes or waits for a valid service destination. Derived scores are recomputed and validated from current saved runtime parts rather than persisted as authoritative statistics.
 
 ## 11. Validation
 
@@ -197,10 +201,10 @@ Excluded:
 - direct piloting or combat presentation;
 - moving-target ballistics;
 - civilian simulation or casualty scoring;
-- permanent drone loss;
+- loss of aircraft not explicitly designated expendable;
 - multiple simultaneous active missions;
-- charging and ordnance reloading;
-- mission-result funds, rewards spending, or market-cycle advancement;
+- player-managed charging and ordnance reloading;
+- dynamic generation of replacement market identities;
 - workshop exposure and discovery events;
 - procedural campaign generation.
 

@@ -1,7 +1,9 @@
 using System;
 using System.Linq;
+using UnderStatic.Economy;
 using UnderStatic.Fleet;
 using UnderStatic.Interaction;
+using UnderStatic.Inventory;
 using UnderStatic.Missions;
 using UnderStatic.Replays;
 using UnityEngine;
@@ -14,6 +16,8 @@ namespace UnderStatic.UI
         [SerializeField] private MissionSystem missions;
         [SerializeField] private OperationalDaySystem operationalDay;
         [SerializeField] private FleetSystem fleet;
+        [SerializeField] private MarketSystem market;
+        [SerializeField] private InventorySystem inventory;
         [SerializeField] private FirstPersonController controller;
         [SerializeField] private Renderer focusRenderer;
         [SerializeField] private MissionReplayDirector replayDirector;
@@ -34,6 +38,8 @@ namespace UnderStatic.UI
             MissionSystem missionSystem,
             OperationalDaySystem daySystem,
             FleetSystem fleetSystem,
+            MarketSystem marketSystem,
+            InventorySystem inventorySystem,
             FirstPersonController firstPersonController,
             Renderer mapRenderer = null,
             MissionReplayDirector reconstructionDirector = null)
@@ -41,6 +47,8 @@ namespace UnderStatic.UI
             missions = missionSystem;
             operationalDay = daySystem;
             fleet = fleetSystem;
+            market = marketSystem;
+            inventory = inventorySystem;
             controller = firstPersonController;
             focusRenderer = mapRenderer ?? GetComponent<Renderer>();
             replayDirector = reconstructionDirector;
@@ -116,6 +124,19 @@ namespace UnderStatic.UI
 
         public bool AcknowledgeSelected() => missions?.TryAcknowledgeReport(selectedMissionId) == true;
 
+        public bool EndOperations() => operationalDay?.TryEndOperations() == true;
+
+        public bool BeginNextDay()
+        {
+            if (operationalDay?.TryBeginNextDay() != true)
+            {
+                return false;
+            }
+
+            selectedMissionId = missions.Missions.FirstOrDefault()?.missionInstanceId ?? string.Empty;
+            return true;
+        }
+
         public bool ReplaySelected()
         {
             var runtime = missions?.FindMission(selectedMissionId);
@@ -168,7 +189,8 @@ namespace UnderStatic.UI
             GUI.Box(panel, string.Empty);
             GUI.Label(new Rect(panel.x + 22f, panel.y + 16f, 620f, 30f),
                 $"TACTICAL REQUESTS · DAY {operationalDay.Runtime.dayIndex} · " +
-                $"SORTIES {operationalDay.Runtime.completedSorties}");
+                $"SORTIES {operationalDay.Runtime.completedSorties} · " +
+                $"FUNDS {market?.Funds ?? 0} · SALVAGE {inventory?.ScrapCount ?? 0}");
             if (GUI.Button(new Rect(panel.xMax - 110f, panel.y + 14f, 88f, 32f), "CLOSE"))
             {
                 Close();
@@ -231,13 +253,16 @@ namespace UnderStatic.UI
                 $"Requires: {definition.RequiredCapabilities}\n" +
                 $"Battery reserve: {definition.MinimumBattery:P0} · expected frame wear: {expectedWear:P1}");
             y += 62f;
-            GUI.Label(new Rect(panel.x + 568f, y, 380f, 78f), actor == null
+            GUI.Label(new Rect(panel.x + 568f, y, 380f, 96f), actor == null
                 ? "READY SHELF: EMPTY"
                 : $"READY: {actor.FrameDefinition.DisplayName} · value {actor.Stats.ComponentValue}\n" +
                   $"OBS {actor.Stats.Observation:0.00} END {actor.Stats.Endurance:0.00} " +
                   $"CTL {actor.Stats.Control:0.00} PAY {actor.Stats.Payload:0.00}\n" +
+                  (actor.IsExpendableStrikeDrone && definition.Archetype != MissionArchetype.Recon
+                      ? "EXPENDABLE · ARMED SORTIE CONSUMES THIS AIRFRAME\n"
+                      : string.Empty) +
                   eligibility.Reason);
-            y += 88f;
+            y += 106f;
 
             GUI.Label(new Rect(panel.x + 568f, y, 380f, 26f), "DEPLOYMENT SITE");
             y += 30f;
@@ -256,10 +281,11 @@ namespace UnderStatic.UI
             if (runtime.state == MissionRuntimeState.Resolved)
             {
                 y += 8f;
-                GUI.Box(new Rect(panel.x + 560f, y, 388f, 128f),
+                GUI.Box(new Rect(panel.x + 560f, y, 388f, 150f),
                     $"{runtime.outcome} · score {runtime.breakdown.finalScore:0.00}\n" +
                     $"ID {(runtime.breakdown.positiveIdentification ? "CONFIRMED" : "NOT CONFIRMED")} · " +
-                    $"battery -{runtime.batteryConsumed:P0} · wear -{runtime.frameWear:P0}\n" +
+                    $"{(runtime.aircraftExpended ? "AIRFRAME EXPENDED" : $"battery -{runtime.batteryConsumed:P0} · wear -{runtime.frameWear:P0}")}\n" +
+                    $"REWARD +{runtime.fundsAwarded} funds · +{runtime.salvageAwarded} salvage\n" +
                     runtime.breakdown.summary);
             }
 
@@ -284,9 +310,19 @@ namespace UnderStatic.UI
             GUI.enabled = runtime.state == MissionRuntimeState.Resolved && !runtime.reportAcknowledged;
             if (GUI.Button(new Rect(panel.x + 586f, buttonY, 180f, 36f), "ACKNOWLEDGE REPORT")) AcknowledgeSelected();
             GUI.enabled = missions.ActiveMission == null;
-            if (GUI.Button(new Rect(panel.x + 774f, buttonY, 174f, 36f), "END OPERATIONS"))
+            var dayEnded = operationalDay.Runtime.operationsEnded;
+            if (GUI.Button(
+                    new Rect(panel.x + 774f, buttonY, 174f, 36f),
+                    dayEnded ? "BEGIN NEXT DAY" : "END OPERATIONS"))
             {
-                operationalDay.TryEndOperations();
+                if (dayEnded)
+                {
+                    BeginNextDay();
+                }
+                else
+                {
+                    EndOperations();
+                }
             }
             GUI.enabled = true;
         }

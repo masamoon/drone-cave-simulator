@@ -90,7 +90,7 @@ namespace UnderStatic.Tests
         }
 
         [Test]
-        public void Latch_CannotCloseBeforeInsertionAndUnlatchClearsOwnership()
+        public void Latch_EmptyTrayCanCloseAndReopenBeforeReplacementInsertion()
         {
             var socket = CreateSocket(
                 "battery.socket",
@@ -98,20 +98,71 @@ namespace UnderStatic.Tests
                 "battery.slide-4s",
                 InstallationProcedureType.Latch,
                 insertionDistance: 0.12f);
-            var part = CreatePart("battery", PartCategory.Battery, "battery.slide-4s");
+            var original = CreatePart("original-battery", PartCategory.Battery, "battery.slide-4s");
+            var replacement = CreatePart("replacement-battery", PartCategory.Battery, "battery.slide-4s");
 
-            Assert.That(socket.ToggleLatch(), Is.False);
-            Seat(socket, part);
             Assert.That(socket.ToggleLatch(), Is.True);
             Assert.That(socket.LatchClosed, Is.True);
-            Assert.That(part.Runtime.currentState, Is.EqualTo(InteractionState.Installed));
+            Assert.That(socket.CanAccept(original), Is.False);
+            Assert.That(socket.ToggleLatch(), Is.True);
+            Assert.That(socket.LatchClosed, Is.False);
+            Assert.That(socket.CanAccept(original), Is.True);
+
+            Seat(socket, original);
+            Assert.That(socket.ToggleLatch(), Is.True);
+            Assert.That(socket.LatchClosed, Is.True);
+            Assert.That(original.Runtime.currentState, Is.EqualTo(InteractionState.Installed));
             Assert.That(assembly.InstalledPartCount, Is.EqualTo(1));
 
             Assert.That(socket.ToggleLatch(), Is.True);
             Assert.That(socket.LatchClosed, Is.False);
             Assert.That(socket.LatchOpenedForExtraction, Is.True);
-            Assert.That(part.Runtime.currentState, Is.EqualTo(InteractionState.Seated));
+            Assert.That(original.Runtime.currentState, Is.EqualTo(InteractionState.Seated));
             Assert.That(assembly.InstalledPartCount, Is.Zero);
+
+            Assert.That(socket.BeginExtraction(original), Is.True);
+            Assert.That(socket.CompleteExtraction(original), Is.True);
+            Assert.That(original.TryTransition(InteractionState.Loose), Is.True);
+            Assert.That(socket.OccupiedPart, Is.Null);
+
+            Assert.That(socket.ToggleLatch(), Is.True);
+            Assert.That(socket.LatchClosed, Is.True);
+            Assert.That(socket.CanAccept(replacement), Is.False);
+            Assert.That(socket.ToggleLatch(), Is.True);
+            Assert.That(socket.LatchClosed, Is.False);
+            Assert.That(socket.CanAccept(replacement), Is.True);
+
+            Seat(socket, replacement);
+            Assert.That(socket.ToggleLatch(), Is.True);
+            Assert.That(replacement.Runtime.currentState, Is.EqualTo(InteractionState.Installed));
+            Assert.That(socket.OccupiedPart, Is.SameAs(replacement));
+            Assert.That(assembly.InstalledPartCount, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void EmptyLatchState_PersistsWithoutAnInstalledBattery()
+        {
+            var socket = CreateSocket(
+                "battery.socket",
+                PartCategory.Battery,
+                "battery.slide-4s",
+                InstallationProcedureType.Latch);
+            var persistence = root.AddComponent<SaveSystem>();
+
+            Assert.That(socket.ToggleLatch(), Is.True);
+            Assert.That(socket.LatchClosed, Is.True);
+            var json = persistence.CaptureAllToJson(
+                System.Array.Empty<InstallablePart>(),
+                new[] { socket });
+
+            socket.ClearForRestore();
+            Assert.That(socket.LatchClosed, Is.False);
+            Assert.That(persistence.RestoreAllFromJson(
+                json,
+                System.Array.Empty<InstallablePart>(),
+                new[] { socket }), Is.True);
+            Assert.That(socket.OccupiedPart, Is.Null);
+            Assert.That(socket.LatchClosed, Is.True);
         }
 
         [Test]
@@ -157,7 +208,9 @@ namespace UnderStatic.Tests
             var screwdriver = toolObject.AddComponent<FloatingScrewdriver>();
             screwdriver.Configure(restAnchor.transform, rotatingDriver.transform, null);
 
+            Assert.That(toolObject.activeSelf, Is.False);
             Assert.That(screwdriver.Activate(socket), Is.True);
+            Assert.That(toolObject.activeSelf, Is.True);
             toolObject.transform.SetPositionAndRotation(target.transform.position, target.transform.rotation);
             var rootRotationBefore = toolObject.transform.rotation;
             var driveAxisBefore = rotatingDriver.transform.up;
@@ -167,6 +220,8 @@ namespace UnderStatic.Tests
             Assert.That(Quaternion.Angle(rootRotationBefore, toolObject.transform.rotation), Is.LessThan(0.001f));
             Assert.That(Vector3.Angle(driveAxisBefore, rotatingDriver.transform.up), Is.LessThan(0.001f));
             Assert.That(Quaternion.Angle(Quaternion.identity, rotatingDriver.transform.localRotation), Is.GreaterThan(1f));
+            screwdriver.Deactivate();
+            Assert.That(toolObject.activeSelf, Is.False);
         }
 
         [Test]

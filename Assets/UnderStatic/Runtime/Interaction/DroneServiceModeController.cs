@@ -4,6 +4,7 @@ using System.Linq;
 using UnderStatic.Core;
 using UnderStatic.Fleet;
 using UnderStatic.Inventory;
+using UnderStatic.Lab;
 using UnderStatic.Parts;
 using UnderStatic.Persistence;
 using UnderStatic.Tools;
@@ -24,6 +25,7 @@ namespace UnderStatic.Interaction
         [SerializeField] private PartSocket[] sockets = Array.Empty<PartSocket>();
         [SerializeField] private FloatingScrewdriver screwdriver;
         [SerializeField] private SaveSystem saveSystem;
+        [SerializeField] private DroneDiagnosticSwitch diagnostic;
         [SerializeField] private Renderer focusRenderer;
         [SerializeField] private PlayerInput playerInput;
 
@@ -74,6 +76,7 @@ namespace UnderStatic.Interaction
         private string serviceStatus = "Select a component or drag a replacement to an empty socket";
         private Rect inventoryPanelRect;
         private Rect scrapRect;
+        private Rect diagnosticRect;
         private Rect exitRect;
 
         public bool IsActive { get; private set; }
@@ -96,7 +99,8 @@ namespace UnderStatic.Interaction
             IEnumerable<PartSocket> targetSockets,
             FloatingScrewdriver tool,
             SaveSystem persistence,
-            Renderer controlRenderer = null)
+            Renderer controlRenderer = null,
+            DroneDiagnosticSwitch diagnosticSwitch = null)
         {
             serviceCamera = targetCamera;
             firstPersonController = playerController;
@@ -107,6 +111,7 @@ namespace UnderStatic.Interaction
                 ?? Array.Empty<PartSocket>();
             screwdriver = tool;
             saveSystem = persistence;
+            diagnostic = diagnosticSwitch;
             focusRenderer = controlRenderer ?? GetComponent<Renderer>();
             playerInput = firstPersonController != null
                 ? firstPersonController.GetComponent<PlayerInput>()
@@ -174,6 +179,19 @@ namespace UnderStatic.Interaction
             Cursor.visible = true;
             IsActive = true;
             serviceStatus = "Drag a replacement from inventory or click an installed component";
+            return true;
+        }
+
+        public bool RunDiagnostic()
+        {
+            if (!IsActive || diagnostic == null)
+            {
+                serviceStatus = "Enter service mode before running the drone diagnostic";
+                return false;
+            }
+
+            diagnostic.Activate();
+            serviceStatus = diagnostic.LastResult;
             return true;
         }
 
@@ -313,7 +331,7 @@ namespace UnderStatic.Interaction
             if (dragGuidanceSocket != null)
             {
                 var socketScreen = ToGuiPosition(
-                    serviceCamera.WorldToScreenPoint(dragGuidanceSocket.transform.position));
+                    serviceCamera.WorldToScreenPoint(dragGuidanceSocket.SeatedPosition));
                 var screenDistance = Vector2.Distance(guiPointer, socketScreen);
                 if (screenDistance > dragCapturePixels * 1.4f)
                 {
@@ -326,7 +344,7 @@ namespace UnderStatic.Interaction
 
                 var remaining = Mathf.Clamp01(screenDistance / dragCapturePixels)
                     * dragGuidanceSocket.ProfileInsertionDistance;
-                var desired = dragGuidanceSocket.transform.position
+                var desired = dragGuidanceSocket.SeatedPosition
                     + dragGuidanceSocket.WorldInsertionAxis * remaining;
                 dragGuidanceSocket.UpdateGuidance(draggedPart, desired, deltaTime);
                 if (draggedPart.Runtime.currentState == InteractionState.Seated)
@@ -358,7 +376,7 @@ namespace UnderStatic.Interaction
             var targetRotation = draggedPart.transform.rotation;
             if (candidate != null)
             {
-                var entry = candidate.transform.position
+                var entry = candidate.SeatedPosition
                     + candidate.WorldInsertionAxis * candidate.ProfileInsertionDistance;
                 var magnet = 1f - Mathf.Clamp01(candidateDistance / dragCapturePixels);
                 targetPosition = Vector3.Lerp(freeTarget, entry, magnet * 0.88f);
@@ -380,7 +398,7 @@ namespace UnderStatic.Interaction
 
             if (candidate != null)
             {
-                var entry = candidate.transform.position
+                var entry = candidate.SeatedPosition
                     + candidate.WorldInsertionAxis * candidate.ProfileInsertionDistance;
                 if (Vector3.Distance(draggedPart.transform.position, entry) <= candidate.CaptureRadius
                     && candidate.TryBeginGuidance(draggedPart))
@@ -420,6 +438,25 @@ namespace UnderStatic.Interaction
                 dragIsThreeDimensional = false;
                 dragOriginSlot = -1;
                 return TrySalvagePart(salvagePart) == StorageOperationResult.Salvaged;
+            }
+
+            if (dragIsThreeDimensional)
+            {
+                var dropSocket = dragGuidanceSocket
+                    ?? FindBestDragSocket(guiPointer, draggedPart, out _);
+                if (dropSocket != null && dropSocket.TrySeatFromServiceMode(draggedPart))
+                {
+                    var seatedName = draggedPart.Definition?.DisplayName ?? draggedPart.name;
+                    dragGuidanceSocket?.SetFocused(false);
+                    dragHighlightedSocket?.SetFocused(false);
+                    draggedPart = null;
+                    dragIsThreeDimensional = false;
+                    dragGuidanceSocket = null;
+                    dragHighlightedSocket = null;
+                    dragOriginSlot = -1;
+                    serviceStatus = $"{seatedName} seated Â· secure it to finish installation";
+                    return true;
+                }
             }
 
             CancelServiceDrag();
@@ -609,15 +646,25 @@ namespace UnderStatic.Interaction
 
         private void UpdateWorldInteraction(Vector2 guiPointer)
         {
+            if (tightenAction?.WasReleasedThisFrame() == true)
+            {
+                if (screwdriver?.DriveDirection == FastenerDriveDirection.Tighten)
+                {
+                    screwdriver.Deactivate();
+                }
+                activeTwistSocket?.EndLockGesture();
+                activeTwistSocket = null;
+            }
+
+            if (loosenAction?.WasReleasedThisFrame() == true
+                && screwdriver?.DriveDirection == FastenerDriveDirection.Loosen)
+            {
+                screwdriver.Deactivate();
+            }
+
             if (PointerOverUi(guiPointer))
             {
                 return;
-            }
-
-            if (tightenAction?.WasReleasedThisFrame() == true)
-            {
-                activeTwistSocket?.EndLockGesture();
-                activeTwistSocket = null;
             }
 
             if (tightenAction?.WasPressedThisFrame() == true)
@@ -677,11 +724,26 @@ namespace UnderStatic.Interaction
 
         private void BeginWorldAction(PartSocket socket)
         {
-            if (socket?.OccupiedPart == null)
+            if (socket == null)
             {
-                serviceStatus = socket == null
-                    ? "Point at a component or drag a replacement onto an empty socket"
-                    : "Drag a compatible inventory part onto this socket";
+                serviceStatus = "Point at a component or drag a replacement onto an empty socket";
+                return;
+            }
+
+            if (socket.OccupiedPart == null)
+            {
+                if (socket.ProcedureType == InstallationProcedureType.Latch
+                    && socket.ToggleLatch())
+                {
+                    serviceStatus = socket.LatchClosed
+                        ? "Empty latch closed · click again to open it before inserting a battery"
+                        : "Latch open · drag a compatible battery into the tray";
+                }
+                else
+                {
+                    serviceStatus = "Drag a compatible inventory part onto this socket";
+                }
+
                 return;
             }
 
@@ -769,7 +831,7 @@ namespace UnderStatic.Interaction
                     continue;
                 }
 
-                var screen = serviceCamera.WorldToScreenPoint(candidate.transform.position);
+                var screen = serviceCamera.WorldToScreenPoint(candidate.SeatedPosition);
                 if (screen.z <= 0f)
                 {
                     continue;
@@ -819,7 +881,7 @@ namespace UnderStatic.Interaction
                     continue;
                 }
 
-                var screen = serviceCamera.WorldToScreenPoint(candidate.transform.position);
+                var screen = serviceCamera.WorldToScreenPoint(candidate.SeatedPosition);
                 if (screen.z <= 0f)
                 {
                     continue;
@@ -851,6 +913,7 @@ namespace UnderStatic.Interaction
         private bool PointerOverUi(Vector2 guiPointer) =>
             inventoryPanelRect.Contains(guiPointer)
             || scrapRect.Contains(guiPointer)
+            || diagnosticRect.Contains(guiPointer)
             || exitRect.Contains(guiPointer);
 
         private bool UpdateDragInput(Vector2 guiPointer)
@@ -926,6 +989,7 @@ namespace UnderStatic.Interaction
         {
             inventoryPanelRect = new Rect(14f, 14f, 340f, Screen.height - 28f);
             scrapRect = new Rect(30f, Screen.height - 142f, 308f, 92f);
+            diagnosticRect = new Rect(Screen.width - 304f, 18f, 136f, 34f);
             exitRect = new Rect(Screen.width - 154f, 18f, 136f, 34f);
         }
 
@@ -950,6 +1014,10 @@ namespace UnderStatic.Interaction
             DrawInventoryRows();
 
             GUI.Box(scrapRect, $"SALVAGE\nDrag damaged parts here\nScrap: {inventory?.ScrapCount ?? 0}");
+            if (GUI.Button(diagnosticRect, "RUN DIAGNOSTIC"))
+            {
+                RunDiagnostic();
+            }
             if (GUI.Button(exitRect, "EXIT SERVICE"))
             {
                 ExitServiceMode();

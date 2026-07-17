@@ -106,7 +106,7 @@ namespace UnderStatic.Persistence
 
             return JsonUtility.ToJson(new MilestoneSaveData
             {
-                version = missionSystem != null ? 7 : marketSystem != null ? 6 : fleetSystem == null ? 4 : 5,
+                version = missionSystem != null ? 8 : marketSystem != null ? 6 : fleetSystem == null ? 4 : 5,
                 parts = records,
                 sockets = socketRecords,
                 inventory = inventorySystem?.CaptureState(),
@@ -210,6 +210,7 @@ namespace UnderStatic.Persistence
                 var socketRecord = resolved.Record;
                 if (string.IsNullOrEmpty(socketRecord.occupiedPartInstanceId))
                 {
+                    resolved.Socket.RestorePart(null, socketRecord);
                     continue;
                 }
 

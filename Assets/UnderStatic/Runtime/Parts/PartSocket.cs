@@ -19,6 +19,7 @@ namespace UnderStatic.Parts
 
         [Header("Authored pose")]
         [SerializeField] private Vector3 localInsertionAxis = Vector3.up;
+        [SerializeField] private Vector3 localSeatedOffset;
         [SerializeField] private Transform[] fastenerTargets;
         [SerializeField] private Transform[] fastenerVisuals;
         [SerializeField] private Transform latchVisual;
@@ -65,6 +66,7 @@ namespace UnderStatic.Parts
         public DroneAssemblyState Assembly => assembly;
         public PartSocket InstallationPrerequisite => installationPrerequisite;
         public Vector3 WorldInsertionAxis => transform.TransformDirection(localInsertionAxis.normalized);
+        public Vector3 SeatedPosition => transform.position + transform.rotation * localSeatedOffset;
         public string RequiredTool => Profile.RequiredToolId;
         public bool RemovalBlocked => removalBlockers != null
             && removalBlockers.Any(blocker => blocker != null && blocker.OccupiedPart != null);
@@ -72,9 +74,13 @@ namespace UnderStatic.Parts
             || installationPrerequisite.OccupiedPart?.Runtime.currentState
                 is InteractionState.Installed or InteractionState.Tested;
         public string InteractionPrompt => OccupiedPart == null
-            ? InstallationPrerequisiteMet
-                ? "Empty component socket"
-                : "Install and secure the matching motor first"
+            ? !InstallationPrerequisiteMet
+                ? "Install and secure the matching motor first"
+                : ProcedureType == InstallationProcedureType.Latch
+                    ? LatchClosed
+                        ? "E: open empty battery latch"
+                        : "LATCH OPEN · slide a compatible battery into the tray · E: close latch"
+                    : "Empty component socket"
             : RemovalBlocked && OccupiedPart.Runtime.currentState is InteractionState.Installed or InteractionState.Tested
                 ? "Remove the attached outer component first"
             : ProcedureType switch
@@ -144,6 +150,11 @@ namespace UnderStatic.Parts
         public void SetInsertionAxis(Vector3 axis)
         {
             localInsertionAxis = axis.sqrMagnitude < 0.001f ? Vector3.up : axis.normalized;
+        }
+
+        public void SetSeatedOffset(Vector3 offset)
+        {
+            localSeatedOffset = offset;
         }
 
         public void SetRemovalBlockers(params PartSocket[] blockers)
@@ -220,6 +231,7 @@ namespace UnderStatic.Parts
                 ? acceptedStandards
                 : CompatibilityStandardId.Migrate(acceptedTags);
             return InstallationPrerequisiteMet
+                && (ProcedureType != InstallationProcedureType.Latch || !LatchClosed)
                 && acceptedCategories.Contains(part.Definition.Category)
                 && standards.Any(part.Definition.SupportsStandard);
         }
@@ -231,7 +243,7 @@ namespace UnderStatic.Parts
                 return false;
             }
 
-            var entryPoint = transform.position + WorldInsertionAxis * Profile.InsertionDistance;
+            var entryPoint = SeatedPosition + WorldInsertionAxis * Profile.InsertionDistance;
             if (Vector3.Distance(part.transform.position, entryPoint) > Profile.CaptureRadius)
             {
                 return false;
@@ -250,19 +262,27 @@ namespace UnderStatic.Parts
 
         public bool TrySeatFromServiceMode(InstallablePart part)
         {
-            if (!CanAccept(part) || part.Runtime.currentState != InteractionState.Held)
+            if (!CanAccept(part)
+                || part.Runtime.currentState is not (InteractionState.Held or InteractionState.Guided))
             {
                 return false;
             }
 
-            var entryPoint = transform.position + WorldInsertionAxis * Profile.InsertionDistance;
-            part.transform.SetPositionAndRotation(entryPoint, transform.rotation);
-            if (!TryBeginGuidance(part))
+            if (part.Runtime.currentState == InteractionState.Held)
+            {
+                var entryPoint = SeatedPosition + WorldInsertionAxis * Profile.InsertionDistance;
+                part.transform.SetPositionAndRotation(entryPoint, transform.rotation);
+                if (!TryBeginGuidance(part))
+                {
+                    return false;
+                }
+            }
+            else if (OccupiedPart != part)
             {
                 return false;
             }
 
-            part.transform.SetPositionAndRotation(transform.position, transform.rotation);
+            part.transform.SetPositionAndRotation(SeatedPosition, transform.rotation);
             AlignmentError = 0f;
             InsertionProgress = 1f;
             return Seat(part);
@@ -276,19 +296,19 @@ namespace UnderStatic.Parts
             }
 
             var axis = WorldInsertionAxis;
-            var entryPoint = transform.position + axis * Profile.InsertionDistance;
+            var entryPoint = SeatedPosition + axis * Profile.InsertionDistance;
             if (Vector3.Distance(desiredPosition, entryPoint) > Profile.CaptureRadius * 1.35f)
             {
                 CancelGuidance(part);
                 return false;
             }
 
-            var desiredOffset = desiredPosition - transform.position;
+            var desiredOffset = desiredPosition - SeatedPosition;
             var distanceAlongAxis = Mathf.Clamp(
                 Vector3.Dot(desiredOffset, axis),
                 0f,
                 Profile.InsertionDistance);
-            var constrained = transform.position + axis * distanceAlongAxis;
+            var constrained = SeatedPosition + axis * distanceAlongAxis;
             var normalizedInsertion = 1f - distanceAlongAxis / Profile.InsertionDistance;
             var resistance = Mathf.Lerp(1f, 0.35f, Mathf.Clamp01(normalizedInsertion));
             var blend = 1f - Mathf.Exp(
@@ -525,9 +545,19 @@ namespace UnderStatic.Parts
 
         public bool ToggleLatch()
         {
-            if (ProcedureType != InstallationProcedureType.Latch || OccupiedPart == null)
+            if (ProcedureType != InstallationProcedureType.Latch)
             {
                 return false;
+            }
+
+            if (OccupiedPart == null)
+            {
+                LatchClosed = !LatchClosed;
+                LatchOpenedForExtraction = false;
+                procedureOpenedForExtraction = false;
+                UpdateLatchVisual();
+                audioFeedback?.PlayLatch(LatchClosed);
+                return true;
             }
 
             var state = OccupiedPart.Runtime.currentState;
@@ -642,7 +672,7 @@ namespace UnderStatic.Parts
                 return;
             }
 
-            part.transform.SetPositionAndRotation(transform.position, transform.rotation);
+            part.transform.SetPositionAndRotation(SeatedPosition, transform.rotation);
             part.transform.SetParent(transform, true);
             part.SetControlledPhysics();
             part.SetAssemblyLocation(PersistenceSocketId, "Fixture");
@@ -676,6 +706,25 @@ namespace UnderStatic.Parts
             ResetProcedureProgress();
         }
 
+        public bool ReassertOccupiedPartPose()
+        {
+            if (OccupiedPart == null
+                || OccupiedPart.Runtime.currentState is not (
+                    InteractionState.Seated
+                    or InteractionState.Securing
+                    or InteractionState.Installed
+                    or InteractionState.Tested
+                    or InteractionState.Removing))
+            {
+                return false;
+            }
+
+            OccupiedPart.transform.SetPositionAndRotation(SeatedPosition, transform.rotation);
+            OccupiedPart.transform.SetParent(transform, true);
+            OccupiedPart.SetControlledPhysics();
+            return true;
+        }
+
         public void SetFocused(bool focused)
         {
             renderers ??= GetComponentsInChildren<Renderer>(true);
@@ -701,7 +750,7 @@ namespace UnderStatic.Parts
                 return false;
             }
 
-            part.transform.SetPositionAndRotation(transform.position, transform.rotation);
+            part.transform.SetPositionAndRotation(SeatedPosition, transform.rotation);
             part.transform.SetParent(transform, true);
             part.SetControlledPhysics();
             part.SetAssemblyLocation(PersistenceSocketId, "Fixture (unsecured)");
@@ -715,7 +764,7 @@ namespace UnderStatic.Parts
 
         private void InstallOccupiedPart()
         {
-            OccupiedPart.transform.SetPositionAndRotation(transform.position, transform.rotation);
+            OccupiedPart.transform.SetPositionAndRotation(SeatedPosition, transform.rotation);
             OccupiedPart.transform.SetParent(transform, true);
             OccupiedPart.SetControlledPhysics();
             OccupiedPart.SetAssemblyLocation(PersistenceSocketId, "Fixture");

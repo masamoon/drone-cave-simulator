@@ -201,7 +201,11 @@ The battery uses a shallow tray fixture.
 6. Full insertion produces a connector contact sound and `Seated` state.
 7. A short explicit interact gesture closes the visible latch and enters `Installed`.
 
-The latch is authored animation or transform movement, not a physics hinge.
+The latch is authored animation or transform movement, not a physics hinge. An empty tray's latch may be
+closed and reopened, but battery guidance and insertion begin only while the latch is open. Closing the
+latch installs a battery only after that battery has reached the `Seated` state.
+The authored seated pose rests the battery on the tray surface between the rails; it must not intersect the
+tray base or drone body.
 
 ### 7.2 Removal
 
@@ -223,15 +227,16 @@ The camera uses a keyed bracket with two screwdriver fasteners.
 1. Pick up the compatible camera.
 2. Guidance aligns the lens housing and bracket rails.
 3. Push approximately `0.035 m` to `Seated`.
-4. Activate the existing floating screwdriver.
+4. Hold the drive input on a fastener to spawn the floating screwdriver at that screw.
 5. Complete two visible fasteners using the reusable fastener procedure.
 6. Enter `Installed` only when both fasteners are complete.
 
-The screwdriver must visibly move from its rest anchor to each target and return after use.
+The screwdriver is inactive outside a fastener action. It spawns aligned to the selected screw and despawns
+when the player releases the drive input or completes the action.
 
 ### 8.2 Removal
 
-1. Activate the screwdriver.
+1. Hold the drive input on each fastener to spawn the screwdriver.
 2. Loosen both fasteners.
 3. Return to unsecured `Seated`.
 4. Grab and extract the camera along the authored axis.
@@ -415,7 +420,8 @@ The panel may remain visually plain.
 
 - propeller cannot install before insertion and required rotation;
 - propeller unlock and extraction restore loose state;
-- battery cannot latch before full insertion;
+- empty battery latch can close and reopen, while battery insertion requires it to be open;
+- a battery cannot enter `Installed` through the latch before full insertion;
 - battery unlatch and extraction clear ownership;
 - camera cannot install until both fasteners complete;
 - camera fastener progress survives persistence;

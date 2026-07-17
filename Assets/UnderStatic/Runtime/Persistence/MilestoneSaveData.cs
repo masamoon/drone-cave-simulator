@@ -10,7 +10,7 @@ namespace UnderStatic.Persistence
     [Serializable]
     public sealed class MilestoneSaveData
     {
-        public int version = 5;
+        public int version = 8;
         public PartSaveRecord[] parts;
         public SocketRuntimeState[] sockets;
         public InventorySaveData inventory;

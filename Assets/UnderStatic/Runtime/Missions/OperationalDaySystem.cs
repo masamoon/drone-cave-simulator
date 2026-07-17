@@ -1,3 +1,5 @@
+using UnderStatic.Economy;
+using UnderStatic.Fleet;
 using UnityEngine;
 
 namespace UnderStatic.Missions
@@ -6,18 +8,27 @@ namespace UnderStatic.Missions
     public sealed class OperationalDaySystem : MonoBehaviour
     {
         [SerializeField] private MissionSystem missionSystem;
+        [SerializeField] private MarketSystem marketSystem;
+        [SerializeField] private FleetSystem fleetSystem;
         [SerializeField] private OperationalDayRuntimeData runtime = new();
 
         public OperationalDayRuntimeData Runtime => runtime;
         public string LastStatus { get; private set; } = "Operations available";
 
-        public void Configure(MissionSystem missions, int dayIndex = 1, int seed = 1701)
+        public void Configure(
+            MissionSystem missions,
+            int dayIndex = 1,
+            int seed = 1701,
+            MarketSystem market = null,
+            FleetSystem fleet = null)
         {
             if (missionSystem != null)
             {
                 missionSystem.MissionResolved -= HandleMissionResolved;
             }
             missionSystem = missions;
+            marketSystem = market;
+            fleetSystem = fleet;
             runtime = new OperationalDayRuntimeData
             {
                 dayIndex = Mathf.Max(1, dayIndex),
@@ -54,9 +65,20 @@ namespace UnderStatic.Missions
             runtime.daySeed = seed;
             runtime.completedSorties = 0;
             runtime.operationsEnded = false;
+            fleetSystem?.PrepareForNextOperationalDay();
+            marketSystem?.AdvanceMarketCycle(seed);
             missionSystem.ResetOffers(runtime.dayIndex, seed);
             LastStatus = $"Day {runtime.dayIndex} requests posted";
             return true;
+        }
+
+        public bool TryBeginNextDay()
+        {
+            unchecked
+            {
+                var seed = (runtime.daySeed * 397) ^ (runtime.dayIndex + 1) * 7919;
+                return TryBeginNextDay(seed & int.MaxValue);
+            }
         }
 
         public OperationalDayRuntimeData CaptureState() => runtime.Copy();

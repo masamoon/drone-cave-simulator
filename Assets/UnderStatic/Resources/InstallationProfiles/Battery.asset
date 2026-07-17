@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Battery
   m_EditorClassIdentifier: UnderStatic.Runtime::UnderStatic.Parts.InstallationProfile
   procedureType: 2
-  captureRadius: 0.22
+  captureRadius: 0.28
   guidanceStrength: 0.7
   alignmentTolerance: 18
   insertionDistance: 0.12

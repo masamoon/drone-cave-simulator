@@ -18,7 +18,7 @@ namespace UnderStatic.Tests.PlayMode
     public sealed class Milestone042FleetPlayModeTests
     {
         [UnityTest]
-        public IEnumerator SafeHouseBuildsThreeSlotLockerAndTwoPersistentActors()
+        public IEnumerator SafeHouseBuildsThreeDroneFleetWithTwoExpendableStrikeActors()
         {
             SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
             yield return null;
@@ -26,12 +26,15 @@ namespace UnderStatic.Tests.PlayMode
 
             var fleet = Object.FindAnyObjectByType<FleetSystem>();
             Assert.That(fleet, Is.Not.Null);
-            Assert.That(fleet.Actors.Count, Is.EqualTo(2));
+            Assert.That(fleet.Actors.Count, Is.EqualTo(3));
             Assert.That(fleet.ServiceDrone.FrameDefinition.DisplayName, Is.EqualTo("Scout Field"));
             Assert.That(fleet.Locker.Count, Is.EqualTo(3));
-            Assert.That(fleet.Locker[0].FrameDefinition.DisplayName, Is.EqualTo("Survey Professional"));
-            Assert.That(fleet.Locker[0].Readiness.InstalledCount, Is.EqualTo(8));
-            Assert.That(fleet.Locker[1], Is.Null);
+            Assert.That(fleet.Locker[0].IsExpendableStrikeDrone, Is.True);
+            Assert.That(fleet.Locker[1].IsExpendableStrikeDrone, Is.True);
+            Assert.That(fleet.Locker.Take(2).All(actor => actor.IsReadyForShelf), Is.True);
+            Assert.That(fleet.Locker.Take(2).All(actor => actor.InstalledParts.Any(part =>
+                part.Definition.Category == UnderStatic.Core.PartCategory.StrikeRack
+                && part.Runtime.consumableCharges == 1)), Is.True);
             Assert.That(fleet.Locker[2], Is.Null);
             Assert.That(Object.FindObjectsByType<DroneLockerControl>(FindObjectsSortMode.None).Length,
                 Is.EqualTo(3));
@@ -50,15 +53,15 @@ namespace UnderStatic.Tests.PlayMode
             var service = Object.FindAnyObjectByType<DroneServiceModeController>();
             var diagnostic = Object.FindAnyObjectByType<DroneDiagnosticSwitch>();
             var scoutIdentity = fleet.ServiceDrone.Runtime.droneInstanceId;
-            var surveyIdentity = fleet.Locker[0].Runtime.droneInstanceId;
+            var strikeIdentity = fleet.Locker[0].Runtime.droneInstanceId;
 
             Assert.That(fleet.TrySwapLockerIntoService(0, false), Is.True);
-            Assert.That(fleet.ServiceDrone.Runtime.droneInstanceId, Is.EqualTo(surveyIdentity));
+            Assert.That(fleet.ServiceDrone.Runtime.droneInstanceId, Is.EqualTo(strikeIdentity));
             Assert.That(fleet.Locker[0].Runtime.droneInstanceId, Is.EqualTo(scoutIdentity));
-            Assert.That(service.ServiceStatus, Does.Contain("Survey Professional"));
+            Assert.That(service.ServiceStatus, Does.Contain("Expendable Strike Field"));
             diagnostic.Activate();
             Assert.That(fleet.ServiceDrone.Runtime.hasDiagnosticResult, Is.True);
-            Assert.That(fleet.ServiceDrone.Runtime.latestDiagnosticPassed, Is.False);
+            Assert.That(fleet.ServiceDrone.Runtime.latestDiagnosticPassed, Is.True);
             Assert.That(fleet.Locker[0].Runtime.hasDiagnosticResult, Is.False);
         }
 
@@ -74,7 +77,7 @@ namespace UnderStatic.Tests.PlayMode
             var controller = Object.FindAnyObjectByType<FirstPersonController>();
             var control = GameObject.Find("DroneLockerControl_1");
             var camera = Camera.main;
-            var surveyIdentity = fleet.Locker[0].Runtime.droneInstanceId;
+            var strikeIdentity = fleet.Locker[0].Runtime.droneInstanceId;
             controller.enabled = false;
             var cameraPosition = control.transform.position + new Vector3(0f, 0.15f, 0.72f);
             camera.transform.SetPositionAndRotation(
@@ -86,7 +89,7 @@ namespace UnderStatic.Tests.PlayMode
 
             Assert.That(interactions.Focused?.InteractionTransform, Is.SameAs(control.transform));
             yield return PressInteractKey();
-            Assert.That(fleet.ServiceDrone.Runtime.droneInstanceId, Is.EqualTo(surveyIdentity));
+            Assert.That(fleet.ServiceDrone.Runtime.droneInstanceId, Is.EqualTo(strikeIdentity));
         }
 
         [UnityTest]
@@ -104,7 +107,7 @@ namespace UnderStatic.Tests.PlayMode
             var originalService = fleet.ServiceDrone.Runtime.droneInstanceId;
             var originalLocker = fleet.Locker[0].Runtime.droneInstanceId;
 
-            Assert.That(json, Does.Contain("\"version\": 7"));
+            Assert.That(json, Does.Contain("\"version\": 8"));
             Assert.That(sockets.Select(socket => socket.PersistenceSocketId).Distinct().Count(),
                 Is.EqualTo(sockets.Length));
             Assert.That(fleet.TrySwapLockerIntoService(0, false), Is.True);

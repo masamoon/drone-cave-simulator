@@ -18,7 +18,8 @@ namespace UnderStatic.Lab
             FirstPersonController playerController,
             InteractionSystem interactions,
             FloatingScrewdriver screwdriver,
-            SaveSystem saveSystem)
+            SaveSystem saveSystem,
+            DroneDiagnosticSwitch diagnostic)
         {
             var material = InteractionLabFactory.CreateMaterial(
                 "Service Mode Cyan",
@@ -40,7 +41,9 @@ namespace UnderStatic.Lab
                 sockets,
                 screwdriver,
                 saveSystem,
-                control.GetComponent<Renderer>());
+                control.GetComponent<Renderer>(),
+                diagnostic);
+            interactions.RequireServiceModeForDroneInteraction();
 
             var label = new GameObject("ServiceModeLabel");
             label.transform.SetParent(control.transform);

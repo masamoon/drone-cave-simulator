@@ -57,6 +57,10 @@ namespace UnderStatic.Missions
         public float frameWear;
         public bool ordnanceConsumed;
         public bool reportAcknowledged;
+        public bool aircraftExpended;
+        public bool rewardsGranted;
+        public int fundsAwarded;
+        public int salvageAwarded;
         public float exposureContribution;
         public int radioUpdateIndex = -1;
         public string lastRadioMessage = string.Empty;
@@ -79,6 +83,10 @@ namespace UnderStatic.Missions
                 frameWear = frameWear,
                 ordnanceConsumed = ordnanceConsumed,
                 reportAcknowledged = reportAcknowledged,
+                aircraftExpended = aircraftExpended,
+                rewardsGranted = rewardsGranted,
+                fundsAwarded = fundsAwarded,
+                salvageAwarded = salvageAwarded,
                 exposureContribution = exposureContribution,
                 radioUpdateIndex = radioUpdateIndex,
                 lastRadioMessage = lastRadioMessage

@@ -35,7 +35,7 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(market.Listings.Count(item => item.isAvailable), Is.EqualTo(3));
             Assert.That(market.Listings.Where(item => item.category == MarketListingCategory.Part)
                 .Sum(item => item.askingPrice), Is.EqualTo(550));
-            Assert.That(fleet.Actors.Count, Is.EqualTo(2));
+            Assert.That(fleet.Actors.Count, Is.EqualTo(3));
             Assert.That(fleet.FindActor("drone.market.utility-field.01"), Is.Null);
         }
 
@@ -67,7 +67,7 @@ namespace UnderStatic.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator PurchasingSurveyMotorTransfersExactPartIntoPhysicalStorage()
+        public IEnumerator PurchasingScoutMotorUpgradeTransfersExactPartIntoPhysicalStorage()
         {
             SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
             yield return null;
@@ -75,7 +75,7 @@ namespace UnderStatic.Tests.PlayMode
 
             var market = Object.FindAnyObjectByType<MarketSystem>();
             var inventory = Object.FindAnyObjectByType<InventorySystem>();
-            var listing = market.FindListing("market.initial.survey-motor");
+            var listing = market.FindListing("market.initial.scout-motor-upgrade");
             var part = market.ResolvePart(listing);
             var identity = part.Runtime.uniqueInstanceId;
 
@@ -106,15 +106,15 @@ namespace UnderStatic.Tests.PlayMode
             var sockets = Object.FindObjectsByType<PartSocket>(FindObjectsInactive.Include, FindObjectsSortMode.None);
 
             Assert.That(market.TryBuy(listing.listingId).Succeeded, Is.True);
-            Assert.That(fleet.Locker[1].Runtime.droneInstanceId, Is.EqualTo(identity));
+            Assert.That(fleet.Locker[2].Runtime.droneInstanceId, Is.EqualTo(identity));
             Assert.That(stock.Runtime.diagnosticFaultsDisclosed, Is.False);
             var json = save.CaptureAllToJson(parts, sockets);
-            Assert.That(json, Does.Contain("\"version\": 7"));
-            Assert.That(fleet.TrySwapLockerIntoService(1, false), Is.True);
+            Assert.That(json, Does.Contain("\"version\": 8"));
+            Assert.That(fleet.TrySwapLockerIntoService(2, false), Is.True);
 
             Assert.That(save.RestoreAllFromJson(json, parts, sockets), Is.True, save.LastStatus);
-            Assert.That(fleet.Locker[1].Runtime.droneInstanceId, Is.EqualTo(identity));
-            Assert.That(fleet.Locker[1].Runtime.diagnosticFaultsDisclosed, Is.False);
+            Assert.That(fleet.Locker[2].Runtime.droneInstanceId, Is.EqualTo(identity));
+            Assert.That(fleet.Locker[2].Runtime.diagnosticFaultsDisclosed, Is.False);
             Assert.That(market.Funds, Is.EqualTo(80));
             Assert.That(market.FindListing(listing.listingId).isAvailable, Is.False);
         }

@@ -15,6 +15,7 @@ namespace UnderStatic.Parts
         public bool hasDiagnosticResult;
         public bool latestDiagnosticPassed;
         public bool diagnosticFaultsDisclosed;
+        public bool isExpendableStrikeDrone;
 
         public DroneRuntimeData Copy()
         {
@@ -28,7 +29,8 @@ namespace UnderStatic.Parts
                 lockerSlot = lockerSlot,
                 hasDiagnosticResult = hasDiagnosticResult,
                 latestDiagnosticPassed = latestDiagnosticPassed,
-                diagnosticFaultsDisclosed = diagnosticFaultsDisclosed
+                diagnosticFaultsDisclosed = diagnosticFaultsDisclosed,
+                isExpendableStrikeDrone = isExpendableStrikeDrone
             };
         }
     }

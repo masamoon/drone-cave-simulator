@@ -46,8 +46,11 @@ namespace UnderStatic.UI
 
             var readiness = actor.Readiness;
             var stats = actor.Stats;
-            builder.Append(actor.FrameDefinition.Family).Append(' ')
-                .Append(actor.FrameDefinition.Grade).Append(" · ")
+            builder.Append(actor.IsExpendableStrikeDrone
+                    ? "EXPENDABLE STRIKE"
+                    : actor.FrameDefinition.Family.ToString())
+                .Append(actor.IsExpendableStrikeDrone ? string.Empty : $" {actor.FrameDefinition.Grade}")
+                .Append(" · ")
                 .Append(readiness.InstalledCount).Append('/').Append(readiness.RequiredCount)
                 .Append(" · frame ").Append(actor.Runtime.frameCondition.ToString("P0"))
                 .Append(" · ").Append(actor.IsReadyForShelf ? "TESTED READY" : "MAINTENANCE")

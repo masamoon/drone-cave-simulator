@@ -404,7 +404,8 @@ namespace UnderStatic.Lab
             PartDefinition definition,
             Material bodyMaterial,
             Material rotorMaterial,
-            string instanceId)
+            string instanceId,
+            Material conditionMaterial = null)
         {
             var motorObject = CreatePrimitive(
                 name,
@@ -424,11 +425,34 @@ namespace UnderStatic.Lab
             rotor.transform.localPosition = new Vector3(0f, 0.72f, 0f);
             DisableCollider(rotor);
 
+            var conditionIndicator = new GameObject("MotorConditionIndicator");
+            conditionIndicator.transform.SetParent(motorObject.transform, false);
+            var conditionBand = CreatePrimitive(
+                "MotorConditionBand",
+                PrimitiveType.Cylinder,
+                conditionIndicator.transform,
+                new Vector3(0f, 0.5f, 0f),
+                new Vector3(0.96f, 0.08f, 0.96f),
+                conditionMaterial ?? bodyMaterial,
+                true);
+            var conditionStripe = CreatePrimitive(
+                "MotorConditionStripe",
+                PrimitiveType.Cube,
+                conditionIndicator.transform,
+                new Vector3(0f, 0.58f, 0f),
+                new Vector3(1.12f, 0.04f, 0.2f),
+                conditionMaterial ?? bodyMaterial,
+                true);
+            conditionStripe.transform.localRotation = Quaternion.Euler(0f, 38f, 0f);
+            DisableCollider(conditionBand);
+            DisableCollider(conditionStripe);
+
             var body = motorObject.AddComponent<Rigidbody>();
             body.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
             body.interpolation = RigidbodyInterpolation.Interpolate;
             var part = motorObject.AddComponent<MotorPart>();
             part.Initialize(definition, instanceId);
+            part.ConfigureConditionIndicator(conditionIndicator);
             part.RememberRecoveryPose();
             return part;
         }

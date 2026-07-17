@@ -33,6 +33,7 @@ namespace UnderStatic.Tools
             rotatingShaft = shaft;
             audioFeedback = feedback;
             SnapToRest();
+            Deactivate();
         }
 
         private void Update()
@@ -92,6 +93,16 @@ namespace UnderStatic.Tools
                 activeFastener = -1;
             }
             IsActive = activeFastener >= 0;
+            if (IsActive)
+            {
+                gameObject.SetActive(true);
+                ratchetTimer = 0f;
+                var target = ResolveTarget();
+                if (target != null)
+                {
+                    transform.SetPositionAndRotation(target.position, target.rotation);
+                }
+            }
             return IsActive;
         }
 
@@ -102,7 +113,9 @@ namespace UnderStatic.Tools
         {
             IsActive = false;
             activeSocket = null;
-            activeFastener = 0;
+            activeFastener = -1;
+            ratchetTimer = 0f;
+            gameObject.SetActive(false);
         }
 
         public bool Drive(float deltaTime)

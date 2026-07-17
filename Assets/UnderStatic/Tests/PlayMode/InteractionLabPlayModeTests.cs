@@ -25,7 +25,9 @@ namespace UnderStatic.Tests
             Assert.That(Object.FindAnyObjectByType<GameBootstrap>(), Is.Not.Null);
             Assert.That(Object.FindAnyObjectByType<InteractionSystem>(), Is.Not.Null);
             Assert.That(Object.FindAnyObjectByType<SaveSystem>(), Is.Not.Null);
-            Assert.That(Object.FindAnyObjectByType<FloatingScrewdriver>(), Is.Not.Null);
+            Assert.That(
+                Object.FindAnyObjectByType<FloatingScrewdriver>(FindObjectsInactive.Include),
+                Is.Not.Null);
             Assert.That(Object.FindAnyObjectByType<TestSwitch>(), Is.Not.Null);
             Assert.That(Object.FindAnyObjectByType<DiagnosticLamp>(), Is.Not.Null);
             Assert.That(Object.FindAnyObjectByType<DebugPanel>(), Is.Not.Null);

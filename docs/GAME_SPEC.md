@@ -537,12 +537,12 @@ The MVP only requires the floating screwdriver.
 
 A floating tool should:
 
-- move from a resting anchor;
+- spawn only for its relevant tool action and despawn on release or completion;
 - align to the target;
 - visibly respond to player input;
 - respect the active fastener axis;
 - produce progress, resistance, and detents;
-- return to its resting location after use.
+- remain absent outside its relevant tool action.
 
 No hands are rendered.
 

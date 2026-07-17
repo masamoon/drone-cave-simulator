@@ -24,12 +24,17 @@ This milestone proves visible ownership and deterministic storage. It does not a
 Repair interaction uses a PC-building-game style focused mode rather than requiring the player to walk around the table while carrying components.
 
 - `E` on the service control enters the mode only while the drone is in the service bay.
+- Drone-mounted parts, sockets, fasteners, latches, and diagnostics are not targetable through ordinary
+  first-person interaction. The external service control is the maintenance entry point.
+- Motors below the serviceability threshold show an authored warning band and stripe on the motor housing,
+  so the replacement target is identifiable directly from the drone in service view.
 - The first-person controller and ordinary center-screen interaction are suspended while active.
 - The camera eases to an authored drone focus, supports right-mouse orbit and wheel zoom, and restores the exact prior pose on exit.
 - A persistent sidebar mirrors the physical parts and returns locations without creating a second ownership model.
 - Pointing at a component or socket highlights it and shows its current procedure action.
-- Dragging a compatible inventory part onto an empty socket deterministically performs `Loose → Held → Guided → Seated` and preserves the authored fastening, twist-lock, or latch step.
-- Holding the pointer action drives fasteners or twist locks. Latches use deliberate clicks.
+- Dragging a compatible inventory part onto an empty socket deterministically performs `Loose → Held → Guided → Seated`; releasing over the highlighted socket completes seating and preserves the authored fastening, twist-lock, or latch step.
+- Holding the pointer action on a fastener spawns the screwdriver at that screw and drives it. Releasing or completing the action despawns the tool. Twist locks use the pointer action directly; latches use deliberate clicks.
+- Diagnostics run from an explicit service-mode control.
 - Extracted parts return to the appropriate authored inventory location and remain the same runtime instance.
 - Dragging an eligible damaged part to the visible salvage target is the confirmation gesture and consumes it once.
 - `Escape` or the visible exit control leaves service mode. Service mode itself is transient and is not persisted.
@@ -82,7 +87,9 @@ The assembled drone gains mutable `DroneRuntimeData` containing:
 
 Any assembly installation or removal invalidates the previous diagnostic. Running the diagnostic records the current result. The ready shelf accepts the drone only when the assembly is mission-ready and the latest diagnostic passed.
 
-Drone relocation is an authored deterministic movement between service-bay and ready-shelf anchors. Installed parts remain attached through assembly state. Loose parts are not moved with the drone.
+Drone relocation is an authored deterministic movement between service-bay and ready-shelf anchors. Installed
+parts remain attached through assembly state, and each occupied socket reasserts its authored component pose
+throughout relocation so child rigidbodies cannot visually separate. Loose parts are not moved with the drone.
 
 ## 7. Salvage
 

@@ -38,7 +38,7 @@ Resolution combines the assigned aircraft's current statistics, mission weights,
 
 The same `DroneActor` returns with deterministic battery depletion, frame wear, component wear, and an invalidated diagnostic. Recovery enters the service bay when it is free; otherwise the mission remains explicitly `Returning` until a valid destination exists.
 
-Safe House saves now use schema version 7. Active timing, saved seeds, report state, pending return, deployed fleet identity, day state, radio progress, and consumable charges restore with the existing schema-6 economy. Versions 1–6 remain readable.
+Safe House saves now use schema version 8. Active timing, saved seeds, report state, pending return, deployed fleet identity, day state, radio progress, consumable charges, expendable roles, fleet losses, and one-time rewards restore with the existing schema-6 economy. Versions 1–7 remain readable.
 
 ## Validation
 
@@ -48,11 +48,21 @@ Safe House saves now use schema version 7. Active timing, saved seeds, report st
 - Road Watch launches the ready Scout while locker/service interaction remains usable.
 - Recovery waits when the service bay is occupied, then resolves with the same aircraft identity after the bay is cleared.
 - Installing the physical strike rack permits one armed launch and changes its charge from one to zero.
-- Schema-7 loading resumes an active mission with the same assigned aircraft and elapsed timer.
+- Schema-8 loading resumes an active mission with the same assigned aircraft and elapsed timer.
 - Unity compiled with no errors. The existing URP punctual-light shadow-atlas warning remains unrelated to mission logic.
 
 ## Subjective follow-up and exclusions
 
 Mission-board density, radio cadence, the current 28/34/42-second prototype timers, result-language clarity, and whether the aircraft/site trade-offs feel consequential require a human play pass.
 
-Charging, strike-rack reloading, mission payouts, market-cycle advancement, multiple simultaneous missions, permanent aircraft loss, battlefield presentation, and workshop risk remain excluded. The next milestone should add exposure only after the current sortie pacing and readability are approved.
+Strike-rack reloading, multiple simultaneous missions, loss of aircraft not explicitly designated expendable,
+and workshop risk remain excluded. Battlefield reconstruction was added by Milestone 5.1.
+
+## Daily continuity amendment
+
+Milestone 5.3 adds mission payouts, player-triggered next-day advancement, overnight battery turnaround,
+market-cycle advancement, and explicitly designated expendable strike-airframe loss.
+A fresh Safe House now starts with one repairable Scout and two complete one-way strike drones. Mission results
+award the existing economy's funds and inventory salvage exactly once. The tactical terminal changes from
+`END OPERATIONS` to `BEGIN NEXT DAY`, and schema 8 persists rewards and fleet losses. See
+`MILESTONE_05_3.md` for the binding scope and remaining exclusions.

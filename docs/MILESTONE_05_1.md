@@ -59,7 +59,7 @@ The replay overlay shows mission name, reconstruction phase, result classificati
 
 ## Persistence
 
-Schema version 7 remains current. The saved mission definition ID, resolution seed, archetype, outcome, identification state, and ordnance-consumed flag are sufficient to regenerate the reconstruction.
+Schema version 8 remains current after the daily-continuity amendment. The saved mission definition ID, resolution seed, archetype, outcome, identification state, and ordnance-consumed flag remain sufficient to regenerate the reconstruction.
 
 Loading never resumes a transient replay. Save, scene unload, disable, or replay cancellation restores the workshop safely.
 

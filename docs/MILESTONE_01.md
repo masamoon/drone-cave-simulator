@@ -116,17 +116,17 @@ The motor is not yet installed.
 
 The seated motor exposes two fastener targets.
 
-The player activates the floating screwdriver.
+The player holds the drive input on a fastener. The floating screwdriver spawns already aligned to that screw.
 
 For each fastener:
 
-- the tool travels visibly from its resting anchor;
 - it aligns with the fastener axis;
 - player input rotates the tool;
 - the screw head or fastener representation visibly rotates;
 - fastening progress increases;
 - the final 15% has stronger resistance;
-- a final torque click marks completion.
+- a final torque click marks completion;
+- releasing the drive input or completing the action despawns the tool.
 
 When both fasteners are complete:
 
@@ -155,7 +155,7 @@ When no installed motor is present:
 
 Removal reverses the fastening process:
 
-- activate the screwdriver;
+- hold the drive input on each fastener to spawn the screwdriver;
 - loosen both fasteners;
 - motor enters `Seated` but unsecured state;
 - player grabs and pulls the motor out along the extraction axis;
@@ -393,7 +393,7 @@ The milestone is complete only when all are true:
 - The player can cancel by pulling away.
 - Insertion direction is visually understandable.
 - Seating has a clear contact moment.
-- The screwdriver visibly travels and aligns.
+- The screwdriver appears aligned only during a fastener action and disappears on release or completion.
 - Tool rotation is visible and linked to input.
 - The final fastener has an obvious completion click.
 - The installed motor remains perfectly stable.

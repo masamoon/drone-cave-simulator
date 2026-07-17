@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnderStatic.Core;
+using UnderStatic.Economy;
 using UnderStatic.Fleet;
+using UnderStatic.Inventory;
 using UnderStatic.Parts;
 using UnityEngine;
 
@@ -26,6 +28,8 @@ namespace UnderStatic.Missions
         [SerializeField] private MissionDefinition[] definitions = Array.Empty<MissionDefinition>();
         [SerializeField] private DeploymentSiteDefinition[] sites = Array.Empty<DeploymentSiteDefinition>();
         [SerializeField] private FleetSystem fleet;
+        [SerializeField] private MarketSystem market;
+        [SerializeField] private InventorySystem inventory;
 
         private readonly List<MissionRuntimeData> missions = new();
 
@@ -44,13 +48,17 @@ namespace UnderStatic.Missions
             IEnumerable<DeploymentSiteDefinition> deploymentSites,
             FleetSystem fleetSystem,
             int dayIndex = 1,
-            int daySeed = 1701)
+            int daySeed = 1701,
+            MarketSystem marketSystem = null,
+            InventorySystem inventorySystem = null)
         {
             definitions = missionDefinitions?.Where(item => item != null)
                 .Distinct().ToArray() ?? Array.Empty<MissionDefinition>();
             sites = deploymentSites?.Where(item => item != null)
                 .Distinct().ToArray() ?? Array.Empty<DeploymentSiteDefinition>();
             fleet = fleetSystem;
+            market = marketSystem;
+            inventory = inventorySystem;
             ResetOffers(dayIndex, daySeed);
         }
 
@@ -367,6 +375,22 @@ namespace UnderStatic.Missions
                 0f,
                 0.2f);
             runtime.exposureContribution = site.ExposureContribution;
+            if (actor.IsExpendableStrikeDrone && definition.Archetype != MissionArchetype.Recon)
+            {
+                runtime.aircraftExpended = true;
+                runtime.breakdown.summary += " The expendable strike airframe was consumed as planned.";
+                if (!fleet.TryConsumeDeployed(actor))
+                {
+                    runtime.state = MissionRuntimeState.Returning;
+                    LastStatus = fleet.LastStatus;
+                    StateChanged?.Invoke();
+                    return;
+                }
+
+                CompleteResolution(runtime);
+                return;
+            }
+
             ApplyReturnWear(actor, runtime);
             runtime.state = MissionRuntimeState.Returning;
             LastStatus = $"{definition.DisplayName} complete · aircraft returning";
@@ -405,10 +429,55 @@ namespace UnderStatic.Missions
                 return;
             }
 
+            CompleteResolution(runtime);
+        }
+
+        private void CompleteResolution(MissionRuntimeData runtime)
+        {
             runtime.state = MissionRuntimeState.Resolved;
-            LastStatus = $"{DefinitionFor(runtime).DisplayName} report ready";
+            GrantRewards(runtime);
+            LastStatus = $"{DefinitionFor(runtime).DisplayName} report ready · "
+                + $"+{runtime.fundsAwarded} funds · +{runtime.salvageAwarded} salvage";
             MissionResolved?.Invoke(runtime);
             StateChanged?.Invoke();
+        }
+
+        private void GrantRewards(MissionRuntimeData runtime)
+        {
+            if (runtime.rewardsGranted)
+            {
+                return;
+            }
+
+            var definition = DefinitionFor(runtime);
+            var payoutMultiplier = runtime.outcome switch
+            {
+                MissionOutcome.ExceptionalSuccess => 1.25f,
+                MissionOutcome.Success => 1f,
+                MissionOutcome.LimitedSuccess => 0.65f,
+                MissionOutcome.ObservationOnly => 0.45f,
+                _ => 0.2f
+            };
+            var salvage = runtime.outcome switch
+            {
+                MissionOutcome.ExceptionalSuccess => 4,
+                MissionOutcome.Success => 3,
+                MissionOutcome.LimitedSuccess => 2,
+                MissionOutcome.ObservationOnly => 1,
+                _ => 0
+            };
+            if (definition?.Archetype != MissionArchetype.Recon && salvage > 0)
+            {
+                salvage++;
+            }
+
+            runtime.fundsAwarded = market?.AwardFunds(
+                Mathf.RoundToInt((definition?.OperationalValue ?? 0) * payoutMultiplier),
+                definition?.DisplayName ?? "sortie") ?? 0;
+            runtime.salvageAwarded = inventory?.AwardScrap(
+                salvage,
+                definition?.DisplayName ?? "sortie") ?? 0;
+            runtime.rewardsGranted = true;
         }
 
         private static void ApplyReturnWear(DroneActor actor, MissionRuntimeData runtime)

@@ -2,8 +2,10 @@ using System.Collections;
 using System.Linq;
 using NUnit.Framework;
 using UnderStatic.Core;
+using UnderStatic.Economy;
 using UnderStatic.Fleet;
 using UnderStatic.Interaction;
+using UnderStatic.Inventory;
 using UnderStatic.Missions;
 using UnderStatic.Parts;
 using UnderStatic.Persistence;
@@ -48,6 +50,9 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(socket, Is.Not.Null);
             Assert.That(socket.CanAccept(rack), Is.True);
             Assert.That(day.Runtime.dayIndex, Is.EqualTo(1));
+            Assert.That(Object.FindAnyObjectByType<FleetSystem>().Actors.Count, Is.EqualTo(3));
+            Assert.That(Object.FindAnyObjectByType<FleetSystem>().Actors.Count(actor =>
+                actor.IsExpendableStrikeDrone), Is.EqualTo(2));
         }
 
         [UnityTest]
@@ -147,7 +152,76 @@ namespace UnderStatic.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator SchemaSevenLoadResumesActiveSortieWithSameDroneAndTimer()
+        public IEnumerator TwoExpendableSortiesPayRewardsAndTerminalBeginsTheNextDay()
+        {
+            SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var fleet = Object.FindAnyObjectByType<FleetSystem>();
+            var missions = Object.FindAnyObjectByType<MissionSystem>();
+            var day = Object.FindAnyObjectByType<OperationalDaySystem>();
+            var terminal = Object.FindAnyObjectByType<TacticalMapTerminal>();
+            var market = Object.FindAnyObjectByType<MarketSystem>();
+            var inventory = Object.FindAnyObjectByType<InventorySystem>();
+            var startingFunds = market.Funds;
+            var scout = fleet.ServiceDrone;
+
+            Assert.That(fleet.TrySwapLockerIntoService(0, false), Is.True, fleet.LastStatus);
+            var firstStrikeDrone = fleet.ServiceDrone;
+            Assert.That(firstStrikeDrone.IsExpendableStrikeDrone, Is.True);
+            Assert.That(fleet.TryMoveServiceToReady(false), Is.True, fleet.LastStatus);
+            var precision = missions.Missions.Single(item =>
+                missions.DefinitionFor(item).Archetype == MissionArchetype.PrecisionStrike);
+            Assert.That(missions.TryAccept(precision.missionInstanceId), Is.True);
+            Assert.That(missions.TryAssign(precision.missionInstanceId, missions.Sites[0].Id, 990), Is.True,
+                missions.LastStatus);
+            Assert.That(missions.TryLaunch(precision.missionInstanceId), Is.True, missions.LastStatus);
+            missions.Tick(100f);
+
+            Assert.That(precision.state, Is.EqualTo(MissionRuntimeState.Resolved));
+            Assert.That(precision.aircraftExpended, Is.True);
+            Assert.That(precision.fundsAwarded, Is.GreaterThan(0));
+            Assert.That(precision.salvageAwarded, Is.GreaterThan(0));
+            Assert.That(fleet.FindActor(firstStrikeDrone.Runtime.droneInstanceId), Is.Null);
+
+            Assert.That(fleet.TrySwapLockerIntoService(1, false), Is.True, fleet.LastStatus);
+            var secondStrikeDrone = fleet.ServiceDrone;
+            Assert.That(secondStrikeDrone.IsExpendableStrikeDrone, Is.True);
+            Assert.That(fleet.TryMoveServiceToReady(false), Is.True, fleet.LastStatus);
+            var armedSearch = missions.Missions.Single(item =>
+                missions.DefinitionFor(item).Archetype == MissionArchetype.ArmedSearch);
+            Assert.That(missions.TryAccept(armedSearch.missionInstanceId), Is.True);
+            Assert.That(missions.TryAssign(armedSearch.missionInstanceId, missions.Sites[0].Id, 77), Is.True,
+                missions.LastStatus);
+            Assert.That(missions.TryLaunch(armedSearch.missionInstanceId), Is.True, missions.LastStatus);
+            missions.Tick(100f);
+
+            Assert.That(armedSearch.state, Is.EqualTo(MissionRuntimeState.Resolved));
+            Assert.That(armedSearch.aircraftExpended, Is.True);
+            Assert.That(fleet.FindActor(secondStrikeDrone.Runtime.droneInstanceId), Is.Null);
+            Assert.That(day.Runtime.completedSorties, Is.EqualTo(2));
+            Assert.That(market.Funds, Is.GreaterThan(startingFunds));
+            Assert.That(inventory.ScrapCount, Is.GreaterThan(0));
+            Assert.That(fleet.Actors.Count, Is.EqualTo(1));
+
+            var scoutBattery = scout.InstalledParts.Single(part =>
+                part.Definition.Category == PartCategory.Battery);
+            scoutBattery.Runtime.chargeLevel = 0.1f;
+            Assert.That(terminal.EndOperations(), Is.True, day.LastStatus);
+            Assert.That(terminal.BeginNextDay(), Is.True, day.LastStatus);
+
+            Assert.That(day.Runtime.dayIndex, Is.EqualTo(2));
+            Assert.That(day.Runtime.completedSorties, Is.Zero);
+            Assert.That(day.Runtime.operationsEnded, Is.False);
+            Assert.That(missions.Missions.All(item =>
+                item.state == MissionRuntimeState.Available), Is.True);
+            Assert.That(market.Cycle, Is.EqualTo(1));
+            Assert.That(scoutBattery.Runtime.chargeLevel, Is.EqualTo(1f));
+        }
+
+        [UnityTest]
+        public IEnumerator SchemaEightLoadResumesActiveSortieWithSameDroneAndTimer()
         {
             SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
             yield return null;
@@ -169,7 +243,7 @@ namespace UnderStatic.Tests.PlayMode
             var parts = Object.FindObjectsByType<InstallablePart>(FindObjectsInactive.Include, FindObjectsSortMode.None);
             var sockets = Object.FindObjectsByType<PartSocket>(FindObjectsInactive.Include, FindObjectsSortMode.None);
             var json = save.CaptureAllToJson(parts, sockets);
-            Assert.That(json, Does.Contain("\"version\": 7"));
+            Assert.That(json, Does.Contain("\"version\": 8"));
             missions.Tick(100f);
 
             Assert.That(save.RestoreAllFromJson(json, parts, sockets), Is.True, save.LastStatus);

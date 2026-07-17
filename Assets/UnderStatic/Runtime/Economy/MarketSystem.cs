@@ -217,6 +217,22 @@ namespace UnderStatic.Economy
             return Accept($"Sold {quantity} scrap for {value}");
         }
 
+        public int AwardFunds(int amount, string source)
+        {
+            amount = Mathf.Max(0, amount);
+            if (amount == 0)
+            {
+                return 0;
+            }
+
+            runtime.funds = runtime.funds > int.MaxValue - amount
+                ? int.MaxValue
+                : runtime.funds + amount;
+            LastStatus = $"Received {amount} funds · {source}";
+            StateChanged?.Invoke();
+            return amount;
+        }
+
         public void AdvanceMarketCycle(int seed)
         {
             runtime.market.cycle++;

@@ -2,11 +2,14 @@ using System.Collections;
 using System.Linq;
 using NUnit.Framework;
 using UnderStatic.Core;
+using UnderStatic.Fleet;
 using UnderStatic.Interaction;
 using UnderStatic.Inventory;
 using UnderStatic.Lab;
 using UnderStatic.Parts;
 using UnderStatic.Persistence;
+using UnderStatic.Tools;
+using UnderStatic.Visuals;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.LowLevel;
@@ -87,6 +90,96 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(camera.transform.parent, Is.SameAs(originalParent));
             Assert.That(camera.transform.localPosition, Is.EqualTo(originalLocalPosition));
             Assert.That(Quaternion.Angle(camera.transform.localRotation, originalLocalRotation), Is.LessThan(0.01f));
+        }
+
+        [UnityTest]
+        public IEnumerator DroneMaintenanceTargetsRequireServiceMode()
+        {
+            SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var service = Object.FindAnyObjectByType<DroneServiceModeController>();
+            var interactions = Object.FindAnyObjectByType<InteractionSystem>();
+            var controller = Object.FindAnyObjectByType<FirstPersonController>();
+            var diagnostic = Object.FindAnyObjectByType<DroneDiagnosticSwitch>();
+            var diagnosticObject = diagnostic.gameObject;
+            var serviceControl = GameObject.Find("DroneServiceModeControl");
+            var battery = GameObject.Find("InstalledDepletedBattery").GetComponent<InstallablePart>();
+            var camera = Camera.main;
+            controller.enabled = false;
+
+            AimAt(camera, diagnosticObject.transform.position);
+            yield return null;
+            yield return null;
+            Assert.That(interactions.Focused, Is.Not.SameAs(diagnostic));
+
+            AimAt(camera, battery.transform.position);
+            yield return null;
+            yield return null;
+            Assert.That(interactions.Focused, Is.Not.InstanceOf<InstallablePart>());
+            Assert.That(interactions.Focused, Is.Not.InstanceOf<PartSocket>());
+            Assert.That(interactions.Focused, Is.Not.InstanceOf<FastenerTarget>());
+
+            AimAt(camera, serviceControl.transform.position);
+            yield return null;
+            yield return null;
+            Assert.That(interactions.Focused, Is.SameAs(service));
+            Assert.That(service.EnterServiceMode(), Is.True);
+            Assert.That(service.RunDiagnostic(), Is.True);
+            Assert.That(diagnostic.LastResult, Does.StartWith("FAIL"));
+            service.ExitServiceMode();
+        }
+
+        [UnityTest]
+        public IEnumerator ScrewdriverIsVisibleOnlyDuringAFastenerAction()
+        {
+            SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var screwdriver = Object.FindAnyObjectByType<FloatingScrewdriver>(FindObjectsInactive.Include);
+            var cameraSocket = GameObject.Find("CameraBracketSocket").GetComponent<PartSocket>();
+            var fastener = cameraSocket.Fasteners[0];
+
+            Assert.That(screwdriver, Is.Not.Null);
+            Assert.That(screwdriver.gameObject.activeSelf, Is.False);
+            Assert.That(screwdriver.Activate(fastener, FastenerDriveDirection.Loosen), Is.True);
+            Assert.That(screwdriver.gameObject.activeSelf, Is.True);
+            Assert.That(Vector3.Distance(
+                screwdriver.transform.position,
+                fastener.DrivePose.position), Is.LessThan(0.001f));
+
+            screwdriver.Deactivate();
+            Assert.That(screwdriver.gameObject.activeSelf, Is.False);
+        }
+
+        [UnityTest]
+        public IEnumerator DamagedMotorHasAVisibleConditionCueOnTheDrone()
+        {
+            SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var damagedMotor = GameObject.Find("Motor_rear-left").GetComponent<MotorPart>();
+            var healthyMotor = GameObject.Find("Motor_front-left").GetComponent<MotorPart>();
+
+            Assert.That(damagedMotor.IsServiceable, Is.False);
+            Assert.That(damagedMotor.ConditionIndicatorVisible, Is.True);
+            var band = damagedMotor.transform.Find("MotorConditionIndicator/MotorConditionBand");
+            var visualKit = Object.FindAnyObjectByType<PsxVisualKit>();
+            Assert.That(band, Is.Not.Null);
+            Assert.That(band.GetComponent<Renderer>().sharedMaterial,
+                Is.SameAs(visualKit.MaterialFor(PsxSurface.Warning)));
+            Assert.That(healthyMotor.IsServiceable, Is.True);
+            Assert.That(healthyMotor.ConditionIndicatorVisible, Is.False);
+
+            damagedMotor.SetCondition(0.9f);
+            yield return null;
+            Assert.That(damagedMotor.ConditionIndicatorVisible, Is.False);
+            damagedMotor.SetCondition(0.18f);
+            yield return null;
+            Assert.That(damagedMotor.ConditionIndicatorVisible, Is.True);
         }
 
         [UnityTest]
@@ -207,6 +300,45 @@ namespace UnderStatic.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator BatteryDropOverOpenTraySeatsAboveTheFixture()
+        {
+            SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var service = Object.FindAnyObjectByType<DroneServiceModeController>();
+            var socket = GameObject.Find("BatteryTraySocket").GetComponent<PartSocket>();
+            var depleted = GameObject.Find("InstalledDepletedBattery").GetComponent<InstallablePart>();
+            var replacement = GameObject.Find("SpareChargedBattery").GetComponent<InstallablePart>();
+            var trayBounds = socket.GetComponent<Renderer>().bounds;
+
+            Assert.That(Vector3.Distance(depleted.transform.position, socket.SeatedPosition), Is.LessThan(0.001f));
+            Assert.That(depleted.GetComponent<Collider>().bounds.min.y, Is.GreaterThanOrEqualTo(trayBounds.max.y - 0.002f));
+            Assert.That(socket.ToggleLatch(), Is.True);
+            Assert.That(service.TryExtractPart(depleted), Is.True);
+            Assert.That(socket.OccupiedPart, Is.Null);
+            Assert.That(socket.LatchClosed, Is.False);
+
+            Assert.That(service.EnterServiceMode(), Is.True);
+            yield return new WaitForSeconds(0.4f);
+
+            var screen = Camera.main.WorldToScreenPoint(socket.SeatedPosition);
+            var guiPointer = new Vector2(screen.x, Screen.height - screen.y);
+            Assert.That(service.BeginServiceDrag(replacement), Is.True);
+            Assert.That(service.PromoteServiceDragToWorld(guiPointer), Is.True);
+            Assert.That(service.UpdateServiceDrag(guiPointer, 0.016f), Is.True);
+            Assert.That(service.ReleaseServiceDrag(guiPointer), Is.True);
+
+            Physics.SyncTransforms();
+            Assert.That(replacement.Runtime.currentState, Is.EqualTo(InteractionState.Seated));
+            Assert.That(socket.OccupiedPart, Is.SameAs(replacement));
+            Assert.That(service.DraggedPart, Is.Null);
+            Assert.That(Vector3.Distance(replacement.transform.position, socket.SeatedPosition), Is.LessThan(0.001f));
+            Assert.That(replacement.GetComponent<Collider>().bounds.min.y, Is.GreaterThanOrEqualTo(trayBounds.max.y - 0.002f));
+            service.ExitServiceMode();
+        }
+
+        [UnityTest]
         public IEnumerator StoredPartCanBeRetrievedThroughNormalInteraction()
         {
             SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
@@ -275,6 +407,60 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(inventory.TryMoveDroneToServiceBay(false), Is.True);
             Assert.That(assembly.Runtime.location, Is.EqualTo(StorageLocationId.SafeHouseServiceBay));
             Assert.That(assembly.InstalledPartCount, Is.EqualTo(11));
+        }
+
+        [UnityTest]
+        public IEnumerator AnimatedReadyShelfMoveKeepsInstalledPartsAttachedToTheirSockets()
+        {
+            SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var fleet = Object.FindAnyObjectByType<FleetSystem>();
+            var diagnostic = Object.FindAnyObjectByType<DroneDiagnosticSwitch>();
+            var actor = fleet.ServiceDrone;
+            foreach (var part in actor.InstalledParts)
+            {
+                part.SetCondition(0.95f);
+                if (part.Definition.Category == PartCategory.Battery)
+                {
+                    part.SetChargeLevel(0.95f);
+                }
+            }
+            diagnostic.Activate();
+            Assert.That(actor.IsReadyForShelf, Is.True);
+
+            var occupied = actor.Sockets
+                .Where(socket => socket?.OccupiedPart != null)
+                .Select(socket => new
+                {
+                    Socket = socket,
+                    Part = socket.OccupiedPart,
+                    State = socket.OccupiedPart.Runtime.currentState
+                })
+                .ToArray();
+            Assert.That(occupied.Length, Is.EqualTo(actor.Assembly.InstalledPartCount));
+
+            Assert.That(fleet.TryMoveServiceToReady(true), Is.True);
+            yield return new WaitForSeconds(0.9f);
+            Physics.SyncTransforms();
+
+            Assert.That(fleet.ReadyDrone, Is.SameAs(actor));
+            Assert.That(actor.Assembly.InstalledPartCount, Is.EqualTo(occupied.Length));
+            foreach (var installed in occupied)
+            {
+                Assert.That(installed.Socket.OccupiedPart, Is.SameAs(installed.Part));
+                Assert.That(installed.Part.transform.parent, Is.SameAs(installed.Socket.transform));
+                Assert.That(installed.Part.transform.IsChildOf(actor.transform), Is.True);
+                Assert.That(Vector3.Distance(
+                    installed.Part.transform.position,
+                    installed.Socket.SeatedPosition), Is.LessThan(0.001f));
+                Assert.That(Quaternion.Angle(
+                    installed.Part.transform.rotation,
+                    installed.Socket.transform.rotation), Is.LessThan(0.01f));
+                Assert.That(installed.Part.Runtime.currentState, Is.EqualTo(installed.State));
+                Assert.That(installed.Part.Body.isKinematic, Is.True);
+            }
         }
 
         [UnityTest]
@@ -349,6 +535,15 @@ namespace UnderStatic.Tests.PlayMode
             yield return null;
             InputSystem.QueueStateEvent(Keyboard.current, new KeyboardState());
             yield return null;
+        }
+
+        private static void AimAt(Camera camera, Vector3 target)
+        {
+            var cameraPosition = target + new Vector3(0f, 0.22f, -0.72f);
+            camera.transform.SetPositionAndRotation(
+                cameraPosition,
+                Quaternion.LookRotation(target - cameraPosition, Vector3.up));
+            Physics.SyncTransforms();
         }
 
         [UnityTest]

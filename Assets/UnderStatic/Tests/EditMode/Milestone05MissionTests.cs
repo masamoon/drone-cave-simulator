@@ -174,6 +174,30 @@ namespace UnderStatic.Tests.EditMode
         }
 
         [Test]
+        public void ExpendableArmedResolutionConsumesTheOwnedActor()
+        {
+            var setup = CreateMissionSetup(MissionArchetype.PrecisionStrike, includeRack: true);
+            setup.actor.Runtime.isExpendableStrikeDrone = true;
+            var identity = setup.actor.Runtime.droneInstanceId;
+            var runtime = Launch(setup, 990);
+
+            setup.missions.Tick(10f);
+
+            Assert.That(runtime.state, Is.EqualTo(MissionRuntimeState.Resolved));
+            Assert.That(runtime.aircraftExpended, Is.True);
+            Assert.That(runtime.rewardsGranted, Is.True);
+            Assert.That(setup.fleet.FindActor(identity), Is.Null);
+            Assert.That(setup.fleet.DeployedDrone, Is.Null);
+            Assert.That(setup.actor.gameObject.activeSelf, Is.False);
+
+            var consumedFleetState = setup.fleet.CaptureState();
+            Assert.That(setup.fleet.RegisterExternalActor(setup.actor), Is.True);
+            Assert.That(setup.fleet.RestoreState(consumedFleetState), Is.True, setup.fleet.LastStatus);
+            Assert.That(setup.fleet.FindActor(identity), Is.Null);
+            Assert.That(setup.actor.gameObject.activeSelf, Is.False);
+        }
+
+        [Test]
         public void ReturningState_WaitsSafelyForAnOccupiedServiceBay()
         {
             var ready = CreateReadyActor("drone.deployed", false);
@@ -199,7 +223,7 @@ namespace UnderStatic.Tests.EditMode
         }
 
         [Test]
-        public void SchemaSevenRoundTrip_RestoresActiveMissionAndOperationalDay()
+        public void SchemaEightRoundTrip_RestoresActiveMissionAndOperationalDay()
         {
             var setup = CreateMissionSetup(MissionArchetype.Recon);
             var day = Track(new GameObject("Day")).AddComponent<OperationalDaySystem>();
@@ -212,7 +236,7 @@ namespace UnderStatic.Tests.EditMode
             save.ConfigureMissions(setup.missions, day);
             var json = save.CaptureAllToJson(Array.Empty<InstallablePart>(), Array.Empty<PartSocket>());
 
-            Assert.That(json, Does.Contain("\"version\": 7"));
+            Assert.That(json, Does.Contain("\"version\": 8"));
             setup.missions.Tick(10f);
             Assert.That(runtime.state, Is.EqualTo(MissionRuntimeState.Resolved));
             Assert.That(save.RestoreAllFromJson(

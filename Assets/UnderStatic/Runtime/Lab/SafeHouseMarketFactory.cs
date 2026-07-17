@@ -26,36 +26,36 @@ namespace UnderStatic.Lab
             var stockMaterial = InteractionLabFactory.CreateMaterial(
                 "Market Stock Blue",
                 new Color(0.08f, 0.3f, 0.34f));
-            var motorDefinition = CreateSurveyPartDefinition(
+            var motorDefinition = CreateUpgradePartDefinition(
                 PartCategory.Motor,
-                "part.market.survey.field.motor",
-                "Survey Field Motor",
-                CompatibilityStandardId.SurveyMotor,
+                "part.market.scout.professional.motor",
+                "Scout Professional Motor",
+                CompatibilityStandardId.CompactMotor,
                 300,
-                new PartStatModifiers { control = 0.025f, reliability = 0.015f });
-            var batteryDefinition = CreateSurveyPartDefinition(
+                new PartStatModifiers { control = 0.045f, reliability = 0.03f });
+            var batteryDefinition = CreateUpgradePartDefinition(
                 PartCategory.Battery,
-                "part.market.survey.field.battery",
-                "Survey Field Battery",
-                CompatibilityStandardId.SurveyBattery,
+                "part.market.scout.professional.battery",
+                "Scout Professional Battery",
+                CompatibilityStandardId.CompactBattery,
                 250,
-                new PartStatModifiers { endurance = 0.055f, reliability = 0.01f });
+                new PartStatModifiers { endurance = 0.08f, reliability = 0.025f });
             var motor = InteractionLabFactory.CreateComponentPart(
-                "MarketSurveyMotor",
+                "MarketScoutMotorUpgrade",
                 null,
                 new Vector3(0f, -20f, 0f),
                 PartCategory.Motor,
                 motorDefinition,
                 stockMaterial,
-                "market-part-survey-motor-01");
+                "market-part-scout-motor-01");
             var battery = InteractionLabFactory.CreateComponentPart(
-                "MarketSurveyBattery",
+                "MarketScoutBatteryUpgrade",
                 null,
                 new Vector3(0f, -20f, 0f),
                 PartCategory.Battery,
                 batteryDefinition,
                 stockMaterial,
-                "market-part-survey-battery-01");
+                "market-part-scout-battery-01");
             motor.SetCondition(0.96f);
             battery.SetCondition(0.93f);
             motor.SetControlledPhysics();
@@ -83,7 +83,7 @@ namespace UnderStatic.Lab
                 {
                     new MarketListingRuntimeData
                     {
-                        listingId = "market.initial.survey-motor",
+                        listingId = "market.initial.scout-motor-upgrade",
                         category = MarketListingCategory.Part,
                         askingPrice = 300,
                         isAvailable = true,
@@ -93,7 +93,7 @@ namespace UnderStatic.Lab
                     },
                     new MarketListingRuntimeData
                     {
-                        listingId = "market.initial.survey-battery",
+                        listingId = "market.initial.scout-battery-upgrade",
                         category = MarketListingCategory.Part,
                         askingPrice = 250,
                         isAvailable = true,
@@ -132,7 +132,7 @@ namespace UnderStatic.Lab
             return market;
         }
 
-        private static PartDefinition CreateSurveyPartDefinition(
+        private static PartDefinition CreateUpgradePartDefinition(
             PartCategory category,
             string id,
             string name,
@@ -148,7 +148,7 @@ namespace UnderStatic.Lab
                 reliability: 0.9f,
                 partMass: category == PartCategory.Battery ? 0.5f : 0.2f,
                 standards: new[] { standard },
-                equipmentGrade: EquipmentGrade.Field,
+                equipmentGrade: EquipmentGrade.Professional,
                 modifiers: modifiers,
                 value: value);
         }

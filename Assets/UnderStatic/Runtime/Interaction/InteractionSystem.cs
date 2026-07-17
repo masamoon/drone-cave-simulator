@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnderStatic.Core;
+using UnderStatic.Fleet;
 using UnderStatic.Inventory;
 using UnderStatic.Lab;
 using UnderStatic.Parts;
@@ -23,6 +24,7 @@ namespace UnderStatic.Interaction
         [SerializeField] private SaveSystem saveSystem;
         [SerializeField] private AudioFeedbackSystem audioFeedback;
         [SerializeField] private InventorySystem inventorySystem;
+        [SerializeField] private bool droneInteractionRequiresServiceMode;
 
         [Header("Feel")]
         [SerializeField, Min(0.2f)] private float interactionRange = 1.8f;
@@ -37,7 +39,6 @@ namespace UnderStatic.Interaction
         private InputAction interactAction;
         private InputAction attackAction;
         private InputAction lookAction;
-        private InputAction toolAction;
         private InputAction saveAction;
         private InputAction loadAction;
         private IInteractable focused;
@@ -80,6 +81,12 @@ namespace UnderStatic.Interaction
             inventorySystem = inventory;
         }
 
+        public void RequireServiceModeForDroneInteraction()
+        {
+            droneInteractionRequiresServiceMode = true;
+            SuspendForServiceMode();
+        }
+
         // Milestone 1 compatibility overload.
         public void Configure(
             Camera targetCamera,
@@ -101,7 +108,10 @@ namespace UnderStatic.Interaction
             focused = null;
             activeTwistSocket?.EndLockGesture();
             activeTwistSocket = null;
-            screwdriver?.Deactivate();
+            if (screwdriver != null)
+            {
+                screwdriver.Deactivate();
+            }
         }
 
         public void SuspendForServiceMode()
@@ -128,14 +138,23 @@ namespace UnderStatic.Interaction
             HandleCommands();
             UpdateHeldPart();
 
+            if (attackAction?.WasReleasedThisFrame() == true)
+            {
+                screwdriver?.Deactivate();
+                activeTwistSocket?.EndLockGesture();
+                activeTwistSocket = null;
+            }
+
             if (attackAction?.IsPressed() != true || heldPart != null)
             {
-                if (attackAction?.WasReleasedThisFrame() == true)
-                {
-                    activeTwistSocket?.EndLockGesture();
-                    activeTwistSocket = null;
-                }
                 return;
+            }
+
+            if (screwdriver?.IsActive != true
+                && attackAction.WasPressedThisFrame()
+                && ResolveFocusedSocket()?.ProcedureType == InstallationProcedureType.Fasteners)
+            {
+                screwdriver?.Activate(ResolveFocusedSocket());
             }
 
             if (screwdriver != null && screwdriver.IsActive)
@@ -162,18 +181,6 @@ namespace UnderStatic.Interaction
             if (interactAction?.WasPressedThisFrame() == true)
             {
                 Interact();
-            }
-
-            if (toolAction?.WasPressedThisFrame() == true && screwdriver != null)
-            {
-                if (screwdriver.IsActive)
-                {
-                    screwdriver.Deactivate();
-                }
-                else
-                {
-                    screwdriver.Activate(ResolveFocusedSocket());
-                }
             }
 
             if (saveAction?.WasPressedThisFrame() == true)
@@ -359,7 +366,7 @@ namespace UnderStatic.Interaction
             {
                 var guidanceTarget = guidedInsertionCommitted
                     && activeSocket?.ProcedureType == InstallationProcedureType.Latch
-                        ? activeSocket.transform.position
+                        ? activeSocket.SeatedPosition
                         : desired;
                 var guidanceDeltaTime = guidedInsertionCommitted
                     ? Time.deltaTime * committedInsertionSpeed
@@ -385,10 +392,10 @@ namespace UnderStatic.Interaction
                 activeSocket = extractionSocket;
                 var axis = extractionSocket.WorldInsertionAxis;
                 var alongAxis = Mathf.Clamp(
-                    Vector3.Dot(desired - extractionSocket.transform.position, axis),
+                    Vector3.Dot(desired - extractionSocket.SeatedPosition, axis),
                     0f,
                     extractionSocket.CaptureRadius * 1.2f);
-                desired = extractionSocket.transform.position + axis * alongAxis;
+                desired = extractionSocket.SeatedPosition + axis * alongAxis;
                 if (alongAxis >= 0.055f)
                 {
                     extractionSocket.CompleteExtraction(heldPart);
@@ -424,7 +431,7 @@ namespace UnderStatic.Interaction
                 if (guidanceRecaptureBlocker != null
                     && Vector3.Distance(
                         heldPart.transform.position,
-                        guidanceRecaptureBlocker.transform.position)
+                        guidanceRecaptureBlocker.SeatedPosition)
                         > guidanceRecaptureBlocker.CaptureRadius * 1.5f)
                 {
                     guidanceRecaptureBlocker = null;
@@ -443,12 +450,13 @@ namespace UnderStatic.Interaction
             {
                 if (socket == null
                     || socket == guidanceRecaptureBlocker
+                    || !AllowsFirstPersonInteraction(socket)
                     || !socket.CanAccept(part))
                 {
                     continue;
                 }
 
-                var entry = socket.transform.position
+                var entry = socket.SeatedPosition
                     + socket.WorldInsertionAxis * socket.ProfileInsertionDistance;
                 var distance = Vector3.Distance(part.transform.position, entry);
                 if (distance <= socket.CaptureRadius && distance < bestDistance)
@@ -471,6 +479,11 @@ namespace UnderStatic.Interaction
             if (focused is PartSocket socket)
             {
                 return socket;
+            }
+
+            if (focused is FastenerTarget fastener)
+            {
+                return fastener.Socket;
             }
 
             if (focused is InstallablePart part)
@@ -534,6 +547,7 @@ namespace UnderStatic.Interaction
                 var hit = focusHits[index];
                 var candidate = hit.collider?.GetComponentInParent<IInteractable>();
                 if (candidate == null
+                    || !AllowsFirstPersonInteraction(candidate)
                     || candidate is InstallablePart candidatePart && candidatePart == heldPart
                     || candidate.InteractionTransform == null
                     || hit.distance >= closestDistance)
@@ -548,13 +562,40 @@ namespace UnderStatic.Interaction
             return closest;
         }
 
+        private bool AllowsFirstPersonInteraction(IInteractable candidate)
+        {
+            if (!droneInteractionRequiresServiceMode || candidate == null)
+            {
+                return true;
+            }
+
+            if (candidate is DroneDiagnosticSwitch)
+            {
+                return false;
+            }
+
+            var socket = candidate switch
+            {
+                PartSocket partSocket => partSocket,
+                FastenerTarget fastener => fastener.Socket,
+                InstallablePart part => FindSocketContaining(part),
+                _ => null
+            };
+            if (socket != null && socket.GetComponentInParent<DroneActor>() != null)
+            {
+                return false;
+            }
+
+            return candidate is not InstallablePart installable
+                || installable.GetComponentInParent<DroneActor>() == null;
+        }
+
         private void BindActions()
         {
             var actions = playerInput?.actions;
             interactAction = actions?.FindAction("Player/Interact");
             attackAction = actions?.FindAction("Player/Attack");
             lookAction = actions?.FindAction("Player/Look");
-            toolAction = actions?.FindAction("Player/Crouch");
             saveAction = actions?.FindAction("Player/Previous");
             loadAction = actions?.FindAction("Player/Next");
         }
@@ -582,7 +623,7 @@ namespace UnderStatic.Interaction
 
             GUI.Label(
                 new Rect(12f, Screen.height - 52f, 760f, 24f),
-                "WASD move · mouse look · E interact/latch · C screwdriver · LMB drive/twist · 1 save · 2 load");
+                "WASD move · mouse look · E interact/latch · LMB spawn tool and drive/twist · 1 save · 2 load");
         }
 
         private string ResolveFocusedPrompt()

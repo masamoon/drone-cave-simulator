@@ -39,8 +39,10 @@ namespace UnderStatic.Tests.PlayMode
             var spareMotor = parts.Single(part => part.name == "SpareServiceableMotor");
             var spareBattery = parts.Single(part => part.name == "SpareChargedBattery");
             Assert.That(damagedMotor.IsServiceable, Is.False);
+            Assert.That(((MotorPart)damagedMotor).ConditionIndicatorVisible, Is.True);
             Assert.That(depletedBattery.IsBatteryDepleted, Is.True);
             Assert.That(spareMotor.IsServiceable, Is.True);
+            Assert.That(((MotorPart)spareMotor).ConditionIndicatorVisible, Is.False);
             Assert.That(spareBattery.Runtime.chargeLevel, Is.EqualTo(1f));
             Assert.That(spareBattery.ServiceDescription, Is.EqualTo("charged (100%)"));
             Assert.That(depletedBattery.ServiceDescription, Is.EqualTo("depleted (0%)"));
@@ -305,13 +307,17 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(interactions.HeldPart, Is.SameAs(battery));
             Assert.That(battery.Runtime.currentState, Is.EqualTo(InteractionState.Held));
 
-            var entryPoint = socket.transform.position
+            var entryPoint = socket.SeatedPosition
                 + socket.WorldInsertionAxis * socket.ProfileInsertionDistance;
             camera.transform.SetPositionAndRotation(
                 entryPoint + Vector3.back * 0.65f,
                 Quaternion.identity);
             Physics.SyncTransforms();
             yield return new WaitForSeconds(0.8f);
+            Assert.That(socket.CanAccept(battery), Is.True);
+            Assert.That(
+                Vector3.Distance(battery.transform.position, entryPoint),
+                Is.LessThanOrEqualTo(socket.CaptureRadius));
             Assert.That(battery.Runtime.currentState, Is.EqualTo(InteractionState.Guided));
 
             interactions.Interact();
@@ -351,6 +357,40 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(battery.Runtime.currentState, Is.EqualTo(InteractionState.Held));
             Assert.That(interactions.HeldPart, Is.SameAs(battery));
             Assert.That(socket.LatchClosed, Is.False);
+        }
+
+        [UnityTest]
+        public IEnumerator EmptyBatteryTrayCanRelatchAndAcceptAReplacement()
+        {
+            SceneManager.LoadScene("DroneAssemblyLab", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var socket = GameObject.Find("BatteryTraySocket").GetComponent<PartSocket>();
+            var depleted = GameObject.Find("InstalledDepletedBattery").GetComponent<InstallablePart>();
+            var replacement = GameObject.Find("SpareChargedBattery").GetComponent<InstallablePart>();
+
+            Assert.That(socket.ToggleLatch(), Is.True);
+            Assert.That(socket.BeginExtraction(depleted), Is.True);
+            Assert.That(socket.CompleteExtraction(depleted), Is.True);
+            Assert.That(depleted.TryTransition(InteractionState.Loose), Is.True);
+            Assert.That(socket.OccupiedPart, Is.Null);
+
+            Assert.That(socket.ToggleLatch(), Is.True);
+            Assert.That(socket.LatchClosed, Is.True);
+            Assert.That(socket.CanAccept(replacement), Is.False);
+            Assert.That(socket.ToggleLatch(), Is.True);
+            Assert.That(socket.LatchClosed, Is.False);
+            Assert.That(socket.CanAccept(replacement), Is.True);
+
+            Assert.That(replacement.TryTransition(InteractionState.Held), Is.True);
+            replacement.transform.SetPositionAndRotation(
+                socket.SeatedPosition + socket.WorldInsertionAxis * socket.ProfileInsertionDistance,
+                socket.transform.rotation);
+            Assert.That(socket.TryBeginGuidance(replacement), Is.True);
+            Assert.That(socket.UpdateGuidance(replacement, socket.SeatedPosition, 1f), Is.True);
+            Assert.That(replacement.Runtime.currentState, Is.EqualTo(InteractionState.Seated));
+            Assert.That(socket.OccupiedPart, Is.SameAs(replacement));
         }
 
         private static void MountForCollectionTest(InstallablePart part, PartSocket socket)

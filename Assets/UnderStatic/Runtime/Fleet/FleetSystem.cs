@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using UnderStatic.Core;
 using UnderStatic.Inventory;
 using UnderStatic.Parts;
 using UnityEngine;
@@ -21,6 +22,7 @@ namespace UnderStatic.Fleet
 
         private readonly DroneActor[] locker = new DroneActor[LockerCapacity];
         private readonly Dictionary<DroneActor, Coroutine> moves = new();
+        private DroneActor[] knownActors = Array.Empty<DroneActor>();
 
         public IReadOnlyList<DroneActor> Actors => actors;
         public IReadOnlyList<DroneActor> Locker => locker;
@@ -35,6 +37,25 @@ namespace UnderStatic.Fleet
 
         public bool ContainsActor(DroneActor actor) => actor != null && actors.Contains(actor);
 
+        public bool RegisterKnownActor(DroneActor actor)
+        {
+            if (actor == null)
+            {
+                return false;
+            }
+
+            if (!knownActors.Contains(actor))
+            {
+                knownActors = knownActors.Append(actor).ToArray();
+            }
+            if (!actors.Contains(actor))
+            {
+                actor.SetStorageLocation(new DroneStorageLocation(DroneStorageLocationKind.External));
+                actor.gameObject.SetActive(false);
+            }
+            return true;
+        }
+
         public void Configure(
             IEnumerable<DroneActor> fleetActors,
             Transform serviceAnchor,
@@ -43,6 +64,7 @@ namespace UnderStatic.Fleet
         {
             actors = fleetActors?.Where(actor => actor != null).Distinct().ToArray()
                 ?? Array.Empty<DroneActor>();
+            knownActors = actors.ToArray();
             if (actors.Select(actor => actor.Runtime.droneInstanceId).Distinct(StringComparer.Ordinal).Count()
                 != actors.Length)
             {
@@ -175,6 +197,46 @@ namespace UnderStatic.Fleet
             return true;
         }
 
+        public bool TryConsumeDeployed(DroneActor actor)
+        {
+            if (actor == null || DeployedDrone != actor || !actors.Contains(actor))
+            {
+                LastStatus = "Deployed drone identity mismatch";
+                return false;
+            }
+
+            DeployedDrone = null;
+            actors = actors.Where(item => item != actor).ToArray();
+            actor.SetStorageLocation(new DroneStorageLocation(DroneStorageLocationKind.External));
+            actor.gameObject.SetActive(false);
+            LastStatus = $"{actor.FrameDefinition.DisplayName} expended on sortie";
+            return true;
+        }
+
+        public int PrepareForNextOperationalDay()
+        {
+            var recharged = 0;
+            foreach (var actor in actors.Where(item => item != null && item != DeployedDrone))
+            {
+                foreach (var battery in actor.InstalledParts.Where(part =>
+                             part?.Definition?.Category == PartCategory.Battery))
+                {
+                    if (battery.Runtime.chargeLevel >= 0.999f)
+                    {
+                        continue;
+                    }
+
+                    battery.Runtime.chargeLevel = 1f;
+                    recharged++;
+                }
+            }
+
+            LastStatus = recharged == 0
+                ? "Fleet prepared for the next operational day"
+                : $"Fleet prepared · {recharged} {(recharged == 1 ? "battery" : "batteries")} recharged";
+            return recharged;
+        }
+
         public bool TryStoreInLocker(DroneActor actor, int preferredSlot = -1, bool animate = true)
         {
             if (actor == null || !actors.Contains(actor))
@@ -233,6 +295,10 @@ namespace UnderStatic.Fleet
 
             var slot = FirstFreeLockerSlot();
             actors = actors.Append(actor).ToArray();
+            if (!knownActors.Contains(actor))
+            {
+                knownActors = knownActors.Append(actor).ToArray();
+            }
             locker[slot] = actor;
             actor.gameObject.SetActive(true);
             actor.SetStorageLocation(new DroneStorageLocation(DroneStorageLocationKind.Locker, slot));
@@ -272,6 +338,10 @@ namespace UnderStatic.Fleet
             }
 
             actors = actors.Append(actor).ToArray();
+            if (!knownActors.Contains(actor))
+            {
+                knownActors = knownActors.Append(actor).ToArray();
+            }
             actor.gameObject.SetActive(true);
             actor.SetStorageLocation(new DroneStorageLocation(DroneStorageLocationKind.External));
             return true;
@@ -338,7 +408,7 @@ namespace UnderStatic.Fleet
                 return RestoreLegacy(legacySingleDrone);
             }
 
-            var actorLookup = actors.ToDictionary(
+            var actorLookup = knownActors.ToDictionary(
                 actor => actor.Runtime.droneInstanceId,
                 actor => actor,
                 StringComparer.Ordinal);
@@ -363,6 +433,11 @@ namespace UnderStatic.Fleet
                 actorLookup[runtime.droneInstanceId].RestoreRuntime(runtime);
             }
 
+            actors = restored.drones
+                .Select(runtime => actorLookup[runtime.droneInstanceId])
+                .Distinct()
+                .ToArray();
+
             ServiceDrone = string.IsNullOrEmpty(restored.serviceDroneId)
                 ? null
                 : actorLookup[restored.serviceDroneId];
@@ -383,6 +458,13 @@ namespace UnderStatic.Fleet
                          .Where(item => item != null)))
             {
                 actor.SetStorageLocation(new DroneStorageLocation(DroneStorageLocationKind.External));
+            }
+
+            foreach (var actor in knownActors.Where(actor => actor != null && !actors.Contains(actor)))
+            {
+                RemoveActorFromOccupancy(actor);
+                actor.SetStorageLocation(new DroneStorageLocation(DroneStorageLocationKind.External));
+                actor.gameObject.SetActive(false);
             }
 
             RestoreAllPoses();
@@ -479,6 +561,7 @@ namespace UnderStatic.Fleet
             else
             {
                 actor.transform.SetPositionAndRotation(anchor.position, anchor.rotation);
+                actor.ReassertOccupiedSocketPoses();
             }
         }
 
@@ -496,10 +579,12 @@ namespace UnderStatic.Fleet
                 actor.transform.SetPositionAndRotation(
                     position,
                     Quaternion.Slerp(startRotation, anchor.rotation, t));
+                actor.ReassertOccupiedSocketPoses();
                 yield return null;
             }
 
             actor.transform.SetPositionAndRotation(anchor.position, anchor.rotation);
+            actor.ReassertOccupiedSocketPoses();
             moves.Remove(actor);
         }
     }

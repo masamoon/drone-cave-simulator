@@ -145,6 +145,22 @@ namespace UnderStatic.Inventory
             return true;
         }
 
+        public int AwardScrap(int quantity, string source)
+        {
+            quantity = Mathf.Max(0, quantity);
+            if (quantity == 0)
+            {
+                return 0;
+            }
+
+            scrapCount = scrapCount > int.MaxValue - quantity
+                ? int.MaxValue
+                : scrapCount + quantity;
+            UpdateScrapVisuals();
+            LastStatus = $"Recovered {quantity} salvage · {source}";
+            return quantity;
+        }
+
         public void RegisterKnownPart(InstallablePart part)
         {
             if (part != null && !parts.Contains(part))

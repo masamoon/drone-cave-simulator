@@ -1,5 +1,7 @@
+using UnderStatic.Economy;
 using UnderStatic.Fleet;
 using UnderStatic.Interaction;
+using UnderStatic.Inventory;
 using UnderStatic.Missions;
 using UnderStatic.Parts;
 using UnderStatic.Persistence;
@@ -16,6 +18,8 @@ namespace UnderStatic.Lab
             FleetSystem fleet,
             SaveSystem saveSystem,
             FirstPersonController controller,
+            MarketSystem market,
+            InventorySystem inventory,
             PsxVisualKit visualKit = null)
         {
             var roadWatch = MissionDefinition.CreateTransient(
@@ -98,12 +102,14 @@ namespace UnderStatic.Lab
             missions.Configure(
                 new[] { roadWatch, counterBattery, armedSearch },
                 new[] { adjacent, remote },
-                fleet);
+                fleet,
+                marketSystem: market,
+                inventorySystem: inventory);
 
             var dayObject = new GameObject("OperationalDaySystem");
             dayObject.transform.SetParent(GameObject.Find("Systems")?.transform);
             var day = dayObject.AddComponent<OperationalDaySystem>();
-            day.Configure(missions);
+            day.Configure(missions, market: market, fleet: fleet);
             saveSystem.ConfigureMissions(missions, day);
 
             var replayDefinition = MissionReplayDefinition.CreateTransient();
@@ -131,6 +137,8 @@ namespace UnderStatic.Lab
                 missions,
                 day,
                 fleet,
+                market,
+                inventory,
                 controller,
                 control.GetComponent<Renderer>(),
                 replay);
