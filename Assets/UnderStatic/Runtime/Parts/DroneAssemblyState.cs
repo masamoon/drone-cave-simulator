@@ -1,0 +1,247 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using UnderStatic.Core;
+using UnderStatic.Inventory;
+using UnityEngine;
+
+namespace UnderStatic.Parts
+{
+    public readonly struct DroneReadinessSnapshot
+    {
+        public DroneReadinessSnapshot(
+            int installed,
+            int required,
+            float condition,
+            float reliability,
+            float endurance,
+            float observation,
+            float control,
+            bool complete,
+            bool ready,
+            string maintenanceSummary)
+        {
+            InstalledCount = installed;
+            RequiredCount = required;
+            OverallCondition = condition;
+            Reliability = reliability;
+            Endurance = endurance;
+            ObservationQuality = observation;
+            ControlReliability = control;
+            IsComplete = complete;
+            IsMissionReady = ready;
+            MaintenanceSummary = maintenanceSummary;
+        }
+
+        public int InstalledCount { get; }
+        public int RequiredCount { get; }
+        public float Completeness => RequiredCount == 0 ? 0f : InstalledCount / (float)RequiredCount;
+        public float OverallCondition { get; }
+        public float Reliability { get; }
+        public float Endurance { get; }
+        public float ObservationQuality { get; }
+        public float ControlReliability { get; }
+        public bool IsComplete { get; }
+        public bool IsMissionReady { get; }
+        public string MaintenanceSummary { get; }
+    }
+
+    [DisallowMultipleComponent]
+    public sealed class DroneAssemblyState : MonoBehaviour
+    {
+        private readonly Dictionary<string, string> installedParts = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, InstallablePart> installedReferences = new(StringComparer.Ordinal);
+        private readonly Dictionary<PartCategory, int> requiredCounts = new();
+        [SerializeField] private DroneRuntimeData runtime = new();
+
+        public int InstalledPartCount => installedParts.Count;
+        public IReadOnlyCollection<InstallablePart> InstalledParts => installedReferences.Values;
+        public DroneReadinessSnapshot Readiness => EvaluateReadiness();
+        public DroneRuntimeData Runtime => runtime;
+
+        public void ConfigureIdentity(string instanceId, StorageLocationId initialLocation)
+        {
+            runtime ??= new DroneRuntimeData();
+            if (!string.IsNullOrWhiteSpace(instanceId))
+            {
+                runtime.droneInstanceId = instanceId;
+            }
+
+            runtime.location = initialLocation;
+        }
+
+        public void RestoreRuntime(DroneRuntimeData restored)
+        {
+            runtime = restored?.Copy() ?? new DroneRuntimeData();
+            if (runtime.location.IsEmpty)
+            {
+                runtime.location = StorageLocationId.SafeHouseServiceBay;
+            }
+        }
+
+        public void RecordDiagnostic(bool passed)
+        {
+            runtime.hasDiagnosticResult = true;
+            runtime.latestDiagnosticPassed = passed;
+        }
+
+        public void SetDroneLocation(StorageLocationId location)
+        {
+            runtime.location = location;
+        }
+
+        public void ConfigureRequirements(
+            int motors,
+            int propellers,
+            int batteries,
+            int cameras,
+            int antennas)
+        {
+            requiredCounts.Clear();
+            SetRequirement(PartCategory.Motor, motors);
+            SetRequirement(PartCategory.Propeller, propellers);
+            SetRequirement(PartCategory.Battery, batteries);
+            SetRequirement(PartCategory.Camera, cameras);
+            SetRequirement(PartCategory.Antenna, antennas);
+        }
+
+        public bool TryRecordInstalled(string socketId, InstallablePart part)
+        {
+            if (string.IsNullOrWhiteSpace(socketId) || part == null)
+            {
+                return false;
+            }
+
+            if (installedParts.TryGetValue(socketId, out var existingId))
+            {
+                if (existingId != part.Runtime.uniqueInstanceId)
+                {
+                    return false;
+                }
+
+                installedReferences[socketId] = part;
+                InvalidateDiagnostic();
+                return true;
+            }
+
+            installedParts.Add(socketId, part.Runtime.uniqueInstanceId);
+            installedReferences[socketId] = part;
+            InvalidateDiagnostic();
+            return true;
+        }
+
+        public void ClearInstalled(string socketId, InstallablePart part)
+        {
+            if (string.IsNullOrWhiteSpace(socketId) || part == null)
+            {
+                return;
+            }
+
+            if (installedParts.TryGetValue(socketId, out var instanceId)
+                && instanceId == part.Runtime.uniqueInstanceId)
+            {
+                installedParts.Remove(socketId);
+                installedReferences.Remove(socketId);
+                InvalidateDiagnostic();
+            }
+        }
+
+        public bool Contains(string socketId, string instanceId)
+        {
+            return installedParts.TryGetValue(socketId, out var installedId)
+                && installedId == instanceId;
+        }
+
+        public bool TryGetInstalled(string socketId, out InstallablePart part)
+        {
+            return installedReferences.TryGetValue(socketId, out part);
+        }
+
+        public DroneReadinessSnapshot EvaluateReadiness()
+        {
+            var parts = installedReferences.Values.Where(part => part != null).Distinct().ToArray();
+            var required = requiredCounts.Values.Sum();
+            var installedRequired = requiredCounts.Sum(entry => Mathf.Min(
+                entry.Value,
+                parts.Count(part => part.Definition.Category == entry.Key)));
+            var complete = required > 0 && installedRequired == required;
+            var condition = parts.Length == 0 ? 0f : parts.Average(part => part.Runtime.condition);
+            var reliability = parts.Length == 0
+                ? 0f
+                : parts.Average(part => part.Definition.BaseReliability * part.Runtime.condition);
+            var battery = parts.FirstOrDefault(part => part.Definition.Category == PartCategory.Battery);
+            var camera = parts.FirstOrDefault(part => part.Definition.Category == PartCategory.Camera);
+            var antenna = parts.FirstOrDefault(part => part.Definition.Category == PartCategory.Antenna);
+            var motors = parts.Where(part => part.Definition.Category == PartCategory.Motor).ToArray();
+            var endurance = battery == null
+                ? 0f
+                : battery.Runtime.chargeLevel * battery.Runtime.condition;
+            var observation = camera == null
+                ? 0f
+                : camera.Runtime.condition * camera.Definition.BaseReliability;
+            var motorHealth = motors.Length == 0 ? 0f : motors.Average(part => part.Runtime.condition);
+            var control = antenna == null ? motorHealth * 0.5f : (motorHealth + antenna.Runtime.condition) * 0.5f;
+            var damaged = parts.Where(part => !part.IsServiceable).ToArray();
+            var depleted = battery != null && battery.IsBatteryDepleted;
+            var ready = complete && damaged.Length == 0 && !depleted;
+
+            string summary;
+            if (!complete)
+            {
+                var missing = requiredCounts
+                    .Where(entry => parts.Count(part => part.Definition.Category == entry.Key) < entry.Value)
+                    .Select(entry => $"{entry.Key} {parts.Count(part => part.Definition.Category == entry.Key)}/{entry.Value}");
+                summary = $"Missing: {string.Join(", ", missing)}";
+            }
+            else if (depleted || damaged.Length > 0)
+            {
+                var faults = new List<string>();
+                if (depleted)
+                {
+                    faults.Add("replace depleted battery");
+                }
+
+                faults.AddRange(damaged.Select(part => $"replace damaged {part.Definition.DisplayName}"));
+                summary = string.Join("; ", faults);
+            }
+            else
+            {
+                summary = "All required systems serviceable";
+            }
+
+            return new DroneReadinessSnapshot(
+                installedRequired,
+                required,
+                condition,
+                reliability,
+                endurance,
+                observation,
+                control,
+                complete,
+                ready,
+                summary);
+        }
+
+        public void ClearAll()
+        {
+            installedParts.Clear();
+            installedReferences.Clear();
+            InvalidateDiagnostic();
+        }
+
+        private void InvalidateDiagnostic()
+        {
+            runtime ??= new DroneRuntimeData();
+            runtime.hasDiagnosticResult = false;
+            runtime.latestDiagnosticPassed = false;
+        }
+
+        private void SetRequirement(PartCategory category, int count)
+        {
+            if (count > 0)
+            {
+                requiredCounts[category] = count;
+            }
+        }
+    }
+}

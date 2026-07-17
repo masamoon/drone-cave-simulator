@@ -1,0 +1,8 @@
+{
+  "name": "UnderStatic.Runtime",
+  "rootNamespace": "UnderStatic",
+  "references": [
+    "Unity.InputSystem"
+  ],
+  "autoReferenced": true
+}

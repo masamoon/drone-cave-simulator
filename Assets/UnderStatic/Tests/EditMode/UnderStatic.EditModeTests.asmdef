@@ -1,0 +1,15 @@
+{
+  "name": "UnderStatic.EditModeTests",
+  "rootNamespace": "UnderStatic.Tests",
+  "references": [
+    "UnderStatic.Runtime",
+    "Unity.InputSystem"
+  ],
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "autoReferenced": false
+}
