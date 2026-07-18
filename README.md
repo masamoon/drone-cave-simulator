@@ -98,7 +98,7 @@ The first milestone intentionally implements only one motor, one socket, one flo
 
 ## Prototype status
 
-The repository now contains a Unity `6000.4.8f1` Universal Render Pipeline project implemented through Milestone 5.2. Open `Assets/Scenes/SafeHouse.unity` for the current playable workshop: maintain modular drones in a focused PC-building-game style service view, store whole chassis in a three-slot physical locker, trade persistent parts and salvage aircraft through the constrained market, and launch abstract daily sorties from the tactical map. Recon, precision-strike, and armed-search requests resolve while the workshop remains interactive and return the same aircraft with physical resource consumption and wear. Resolved reports can generate deterministic in-engine after-action reconstructions from the same 2D topography shown on the map. A deterministic 128×128 pixel atlas and presentation-only low-poly mesh kit now give the Scout, its service parts, the tactical terminal, terrain, foliage, artillery, vehicles, and replay drone more recognizable PSX-level detail without changing functional colliders or authored interaction poses. The three lab scenes remain regression fixtures.
+The repository now contains a Unity `6000.4.8f1` Universal Render Pipeline project implemented through Milestone 5.4. Open `Assets/Scenes/SafeHouse.unity` for the current playable workshop: maintain modular drones in a focused PC-building-game style service view, store whole chassis in a three-slot physical locker, trade persistent parts and salvage aircraft through the constrained market, and launch abstract daily sorties from the tactical map. Recon, precision-strike, and armed-search requests resolve while the workshop remains interactive and return or deliberately consume the same aircraft with physical resource use and wear. Sortie rewards, expendable strike aircraft, end-of-day operations, deterministic market refresh, and overnight battery turnaround close the current daily continuity loop. Resolved reports can generate deterministic in-engine after-action reconstructions from the same 2D topography shown on the map. A deterministic pixel atlas and presentation-only low-poly mesh kit provide PSX-level detail, while service-mode component tooltips move fault diagnosis from large text summaries onto the physical drone. The three lab scenes remain regression fixtures.
 
 Controls use the checked-in Input System action asset:
 
@@ -125,6 +125,8 @@ Controls use the checked-in Input System action asset:
 - `E` on the cyan service control — enter focused drone service mode
 - in service mode, middle-mouse drag — orbit the drone
 - in service mode, mouse wheel — zoom
+- in service mode, hover a component, socket, screw, or frame — inspect its name and diagnostic condition
+- in service mode, `RUN DIAGNOSTIC` — disclose installed component and frame condition through hover cards
 - in service mode, left click / hold — drag a stored part, tighten the pointed screw, or operate the highlighted component procedure
 - in service mode, right click / hold — loosen the pointed screw
 - in service mode, drag a stored part out of the sidebar — transition that same instance into a visible controlled 3D drag
@@ -133,4 +135,4 @@ Controls use the checked-in Input System action asset:
 - in service mode, `Escape` — cancel the active drag first, otherwise return to first-person workshop mode
 - `EXIT SERVICE` — return to first-person workshop mode
 
-See `docs/MILESTONE_04_3_IMPLEMENTATION.md` for the market handoff, `docs/MILESTONE_05_IMPLEMENTATION.md` for the mission handoff, `docs/MILESTONE_05_1.md` plus `docs/MILESTONE_05_1_IMPLEMENTATION.md` for the procedural reconstruction handoff, and `docs/MILESTONE_05_2.md` plus `docs/MILESTONE_05_2_IMPLEMENTATION.md` for the PSX visual-pipeline scope and validation notes.
+See `docs/MILESTONE_04_3_IMPLEMENTATION.md` for the market handoff, `docs/MILESTONE_05_IMPLEMENTATION.md` for missions and daily continuity, `docs/MILESTONE_05_1_IMPLEMENTATION.md` for procedural reconstructions, `docs/MILESTONE_05_2_IMPLEMENTATION.md` for the PSX visual pipeline, and `docs/MILESTONE_05_4.md` plus `docs/MILESTONE_05_4_IMPLEMENTATION.md` for visual diagnosis and component-tooltip validation.

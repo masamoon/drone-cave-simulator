@@ -19,8 +19,18 @@ namespace UnderStatic.UI
         [SerializeField] private string workflowLabel = "SERVICE REPAIR";
         [SerializeField] private InventorySystem inventory;
         [SerializeField] private DroneServiceModeController serviceMode;
+        [SerializeField] private bool compactPresentation;
         private readonly StringBuilder builder = new(512);
         private FleetSystem fleetSystem;
+
+        public bool CompactPresentation => compactPresentation;
+        public string CompactState => assembly == null
+            ? "NO AIRFRAME"
+            : !assembly.Runtime.hasDiagnosticResult
+                ? "UNDIAGNOSED"
+                : assembly.Runtime.latestDiagnosticPassed && assembly.Readiness.IsMissionReady
+                    ? "READY"
+                    : "MAINTENANCE";
 
         public void Configure(
             DroneAssemblyState targetAssembly,
@@ -44,6 +54,11 @@ namespace UnderStatic.UI
         public void ConfigureServiceMode(DroneServiceModeController controller)
         {
             serviceMode = controller;
+        }
+
+        public void SetCompactPresentation(bool compact)
+        {
+            compactPresentation = compact;
         }
 
         public void ConfigureFleet(FleetSystem fleet)
@@ -78,6 +93,12 @@ namespace UnderStatic.UI
         {
             if (assembly == null || serviceMode?.IsActive == true)
             {
+                return;
+            }
+
+            if (compactPresentation)
+            {
+                DrawCompactPanel();
                 return;
             }
 
@@ -123,6 +144,14 @@ namespace UnderStatic.UI
                     410f,
                     (selectedPart == null ? 300f : 338f) + extraHeight + (inventory == null ? 0f : 58f)),
                 builder.ToString());
+        }
+
+        private void DrawCompactPanel()
+        {
+            builder.Clear();
+            builder.Append("SERVICE BAY · ").AppendLine(CompactState);
+            builder.Append("Enter service view and hover components to inspect");
+            GUI.Box(new Rect(12f, 12f, 354f, 58f), builder.ToString());
         }
 
         private static string FormatMaintenance(string summary)

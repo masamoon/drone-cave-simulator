@@ -574,6 +574,11 @@ namespace UnderStatic.Interaction
                 return false;
             }
 
+            if (candidate is DroneFrameInspectionTarget)
+            {
+                return false;
+            }
+
             var socket = candidate switch
             {
                 PartSocket partSocket => partSocket,

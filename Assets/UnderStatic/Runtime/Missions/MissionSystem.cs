@@ -485,6 +485,7 @@ namespace UnderStatic.Missions
             actor.Runtime.frameCondition = Mathf.Clamp01(actor.Runtime.frameCondition - runtime.frameWear);
             actor.Runtime.hasDiagnosticResult = false;
             actor.Runtime.latestDiagnosticPassed = false;
+            actor.Runtime.diagnosticFaultsDisclosed = false;
             foreach (var part in actor.InstalledParts)
             {
                 if (part.Definition.Category == PartCategory.Battery)

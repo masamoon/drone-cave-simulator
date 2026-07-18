@@ -244,8 +244,8 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(ambience.IsRunning, Is.True);
             Assert.That(assembly, Is.Not.Null);
             Assert.That(assembly.InstalledPartCount, Is.EqualTo(11));
-            Assert.That(Object.FindObjectsByType<InstallablePart>().Length, Is.EqualTo(22));
-            Assert.That(Object.FindObjectsByType<PartSocket>().Length, Is.EqualTo(24));
+            Assert.That(Object.FindObjectsByType<InstallablePart>().Length, Is.EqualTo(38));
+            Assert.That(Object.FindObjectsByType<PartSocket>().Length, Is.EqualTo(36));
             Assert.That(assembly.Readiness.IsMissionReady, Is.False);
         }
 

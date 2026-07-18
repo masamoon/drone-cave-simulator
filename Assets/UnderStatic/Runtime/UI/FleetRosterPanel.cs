@@ -1,5 +1,6 @@
 using System.Text;
 using UnderStatic.Fleet;
+using UnderStatic.Interaction;
 using UnityEngine;
 
 namespace UnderStatic.UI
@@ -8,16 +9,24 @@ namespace UnderStatic.UI
     public sealed class FleetRosterPanel : MonoBehaviour
     {
         [SerializeField] private FleetSystem fleet;
+        [SerializeField] private DroneServiceModeController serviceMode;
         private readonly StringBuilder builder = new(768);
+
+        public bool ShouldShow => fleet != null && serviceMode?.IsActive != true;
 
         public void Configure(FleetSystem fleetSystem)
         {
             fleet = fleetSystem;
         }
 
+        public void ConfigureServiceMode(DroneServiceModeController controller)
+        {
+            serviceMode = controller;
+        }
+
         private void OnGUI()
         {
-            if (fleet == null)
+            if (!ShouldShow)
             {
                 return;
             }
