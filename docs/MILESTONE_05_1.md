@@ -1,5 +1,7 @@
 # MILESTONE 05.1 — Procedural After-Action Reconstructions
 
+> Historical scope note: Milestone 05.4 supersedes request-selected topography and adapts reconstruction to the persistent battlefield and player-authored sortie plan. The reconstruction presentation requirements here remain applicable.
+
 ## Objective
 
 Turn a resolved abstract sortie into a short in-engine visual reconstruction generated from the same deterministic 2D topography used by the tactical map.
@@ -55,7 +57,7 @@ Observation Only and Aborted results show a hold/egress reconstruction without a
 
 The selected request displays a small generated topographic preview. A resolved request exposes `VIEW RECONSTRUCTION`. Launch and active-mission flows remain unchanged.
 
-The replay overlay shows mission name, reconstruction phase, result classification, and a visible `RETURN TO WORKSHOP` action. It automatically reaches a complete hold but waits for the player to leave, avoiding an abrupt camera cut.
+The replay overlay shows mission name, reconstruction phase, result classification, and a visible `RETURN TO WORKSHOP` action. Escape returns to the workshop at any time. Otherwise, the replay returns automatically after a two-second terminal hold: from `Signal Lost` for kamikaze reconstructions, or from the completed endpoint for other reconstructions.
 
 ## Persistence
 

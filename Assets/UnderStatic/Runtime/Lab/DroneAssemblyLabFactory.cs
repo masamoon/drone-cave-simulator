@@ -274,6 +274,7 @@ namespace UnderStatic.Lab
                 batteryMaterial,
                 batteryRailMaterial,
                 startDisassembled,
+                !createSafeHouse,
                 allParts,
                 allSockets);
             CreateCameraStation(
@@ -320,12 +321,15 @@ namespace UnderStatic.Lab
                     damagedMaterial);
                 spareMotor.SetCondition(0.97f);
                 allParts.Add(spareMotor);
-                CreateServiceTray(
-                    "ServiceableMotorTray",
-                    "REPLACEMENT MOTOR · 97%",
-                    new Vector3(-1.18f, 1.035f, 0.2f),
-                    replacementMotorMaterial,
-                    darkMaterial);
+                if (!createSafeHouse)
+                {
+                    CreateServiceTray(
+                        "ServiceableMotorTray",
+                        "REPLACEMENT MOTOR · 97%",
+                        new Vector3(-1.18f, 1.035f, 0.2f),
+                        replacementMotorMaterial,
+                        darkMaterial);
+                }
             }
 
             if (psxVisualKit != null)
@@ -398,21 +402,24 @@ namespace UnderStatic.Lab
                 out var playerController,
                 out var screwdriver);
 
-            var diagnosticObject = InteractionLabFactory.CreatePrimitive(
-                "DroneDiagnosticSwitch",
-                PrimitiveType.Cube,
-                null,
-                startDisassembled
-                    ? new Vector3(1.35f, 1.08f, 1.34f)
-                    : new Vector3(1.22f, 1.08f, 0.62f),
-                new Vector3(0.2f, 0.08f, 0.18f),
-                switchMaterial);
+            var diagnosticObject = createSafeHouse
+                ? new GameObject("DroneDiagnosticSwitch")
+                : InteractionLabFactory.CreatePrimitive(
+                    "DroneDiagnosticSwitch",
+                    PrimitiveType.Cube,
+                    null,
+                    startDisassembled
+                        ? new Vector3(1.35f, 1.08f, 1.34f)
+                        : new Vector3(1.22f, 1.08f, 0.62f),
+                    new Vector3(0.2f, 0.08f, 0.18f),
+                    switchMaterial);
             var diagnostic = diagnosticObject.AddComponent<DroneDiagnosticSwitch>();
             diagnostic.Configure(assembly, audioFeedback);
 
             saveSystem.Configure(allParts, allSockets);
             var statusObject = new GameObject("DroneStatusPanel");
             var statusPanel = statusObject.AddComponent<DroneStatusPanel>();
+            statusPanel.ConfigureInput(player.GetComponent<PlayerInput>());
             statusPanel.Configure(
                 assembly,
                 interactions,
@@ -439,6 +446,14 @@ namespace UnderStatic.Lab
                     screwdriver,
                     saveSystem,
                     diagnostic);
+                SafeHouseChargingStationFactory.Build(
+                    inventory,
+                    playerCamera,
+                    playerController,
+                    interactions,
+                    screwdriver,
+                    saveSystem,
+                    audioFeedback);
                 statusPanel.ConfigureServiceMode(serviceMode);
                 var fleet = SafeHouseFleetFactory.Build(fleetActors);
                 fleet.RegisterKnownActor(legacySurveyActor);
@@ -697,6 +712,7 @@ namespace UnderStatic.Lab
             Material chargedMaterial,
             Material railMaterial,
             bool startDisassembled,
+            bool createBatteryTrays,
             ICollection<InstallablePart> parts,
             ICollection<PartSocket> sockets)
         {
@@ -799,18 +815,21 @@ namespace UnderStatic.Lab
             chargedBattery.SetChargeLevel(1f);
             parts.Add(chargedBattery);
 
-            CreateServiceTray(
-                "ChargedBatteryTray",
-                "CHARGED 100%",
-                new Vector3(-0.6f, 1.035f, 0.34f),
-                chargedMaterial,
-                railMaterial);
-            CreateServiceTray(
-                "DepletedBatteryTray",
-                "DEPLETED",
-                new Vector3(0.68f, 1.035f, 0.34f),
-                deadMaterial,
-                railMaterial);
+            if (createBatteryTrays)
+            {
+                CreateServiceTray(
+                    "ChargedBatteryTray",
+                    "CHARGED 100%",
+                    new Vector3(-0.6f, 1.035f, 0.34f),
+                    chargedMaterial,
+                    railMaterial);
+                CreateServiceTray(
+                    "DepletedBatteryTray",
+                    "DEPLETED",
+                    new Vector3(0.68f, 1.035f, 0.34f),
+                    deadMaterial,
+                    railMaterial);
+            }
         }
 
         private static void CreateCameraStation(
@@ -1119,7 +1138,23 @@ namespace UnderStatic.Lab
             rackObject.name = $"Strike{sequence:00}_IntegratedPayload";
             rackObject.SetActive(true);
             var rack = rackObject.GetComponent<InstallablePart>();
-            rack.Initialize(strikeRackTemplate.Definition, $"expendable-{sequence:00}-strike-rack-01");
+            var rackTemplateDefinition = strikeRackTemplate.Definition;
+            var warheadDefinition = PartDefinition.CreateTransient(
+                "warhead.kamikaze.field",
+                "Integrated Kamikaze Warhead",
+                PartCategory.StrikeRack,
+                rackTemplateDefinition.CompatibleSocketTags.ToArray(),
+                rackTemplateDefinition.BaseReliability,
+                rackTemplateDefinition.Mass,
+                rackTemplateDefinition.PowerDraw,
+                rackTemplateDefinition.Capability,
+                rackTemplateDefinition.SalvageYield,
+                rackTemplateDefinition.CompatibilityStandards.ToArray(),
+                rackTemplateDefinition.Grade,
+                rackTemplateDefinition.StatModifiers,
+                rackTemplateDefinition.MonetaryValue,
+                PartMissionCapability.KamikazeWarhead);
+            rack.Initialize(warheadDefinition, $"expendable-{sequence:00}-strike-rack-01");
             var rackRuntime = rack.Runtime.Copy();
             rackRuntime.consumableCharges = 1;
             rack.RestoreRuntime(rackRuntime);
@@ -1511,7 +1546,7 @@ namespace UnderStatic.Lab
                 equipmentGrade: EquipmentGrade.Field,
                 modifiers: new PartStatModifiers { payload = -0.035f, control = -0.015f, noise = 0.02f },
                 value: 220,
-                capabilities: PartMissionCapability.PrecisionStrike);
+                capabilities: PartMissionCapability.GrenadeDrop);
             var rack = InteractionLabFactory.CreateComponentPart(
                 "FieldStrikeRack",
                 null,

@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using UnderStatic.Fleet;
-using UnderStatic.Inventory;
 using UnderStatic.Parts;
 using UnderStatic.UI;
 using UnityEngine;
@@ -81,36 +80,17 @@ namespace UnderStatic.Lab
                     fleet,
                     index,
                     control.GetComponent<Renderer>());
-                CreateLabel($"LOCKER {index + 1}", new Vector3(-0.92f, height + 0.17f, -2.48f));
             }
 
-            CreateLabel("DRONE LOCKER · E TO SERVICE", new Vector3(-1.9f, 2.76f, -2.62f));
-            CreateLabel("READY · TESTED ONLY", new Vector3(2.3f, 1.56f, 1.25f));
             fleet.Configure(actors, serviceAnchor.transform, readyAnchor.transform, anchors);
 
             var panelObject = new GameObject("FleetRosterPanel");
-            panelObject.AddComponent<FleetRosterPanel>().Configure(fleet);
-
-            var legacyControl = Object.FindFirstObjectByType<DroneStorageControl>();
-            if (legacyControl != null)
-            {
-                legacyControl.transform.SetParent(root.transform, true);
-            }
+            panelObject.AddComponent<FleetRosterPanel>().Configure(
+                fleet,
+                Object.FindFirstObjectByType<UnderStatic.Interaction.FirstPersonController>());
 
             return fleet;
         }
 
-        private static void CreateLabel(string text, Vector3 position)
-        {
-            var label = new GameObject($"FleetLabel_{text.Replace(' ', '_').Replace('·', '_')}");
-            label.transform.SetPositionAndRotation(position, Quaternion.Euler(0f, 180f, 0f));
-            var mesh = label.AddComponent<TextMesh>();
-            mesh.text = text;
-            mesh.anchor = TextAnchor.MiddleCenter;
-            mesh.alignment = TextAlignment.Center;
-            mesh.fontSize = 46;
-            mesh.characterSize = 0.017f;
-            mesh.color = new Color(0.65f, 0.82f, 0.67f);
-        }
     }
 }

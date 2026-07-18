@@ -23,6 +23,7 @@ namespace UnderStatic.Persistence
         [SerializeField] private MarketSystem marketSystem;
         [SerializeField] private MissionSystem missionSystem;
         [SerializeField] private OperationalDaySystem operationalDaySystem;
+        [SerializeField] private BattlefieldSystem battlefieldSystem;
 
         public string SavePath => Path.Combine(Application.persistentDataPath, fileName);
         public string LastStatus { get; private set; } = "Not saved";
@@ -60,10 +61,14 @@ namespace UnderStatic.Persistence
             marketSystem = market;
         }
 
-        public void ConfigureMissions(MissionSystem missions, OperationalDaySystem operationalDay)
+        public void ConfigureMissions(
+            MissionSystem missions,
+            OperationalDaySystem operationalDay,
+            BattlefieldSystem battlefield = null)
         {
             missionSystem = missions;
             operationalDaySystem = operationalDay;
+            battlefieldSystem = battlefield;
         }
 
         public void RegisterParts(IEnumerable<InstallablePart> additionalParts)
@@ -106,14 +111,15 @@ namespace UnderStatic.Persistence
 
             return JsonUtility.ToJson(new MilestoneSaveData
             {
-                version = missionSystem != null ? 8 : marketSystem != null ? 6 : fleetSystem == null ? 4 : 5,
+                version = missionSystem != null ? 10 : marketSystem != null ? 9 : fleetSystem == null ? 4 : 5,
                 parts = records,
                 sockets = socketRecords,
                 inventory = inventorySystem?.CaptureState(),
                 fleet = fleetSystem?.CaptureState(),
                 economy = marketSystem?.CaptureState(),
                 missions = missionSystem?.CaptureState(),
-                operationalDay = operationalDaySystem?.CaptureState()
+                operationalDay = operationalDaySystem?.CaptureState(),
+                battlefield = battlefieldSystem?.CaptureState()
             }, true);
         }
 
@@ -132,6 +138,12 @@ namespace UnderStatic.Persistence
             if (data == null)
             {
                 LastStatus = "Load failed: invalid JSON";
+                return false;
+            }
+
+            if (missionSystem != null && data.version < 10)
+            {
+                LastStatus = "Load failed: mission saves before schema 10 are incompatible with persistent sorties";
                 return false;
             }
 
@@ -258,16 +270,18 @@ namespace UnderStatic.Persistence
                 return false;
             }
 
-            var missionsValid = data.version < 7
+            var battlefieldValid = battlefieldSystem == null
+                || battlefieldSystem.RestoreState(data.battlefield);
+            var missionsValid = battlefieldValid && (data.version < 7
                 || missionSystem == null
-                || missionSystem.RestoreState(data.missions);
+                || missionSystem.RestoreState(data.missions));
             var dayValid = data.version < 7
                 || operationalDaySystem == null
                 || operationalDaySystem.RestoreState(data.operationalDay);
-            LastStatus = missionsValid && dayValid
+            LastStatus = battlefieldValid && missionsValid && dayValid
                 ? $"Loaded {targetParts.Count} components"
-                : $"Load failed: {(missionsValid ? operationalDaySystem?.LastStatus : missionSystem?.LastStatus)}";
-            return missionsValid && dayValid;
+                : $"Load failed: {(!battlefieldValid ? "battlefield state invalid" : missionsValid ? operationalDaySystem?.LastStatus : missionSystem?.LastStatus)}";
+            return battlefieldValid && missionsValid && dayValid;
         }
 
         public string CaptureToJson(MotorPart targetMotor, MotorSocket targetSocket)

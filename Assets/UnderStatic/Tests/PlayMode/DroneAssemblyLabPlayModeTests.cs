@@ -73,6 +73,24 @@ namespace UnderStatic.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator DroneStatusPanelStartsHiddenAndCanToggleVisibility()
+        {
+            SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var statusPanel = Object.FindAnyObjectByType<DroneStatusPanel>();
+            Assert.That(statusPanel, Is.Not.Null);
+            Assert.That(statusPanel.IsVisible, Is.False);
+
+            statusPanel.ToggleVisibility();
+            Assert.That(statusPanel.IsVisible, Is.True);
+
+            statusPanel.ToggleVisibility();
+            Assert.That(statusPanel.IsVisible, Is.False);
+        }
+
+        [UnityTest]
         public IEnumerator MilestoneThreeCollectionPersistenceRetainsFaultState()
         {
             SceneManager.LoadScene("DroneAssemblyLab", LoadSceneMode.Single);
@@ -234,7 +252,7 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(GameObject.Find("ConcealmentControls"), Is.Not.Null);
             Assert.That(GameObject.Find("LivingCorner"), Is.Not.Null);
             Assert.That(GameObject.Find("UtilityCorner"), Is.Not.Null);
-            Assert.That(GameObject.Find("ServiceableMotorTray"), Is.Not.Null);
+            Assert.That(GameObject.Find("ServiceableMotorTray"), Is.Null);
             Assert.That(GameObject.Find("Workbench Task Fill"), Is.Not.Null);
             Assert.That(GameObject.Find("Room Bounce Light"), Is.Not.Null);
             Assert.That(GameObject.Find("Workbench Lamp").GetComponent<Light>().intensity, Is.GreaterThanOrEqualTo(11f));
@@ -244,8 +262,8 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(ambience.IsRunning, Is.True);
             Assert.That(assembly, Is.Not.Null);
             Assert.That(assembly.InstalledPartCount, Is.EqualTo(11));
-            Assert.That(Object.FindObjectsByType<InstallablePart>().Length, Is.EqualTo(22));
-            Assert.That(Object.FindObjectsByType<PartSocket>().Length, Is.EqualTo(24));
+            Assert.That(Object.FindObjectsByType<InstallablePart>().Length, Is.EqualTo(38));
+            Assert.That(Object.FindObjectsByType<PartSocket>().Length, Is.EqualTo(37));
             Assert.That(assembly.Readiness.IsMissionReady, Is.False);
         }
 

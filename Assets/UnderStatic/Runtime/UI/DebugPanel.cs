@@ -6,6 +6,7 @@ using UnderStatic.Interaction;
 using UnderStatic.Parts;
 using UnderStatic.Persistence;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace UnderStatic.UI
 {
@@ -16,14 +17,40 @@ namespace UnderStatic.UI
         [SerializeField] private InstallablePart[] parts = Array.Empty<InstallablePart>();
         [SerializeField] private PartSocket[] sockets = Array.Empty<PartSocket>();
         [SerializeField] private SaveSystem saveSystem;
+        [SerializeField] private PlayerInput playerInput;
+        [SerializeField] private bool visibleOnStart;
 
         private readonly StringBuilder builder = new(768);
+        private InputAction toggleAction;
+
+        public bool IsVisible { get; private set; }
+
+        public void ToggleVisibility()
+        {
+            IsVisible = !IsVisible;
+        }
+
+        private void Awake()
+        {
+            IsVisible = visibleOnStart;
+        }
+
+        private void OnEnable()
+        {
+            BindToggleAction();
+        }
+
+        private void OnDisable()
+        {
+            UnbindToggleAction();
+        }
 
         public void Configure(
             InteractionSystem interactionSystem,
             IEnumerable<InstallablePart> targetParts,
             IEnumerable<PartSocket> targetSockets,
-            SaveSystem persistence)
+            SaveSystem persistence,
+            PlayerInput input = null)
         {
             interactions = interactionSystem;
             parts = targetParts?.Where(item => item != null).ToArray()
@@ -31,24 +58,28 @@ namespace UnderStatic.UI
             sockets = targetSockets?.Where(item => item != null).ToArray()
                 ?? Array.Empty<PartSocket>();
             saveSystem = persistence;
+            playerInput = input;
+            BindToggleAction();
         }
 
         public void Configure(
             InteractionSystem interactionSystem,
             MotorPart targetMotor,
             MotorSocket targetSocket,
-            SaveSystem persistence)
+            SaveSystem persistence,
+            PlayerInput input = null)
         {
             Configure(
                 interactionSystem,
                 new InstallablePart[] { targetMotor },
                 new PartSocket[] { targetSocket },
-                persistence);
+                persistence,
+                input);
         }
 
         private void OnGUI()
         {
-            if (parts.Length == 0 || sockets.Length == 0)
+            if (!IsVisible || parts.Length == 0 || sockets.Length == 0)
             {
                 return;
             }
@@ -104,6 +135,37 @@ namespace UnderStatic.UI
 
             builder.Append("Save: ").AppendLine(saveSystem?.LastStatus ?? "Unavailable");
             GUI.Box(new Rect(12f, 12f, 380f, 390f), builder.ToString());
+        }
+
+        private void BindToggleAction()
+        {
+            UnbindToggleAction();
+            toggleAction = playerInput?.actions?.FindAction("Debug/Toggle Panel")?.Clone();
+            if (toggleAction == null)
+            {
+                return;
+            }
+
+            toggleAction.performed += OnTogglePerformed;
+            toggleAction.Enable();
+        }
+
+        private void UnbindToggleAction()
+        {
+            if (toggleAction == null)
+            {
+                return;
+            }
+
+            toggleAction.performed -= OnTogglePerformed;
+            toggleAction.Disable();
+            toggleAction.Dispose();
+            toggleAction = null;
+        }
+
+        private void OnTogglePerformed(InputAction.CallbackContext context)
+        {
+            ToggleVisibility();
         }
     }
 }

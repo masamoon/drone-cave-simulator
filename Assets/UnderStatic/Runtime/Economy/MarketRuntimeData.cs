@@ -4,10 +4,19 @@ using UnderStatic.Parts;
 
 namespace UnderStatic.Economy
 {
+    public enum MarketAccessTier
+    {
+        Field,
+        Trusted,
+        Professional
+    }
+
     public enum MarketListingCategory
     {
         Part,
-        SalvageDrone
+        SalvageDrone,
+        CompleteDrone,
+        StrikeDrone
     }
 
     public enum MarketTransactionFailure
@@ -18,7 +27,8 @@ namespace UnderStatic.Economy
         StorageFull,
         IneligibleAsset,
         InvalidQuantity,
-        IdentityConflict
+        IdentityConflict,
+        AccessLocked
     }
 
     public readonly struct MarketTransactionResult
@@ -53,6 +63,8 @@ namespace UnderStatic.Economy
         public string droneInstanceId = string.Empty;
         public string visibleConditionBand = "Unknown";
         public bool exactFaultsDisclosed;
+        public MarketAccessTier minimumAccessTier;
+        public bool rotatesWithMarket;
 
         public MarketListingRuntimeData Copy()
         {
@@ -66,7 +78,9 @@ namespace UnderStatic.Economy
                 partInstanceId = partInstanceId,
                 droneInstanceId = droneInstanceId,
                 visibleConditionBand = visibleConditionBand,
-                exactFaultsDisclosed = exactFaultsDisclosed
+                exactFaultsDisclosed = exactFaultsDisclosed,
+                minimumAccessTier = minimumAccessTier,
+                rotatesWithMarket = rotatesWithMarket
             };
         }
     }
@@ -95,6 +109,7 @@ namespace UnderStatic.Economy
     public sealed class EconomyRuntimeData
     {
         public int funds = 600;
+        public int reputation;
         public MarketRuntimeData market = new();
 
         public EconomyRuntimeData Copy()
@@ -102,6 +117,7 @@ namespace UnderStatic.Economy
             return new EconomyRuntimeData
             {
                 funds = funds,
+                reputation = reputation,
                 market = market?.Copy() ?? new MarketRuntimeData()
             };
         }

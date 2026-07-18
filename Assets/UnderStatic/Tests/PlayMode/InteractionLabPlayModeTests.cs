@@ -30,12 +30,17 @@ namespace UnderStatic.Tests
                 Is.Not.Null);
             Assert.That(Object.FindAnyObjectByType<TestSwitch>(), Is.Not.Null);
             Assert.That(Object.FindAnyObjectByType<DiagnosticLamp>(), Is.Not.Null);
-            Assert.That(Object.FindAnyObjectByType<DebugPanel>(), Is.Not.Null);
+            var debugPanel = Object.FindAnyObjectByType<DebugPanel>();
+            Assert.That(debugPanel, Is.Not.Null);
+            Assert.That(debugPanel.IsVisible, Is.False);
 
             var playerInput = Object.FindAnyObjectByType<PlayerInput>();
             Assert.That(playerInput, Is.Not.Null);
             Assert.That(playerInput.actions.FindAction("Player/Interact"), Is.Not.Null);
             Assert.That(playerInput.actions.FindAction("Player/Interact").interactions, Is.Empty);
+            var toggleDebug = playerInput.actions.FindAction("Debug/Toggle Panel");
+            Assert.That(toggleDebug, Is.Not.Null);
+            Assert.That(toggleDebug.bindings.Single().effectivePath, Is.EqualTo("<Keyboard>/f10"));
 
             var socket = Object.FindAnyObjectByType<MotorSocket>();
             var motors = Object.FindObjectsByType<MotorPart>();
@@ -46,6 +51,22 @@ namespace UnderStatic.Tests
             var incompatible = motors.Single(motor => motor.Definition.Category == PartCategory.IncompatibleMotor);
             Assert.That(socket.CanAccept(compatible), Is.True);
             Assert.That(socket.CanAccept(incompatible), Is.False);
+        }
+
+        [UnityTest]
+        public IEnumerator DebugPanelStartsHiddenAndCanToggleVisibility()
+        {
+            yield return LoadInteractionLab();
+
+            var debugPanel = Object.FindAnyObjectByType<DebugPanel>();
+            Assert.That(debugPanel, Is.Not.Null);
+            Assert.That(debugPanel.IsVisible, Is.False);
+
+            debugPanel.ToggleVisibility();
+            Assert.That(debugPanel.IsVisible, Is.True);
+
+            debugPanel.ToggleVisibility();
+            Assert.That(debugPanel.IsVisible, Is.False);
         }
 
         [UnityTest]

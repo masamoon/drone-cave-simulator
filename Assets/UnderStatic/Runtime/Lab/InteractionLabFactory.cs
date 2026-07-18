@@ -360,7 +360,7 @@ namespace UnderStatic.Lab
 
             var debugObject = new GameObject("DebugPanel");
             var debugPanel = debugObject.AddComponent<DebugPanel>();
-            debugPanel.Configure(interactions, allParts, allSockets, saveSystem);
+            debugPanel.Configure(interactions, allParts, allSockets, saveSystem, playerInput);
 
             CreateLighting();
             return bootstrap;

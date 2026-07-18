@@ -111,10 +111,8 @@ Controls use the checked-in Input System action asset:
 - hold left mouse while the screwdriver is aligned — turn the active fastener
 - `1` — save all part and socket state
 - `2` — load all part and socket state
-- while holding a part, `E` on a valid storage rack — store it
-- while holding a damaged part, `E` twice on salvage — confirm salvage
-- `E` on the orange drone control — move a repaired and diagnosed drone to or from the ready shelf
 - `E` on an occupied drone-locker control — swap that chassis with the service-bay drone
+- `Tab` — open or close the fleet tablet; review thumbnail cards for the service bay, ready shelf, and locker, and move drones between those physical locations
 - `E` on the parts/salvage exchange terminal — open Parts, Salvage Drones, Fleet, and Sell views
 - `E` on the tactical map — review daily Recon, Precision Strike, and Armed Search requests
 - in the tactical map — accept a request, choose workshop-adjacent or remote-team deployment, assign the ready-shelf drone, and launch
@@ -122,7 +120,8 @@ Controls use the checked-in Input System action asset:
 - reopen the tactical map after recovery — inspect and acknowledge the deterministic report or end operations
 - on a resolved report, `VIEW RECONSTRUCTION` — generate the seeded topography as a temporary in-engine replay
 - in a reconstruction, `END RECONSTRUCTION` / `RETURN TO WORKSHOP` — restore the previous workshop camera and controls
-- `E` on the cyan service control — enter focused drone service mode
+- `E` while aiming anywhere around the service-bay drone — enter focused drone service mode
+- `E` on the workbench battery charger — open its focused service view; drag a spent battery into the keyed charging dock and lift it out after charging
 - in service mode, middle-mouse drag — orbit the drone
 - in service mode, mouse wheel — zoom
 - in service mode, left click / hold — drag a stored part, tighten the pointed screw, or operate the highlighted component procedure

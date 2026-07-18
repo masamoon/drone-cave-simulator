@@ -1,5 +1,4 @@
 using System.Collections;
-using System.Linq;
 using NUnit.Framework;
 using UnderStatic.Missions;
 using UnderStatic.Replays;
@@ -48,13 +47,9 @@ namespace UnderStatic.Tests.PlayMode
             yield return null;
             yield return null;
 
-            var missions = Object.FindAnyObjectByType<MissionSystem>();
             var director = Object.FindAnyObjectByType<MissionReplayDirector>();
             var kit = Object.FindAnyObjectByType<PsxVisualKit>();
-            var strike = missions.Missions.Single(item =>
-                missions.DefinitionFor(item).Archetype == MissionArchetype.PrecisionStrike);
-            strike.state = MissionRuntimeState.Resolved;
-            strike.outcome = MissionOutcome.Success;
+            var strike = Runtime(SortieType.GrenadeDrop, BattlefieldContactType.Artillery);
             strike.ordnanceConsumed = true;
             strike.breakdown.positiveIdentification = true;
 
@@ -71,27 +66,23 @@ namespace UnderStatic.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator ReconReconstructionUsesVehicleTreesAndImprovedDrone()
+        public IEnumerator ReconReconstructionUsesVehicleTreesAndFpvCamera()
         {
             SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
             yield return null;
             yield return null;
 
-            var missions = Object.FindAnyObjectByType<MissionSystem>();
             var director = Object.FindAnyObjectByType<MissionReplayDirector>();
-            var recon = missions.Missions.Single(item =>
-                missions.DefinitionFor(item).Archetype == MissionArchetype.Recon);
-            recon.state = MissionRuntimeState.Resolved;
-            recon.outcome = MissionOutcome.Success;
+            var recon = Runtime(SortieType.Recon, BattlefieldContactType.Infantry);
+            recon.discoveredContactIds = new[] { "contact.infantry.01" };
+            recon.discoveredPositions = new[] { new BattlefieldMapPoint(new Vector2(0.6f, 0.7f)) };
+            recon.discoveredTypes = new[] { BattlefieldContactType.Infantry };
             recon.breakdown.positiveIdentification = true;
 
             Assert.That(director.TryPlay(recon), Is.True);
-            Assert.That(GameObject.Find("ObservedVehicleTarget"), Is.Not.Null);
-            Assert.That(GameObject.Find("VehicleCab"), Is.Not.Null);
-            Assert.That(GameObject.Find("Windscreen"), Is.Not.Null);
-            Assert.That(GameObject.Find("VehicleWheel.1.1"), Is.Not.Null);
-            Assert.That(GameObject.Find("DroneBody"), Is.Not.Null);
-            Assert.That(GameObject.Find("DroneRotor.3"), Is.Not.Null);
+            Assert.That(GameObject.Find("DistantFigure.0"), Is.Not.Null);
+            Assert.That(GameObject.Find("FPVReconstructionCamera"), Is.Not.Null);
+            Assert.That(GameObject.Find("ReconstructionDrone"), Is.Null);
             var vegetation = GameObject.Find("Vegetation.00");
             Assert.That(vegetation, Is.Not.Null);
             Assert.That(vegetation.transform.Find("Trunk"), Is.Not.Null);
@@ -114,5 +105,24 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(detail.GetComponentsInChildren<Collider>(true), Is.Empty);
             Assert.That(motor.GetComponent<Rigidbody>(), Is.Not.Null);
         }
+
+        private static MissionRuntimeData Runtime(SortieType type, BattlefieldContactType targetType) => new()
+        {
+            state = MissionRuntimeState.Resolved,
+            outcome = MissionOutcome.Success,
+            targetType = targetType,
+            plan = new SortiePlanData
+            {
+                sortieType = type,
+                route = new[]
+                {
+                    new BattlefieldMapPoint(BattlefieldSystem.WorkshopPosition),
+                    new BattlefieldMapPoint(new Vector2(0.6f, 0.7f)),
+                    new BattlefieldMapPoint(BattlefieldSystem.WorkshopPosition)
+                },
+                aimedPosition = new BattlefieldMapPoint(new Vector2(0.6f, 0.7f))
+            },
+            breakdown = new MissionResultBreakdown()
+        };
     }
 }

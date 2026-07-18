@@ -1,12 +1,10 @@
 using System;
+using System.Linq;
 
 namespace UnderStatic.Missions
 {
     public enum MissionRuntimeState
     {
-        Available,
-        Accepted,
-        Assigned,
         Active,
         Returning,
         Resolved
@@ -15,11 +13,50 @@ namespace UnderStatic.Missions
     public enum MissionOutcome
     {
         None,
+        NoContact,
         Aborted,
         ObservationOnly,
         LimitedSuccess,
         Success,
         ExceptionalSuccess
+    }
+
+    [Serializable]
+    public sealed class SortieDraftData
+    {
+        public SortieType sortieType;
+        public BattlefieldMapPoint[] waypoints = Array.Empty<BattlefieldMapPoint>();
+        public string targetContactId = string.Empty;
+
+        public SortieDraftData Copy() => new()
+        {
+            sortieType = sortieType,
+            waypoints = waypoints?.ToArray() ?? Array.Empty<BattlefieldMapPoint>(),
+            targetContactId = targetContactId
+        };
+    }
+
+    [Serializable]
+    public sealed class SortiePlanData
+    {
+        public SortieType sortieType;
+        public BattlefieldMapPoint[] route = Array.Empty<BattlefieldMapPoint>();
+        public string targetContactId = string.Empty;
+        public BattlefieldMapPoint aimedPosition;
+        public float routeDistanceKilometres;
+        public float availableRangeKilometres;
+        public float sensorHalfWidthKilometres;
+
+        public SortiePlanData Copy() => new()
+        {
+            sortieType = sortieType,
+            route = route?.ToArray() ?? Array.Empty<BattlefieldMapPoint>(),
+            targetContactId = targetContactId,
+            aimedPosition = aimedPosition,
+            routeDistanceKilometres = routeDistanceKilometres,
+            availableRangeKilometres = availableRangeKilometres,
+            sensorHalfWidthKilometres = sensorHalfWidthKilometres
+        };
     }
 
     [Serializable]
@@ -31,7 +68,7 @@ namespace UnderStatic.Missions
         public float control;
         public float payload;
         public float reliability;
-        public float deploymentEffect;
+        public float distanceEffect;
         public float uncertaintyRoll;
         public float finalScore;
         public bool positiveIdentification;
@@ -44,10 +81,9 @@ namespace UnderStatic.Missions
     public sealed class MissionRuntimeData
     {
         public string missionInstanceId = string.Empty;
-        public string definitionId = string.Empty;
+        public string sortieProfileId = string.Empty;
         public MissionRuntimeState state;
         public string assignedDroneId = string.Empty;
-        public string deploymentSiteId = string.Empty;
         public int resolutionSeed;
         public float elapsedSeconds;
         public float resolvedDurationSeconds;
@@ -64,16 +100,22 @@ namespace UnderStatic.Missions
         public float exposureContribution;
         public int radioUpdateIndex = -1;
         public string lastRadioMessage = string.Empty;
+        public SortiePlanData plan = new();
+        public float pathProgress;
+        public string[] discoveredContactIds = Array.Empty<string>();
+        public BattlefieldMapPoint[] discoveredPositions = Array.Empty<BattlefieldMapPoint>();
+        public BattlefieldContactType[] discoveredTypes = Array.Empty<BattlefieldContactType>();
+        public BattlefieldContactType targetType;
+        public int damageApplied;
 
         public MissionRuntimeData Copy()
         {
             return new MissionRuntimeData
             {
                 missionInstanceId = missionInstanceId,
-                definitionId = definitionId,
+                sortieProfileId = sortieProfileId,
                 state = state,
                 assignedDroneId = assignedDroneId,
-                deploymentSiteId = deploymentSiteId,
                 resolutionSeed = resolutionSeed,
                 elapsedSeconds = elapsedSeconds,
                 resolvedDurationSeconds = resolvedDurationSeconds,
@@ -89,7 +131,14 @@ namespace UnderStatic.Missions
                 salvageAwarded = salvageAwarded,
                 exposureContribution = exposureContribution,
                 radioUpdateIndex = radioUpdateIndex,
-                lastRadioMessage = lastRadioMessage
+                lastRadioMessage = lastRadioMessage,
+                plan = plan?.Copy() ?? new SortiePlanData(),
+                pathProgress = pathProgress,
+                discoveredContactIds = discoveredContactIds?.ToArray() ?? Array.Empty<string>(),
+                discoveredPositions = discoveredPositions?.ToArray() ?? Array.Empty<BattlefieldMapPoint>(),
+                discoveredTypes = discoveredTypes?.ToArray() ?? Array.Empty<BattlefieldContactType>(),
+                targetType = targetType,
+                damageApplied = damageApplied
             };
         }
     }
@@ -98,6 +147,7 @@ namespace UnderStatic.Missions
     public sealed class MissionSaveData
     {
         public MissionRuntimeData[] missions = Array.Empty<MissionRuntimeData>();
+        public SortieDraftData draft = new();
     }
 
     [Serializable]

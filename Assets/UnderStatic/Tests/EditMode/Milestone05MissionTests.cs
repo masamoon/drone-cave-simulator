@@ -7,9 +7,10 @@ using UnderStatic.Fleet;
 using UnderStatic.Missions;
 using UnderStatic.Parts;
 using UnderStatic.Persistence;
+using UnderStatic.Replays;
 using UnityEngine;
 
-namespace UnderStatic.Tests.EditMode
+namespace UnderStatic.Tests
 {
     public sealed class Milestone05MissionTests
     {
@@ -18,330 +19,369 @@ namespace UnderStatic.Tests.EditMode
         [TearDown]
         public void TearDown()
         {
-            for (var index = created.Count - 1; index >= 0; index--)
+            foreach (var item in created.AsEnumerable().Reverse())
             {
-                if (created[index] != null)
+                if (item != null)
                 {
-                    UnityEngine.Object.DestroyImmediate(created[index]);
+                    UnityEngine.Object.DestroyImmediate(item);
                 }
             }
             created.Clear();
         }
 
         [Test]
-        public void MissionStateMachine_RejectsInvalidAndAcceptsExplicitTransitions()
+        public void BattlefieldGeneration_IsDeterministicAndHidesGroundTruth()
         {
-            var setup = CreateMissionSetup(MissionArchetype.Recon);
-            var runtime = setup.missions.Missions.Single();
+            var first = CreateBattlefield(441);
+            var second = CreateBattlefield(441);
 
-            Assert.That(setup.missions.TryLaunch(runtime.missionInstanceId), Is.False);
-            Assert.That(setup.missions.TryAccept(runtime.missionInstanceId), Is.True);
-            Assert.That(runtime.state, Is.EqualTo(MissionRuntimeState.Accepted));
-            Assert.That(setup.missions.TryAssign(runtime.missionInstanceId, setup.site.Id, 42), Is.True,
-                setup.missions.LastStatus);
-            Assert.That(runtime.state, Is.EqualTo(MissionRuntimeState.Assigned));
-            Assert.That(setup.missions.TryLaunch(runtime.missionInstanceId), Is.True, setup.missions.LastStatus);
-            Assert.That(runtime.state, Is.EqualTo(MissionRuntimeState.Active));
-            Assert.That(setup.fleet.DeployedDrone, Is.SameAs(setup.actor));
-        }
-
-        [Test]
-        public void ReadinessGating_RequiresThePhysicalReadyShelfAndPassingDiagnostic()
-        {
-            var setup = CreateMissionSetup(MissionArchetype.Recon, actorReady: false);
-            var runtime = setup.missions.Missions.Single();
-            Assert.That(setup.missions.TryAccept(runtime.missionInstanceId), Is.True);
-
-            var result = setup.missions.EvaluateEligibility(runtime, setup.actor);
-
-            Assert.That(result.Eligible, Is.False);
-            Assert.That(result.Reason, Does.Contain("ready shelf"));
-            Assert.That(setup.missions.TryAssign(runtime.missionInstanceId, setup.site.Id, 12), Is.False);
-        }
-
-        [Test]
-        public void ReconNeedsNoRack_WhileArmedMissionNeedsAChargedInstalledRack()
-        {
-            var recon = CreateMissionSetup(MissionArchetype.Recon, includeRack: false);
-            var reconRuntime = recon.missions.Missions.Single();
-            Assert.That(recon.missions.EvaluateEligibility(reconRuntime, recon.actor).Eligible, Is.True);
-
-            var armed = CreateMissionSetup(MissionArchetype.PrecisionStrike, includeRack: false);
-            var armedRuntime = armed.missions.Missions.Single();
-            Assert.That(armed.missions.EvaluateEligibility(armedRuntime, armed.actor).Eligible, Is.False);
-
-            var charged = CreateMissionSetup(MissionArchetype.PrecisionStrike, includeRack: true);
-            Assert.That(charged.missions.EvaluateEligibility(
-                charged.missions.Missions.Single(), charged.actor).Eligible, Is.True);
-        }
-
-        [Test]
-        public void OneActiveAssignment_PreventsDuplicateDroneUse()
-        {
-            var actor = CreateReadyActor("drone.unique", true);
-            var fleet = CreateFleet(actor);
-            var first = CreateMission(MissionArchetype.Recon, "first");
-            var second = CreateMission(MissionArchetype.Recon, "second");
-            var site = CreateSite();
-            var system = Track(new GameObject("Missions")).AddComponent<MissionSystem>();
-            system.Configure(new[] { first, second }, new[] { site }, fleet);
-            var runtimes = system.Missions.ToArray();
-            Assert.That(system.TryAccept(runtimes[0].missionInstanceId), Is.True);
-            Assert.That(system.TryAccept(runtimes[1].missionInstanceId), Is.True);
-            Assert.That(system.TryAssign(runtimes[0].missionInstanceId, site.Id, 1), Is.True);
-
-            Assert.That(system.TryAssign(runtimes[1].missionInstanceId, site.Id, 2), Is.False);
-            Assert.That(runtimes[1].assignedDroneId, Is.Empty);
-        }
-
-        [Test]
-        public void IdenticalSeedAndDroneState_ProduceIdenticalReadableResolution()
-        {
-            var first = CreateMissionSetup(MissionArchetype.Recon, missionId: "deterministic.first");
-            var second = CreateMissionSetup(MissionArchetype.Recon, missionId: "deterministic.second");
-            var firstRuntime = Launch(first, 9204);
-            var secondRuntime = Launch(second, 9204);
-
-            first.missions.Tick(10f);
-            second.missions.Tick(10f);
-
-            Assert.That(firstRuntime.state, Is.EqualTo(MissionRuntimeState.Resolved));
-            Assert.That(firstRuntime.outcome, Is.EqualTo(secondRuntime.outcome));
-            Assert.That(firstRuntime.breakdown.finalScore,
-                Is.EqualTo(secondRuntime.breakdown.finalScore).Within(0.0001f));
-            Assert.That(firstRuntime.breakdown.summary, Is.EqualTo(secondRuntime.breakdown.summary));
-        }
-
-        [Test]
-        public void ArmedSearch_PositiveIdentificationIsAHardEngagementGate()
-        {
-            var stats = new DroneBaseStats
+            Assert.That(first.Map.StableFingerprint(), Is.EqualTo(second.Map.StableFingerprint()));
+            Assert.That(first.CaptureState().contacts.Length, Is.EqualTo(7));
+            Assert.That(first.CaptureState().contacts.Count(item => item.type == BattlefieldContactType.EnemyBase), Is.EqualTo(1));
+            Assert.That(first.CaptureState().contacts.Count(item => item.type == BattlefieldContactType.Artillery), Is.EqualTo(2));
+            Assert.That(first.CaptureState().contacts.Count(item => item.type == BattlefieldContactType.Infantry), Is.EqualTo(4));
+            var startingScoutReach = 0.52f * MissionSystem.ReconRangeKilometresPerEndurance * 0.5f
+                + MissionSystem.ReconSensorBaseHalfWidthKilometres
+                + 0.6f * MissionSystem.ReconSensorObservationHalfWidthKilometres;
+            var earlyContacts = first.CaptureState().contacts.Where(item =>
+                BattlefieldSystem.MapDistanceKilometres(
+                    BattlefieldSystem.WorkshopPosition, item.truePosition.ToVector2()) <= startingScoutReach).ToArray();
+            Assert.That(earlyContacts.Count(item => item.type == BattlefieldContactType.Artillery),
+                Is.GreaterThanOrEqualTo(1));
+            Assert.That(earlyContacts.Count(item => item.type == BattlefieldContactType.Infantry),
+                Is.GreaterThanOrEqualTo(2));
+            Assert.That(first.VisibleContacts, Is.Empty);
+            for (var row = 0; row < first.Map.Resolution; row++)
             {
-                speed = 0.5f, endurance = 0.55f, observation = 0.46f, durability = 0.5f,
-                payload = 0.5f, control = 0.41f, noise = 0.5f, reliability = 0.7f
+                for (var x = 0; x < first.Map.Resolution; x++)
+                {
+                    Assert.That(first.Map.FeaturesAt(x, row) & MissionMapFeature.Target, Is.EqualTo(MissionMapFeature.None));
+                }
+            }
+        }
+
+        [Test]
+        public void ReconRoute_HasAutomaticReturnAndRevealsContactsDeterministically()
+        {
+            var setup = CreateSetup(SortieType.Recon);
+            var contact = setup.battlefield.CaptureState().contacts.First(item => item.type == BattlefieldContactType.Infantry);
+            Assert.That(setup.missions.AddWaypoint(contact.truePosition.ToVector2()), Is.True);
+
+            var plan = setup.missions.PreviewPlan();
+            Assert.That(plan.route.Length, Is.EqualTo(3));
+            Assert.That(plan.route[0].ToVector2(), Is.EqualTo(BattlefieldSystem.WorkshopPosition));
+            Assert.That(plan.route[^1].ToVector2(), Is.EqualTo(BattlefieldSystem.WorkshopPosition));
+            Assert.That(setup.missions.EvaluateDraft().Eligible, Is.True, setup.missions.EvaluateDraft().Reason);
+            Assert.That(setup.missions.TryLaunchDraft(), Is.True, setup.missions.LastStatus);
+
+            setup.missions.Tick(100f);
+
+            Assert.That(setup.battlefield.VisibleContacts.Any(item => item.ContactId == contact.contactId), Is.True);
+            Assert.That(setup.missions.LatestReport.discoveredContactIds, Does.Contain(contact.contactId));
+            Assert.That(setup.missions.LatestReport.state, Is.EqualTo(MissionRuntimeState.Resolved));
+        }
+
+        [Test]
+        public void ReconContact_RevealsWhenAircraftReachesClosestRoutePosition()
+        {
+            var battlefield = CreateBattlefield(121);
+            var contact = battlefield.CaptureState().contacts.First();
+            var route = new[]
+            {
+                BattlefieldSystem.WorkshopPosition,
+                contact.truePosition.ToVector2(),
+                BattlefieldSystem.WorkshopPosition
             };
-            var setup = CreateMissionSetup(
-                MissionArchetype.ArmedSearch,
-                includeRack: true,
-                frameStats: stats,
-                uncertainty: 0.25f);
-            var runtime = Launch(setup, 1);
 
-            setup.missions.Tick(10f);
-
-            Assert.That(runtime.breakdown.positiveIdentification, Is.False);
-            Assert.That(runtime.outcome, Is.EqualTo(MissionOutcome.ObservationOnly));
-            Assert.That(runtime.breakdown.summary, Does.Contain("without engagement"));
+            Assert.That(battlefield.RevealAlongRoute(route, 0.49f, 0.01f, 1), Is.Empty);
+            Assert.That(battlefield.RevealAlongRoute(route, 0.5f, 0.01f, 1)
+                .Any(item => item.ContactId == contact.contactId), Is.True);
         }
 
         [Test]
-        public void ArmedLaunch_ConsumesOrdnanceExactlyOnceAndPreventsSecondSortie()
+        public void ReconRange_RejectsOverlongRoute()
         {
-            var setup = CreateMissionSetup(MissionArchetype.PrecisionStrike, includeRack: true);
-            var rack = setup.actor.InstalledParts.Single(part => part.Definition.Category == PartCategory.StrikeRack);
-            var first = Launch(setup, 3);
-            Assert.That(first.ordnanceConsumed, Is.True);
-            Assert.That(rack.Runtime.consumableCharges, Is.Zero);
-            setup.missions.Tick(10f);
-            setup.actor.Assembly.RecordDiagnostic(true);
-            Assert.That(setup.fleet.TryMoveServiceToReady(false), Is.True);
-            setup.missions.ResetOffers(2, 99);
-            var second = setup.missions.Missions.Single();
-            Assert.That(setup.missions.TryAccept(second.missionInstanceId), Is.True);
+            var setup = CreateSetup(SortieType.Recon, endurance: 0.2f);
+            setup.missions.AddWaypoint(new Vector2(0.95f, 0.95f));
 
-            Assert.That(setup.missions.TryAssign(second.missionInstanceId, setup.site.Id, 4), Is.False);
-            Assert.That(rack.Runtime.consumableCharges, Is.Zero);
+            Assert.That(setup.missions.PreviewPlan().routeDistanceKilometres,
+                Is.GreaterThan(setup.missions.PreviewPlan().availableRangeKilometres));
+            Assert.That(setup.missions.EvaluateDraft().Eligible, Is.False);
+            Assert.That(setup.missions.TryLaunchDraft(), Is.False);
         }
 
         [Test]
-        public void Resolution_ReturnsSameActorWithBatteryDepletionAndWear()
+        public void NewDay_MovesInfantryAndLeavesStaleLastKnownIcon()
         {
-            var setup = CreateMissionSetup(MissionArchetype.Recon);
-            var identity = setup.actor.Runtime.droneInstanceId;
-            var frameCondition = setup.actor.Runtime.frameCondition;
-            var battery = setup.actor.InstalledParts.Single(part => part.Definition.Category == PartCategory.Battery);
-            var charge = battery.Runtime.chargeLevel;
-            var runtime = Launch(setup, 82);
+            var battlefield = CreateBattlefield(91);
+            var infantry = battlefield.CaptureState().contacts.First(item => item.type == BattlefieldContactType.Infantry);
+            Reveal(battlefield, infantry, 1);
+            var oldPosition = battlefield.FindVisible(infantry.contactId).Value.Position;
 
-            setup.missions.Tick(10f);
+            battlefield.AdvanceDay(2, 800);
 
-            Assert.That(runtime.state, Is.EqualTo(MissionRuntimeState.Resolved));
-            Assert.That(setup.fleet.ServiceDrone, Is.SameAs(setup.actor));
-            Assert.That(setup.fleet.ServiceDrone.Runtime.droneInstanceId, Is.EqualTo(identity));
-            Assert.That(setup.actor.Runtime.frameCondition, Is.LessThan(frameCondition));
-            Assert.That(battery.Runtime.chargeLevel, Is.LessThan(charge));
-            Assert.That(setup.actor.Runtime.hasDiagnosticResult, Is.False);
+            var visible = battlefield.FindVisible(infantry.contactId).Value;
+            var truth = battlefield.CaptureState().contacts.Single(item => item.contactId == infantry.contactId);
+            Assert.That(visible.IntelState, Is.EqualTo(BattlefieldIntelState.Stale));
+            Assert.That(visible.Position, Is.EqualTo(oldPosition));
+            Assert.That(BattlefieldSystem.MapDistanceKilometres(oldPosition, truth.truePosition.ToVector2()),
+                Is.InRange(0.149f, 0.451f));
         }
 
         [Test]
-        public void ExpendableArmedResolutionConsumesTheOwnedActor()
+        public void StrikeAgainstMovedInfantry_ReturnsNoContactAndDisprovesMarker()
         {
-            var setup = CreateMissionSetup(MissionArchetype.PrecisionStrike, includeRack: true);
+            var battlefield = CreateBattlefield(92);
+            var infantry = battlefield.CaptureState().contacts.First(item => item.type == BattlefieldContactType.Infantry);
+            Reveal(battlefield, infantry, 1);
+            var aim = battlefield.FindVisible(infantry.contactId).Value.Position;
+            battlefield.AdvanceDay(2, 801);
+
+            var result = battlefield.ApplyStrike(infantry.contactId, aim, 2, 2);
+
+            Assert.That(result.ContactFound, Is.False);
+            Assert.That(result.Funds, Is.Zero);
+            Assert.That(battlefield.FindVisible(infantry.contactId).Value.IntelState,
+                Is.EqualTo(BattlefieldIntelState.Disproven));
+        }
+
+        [Test]
+        public void StationaryContactsPersistAndEnemyBaseRetainsDamage()
+        {
+            var battlefield = CreateBattlefield(93);
+            var artillery = battlefield.CaptureState().contacts.First(item => item.type == BattlefieldContactType.Artillery);
+            var enemyBase = battlefield.CaptureState().contacts.First(item => item.type == BattlefieldContactType.EnemyBase);
+            Reveal(battlefield, artillery, 1);
+            Reveal(battlefield, enemyBase, 1);
+            battlefield.AdvanceDay(2, 802);
+
+            var artilleryResult = battlefield.ApplyStrike(artillery.contactId,
+                battlefield.FindVisible(artillery.contactId).Value.Position, 1, 2);
+            var firstBaseResult = battlefield.ApplyStrike(enemyBase.contactId,
+                battlefield.FindVisible(enemyBase.contactId).Value.Position, 2, 2);
+            var secondBaseResult = battlefield.ApplyStrike(enemyBase.contactId,
+                battlefield.FindVisible(enemyBase.contactId).Value.Position, 1, 2);
+
+            Assert.That(artilleryResult.Destroyed, Is.True);
+            Assert.That(artilleryResult.Funds, Is.EqualTo(180));
+            Assert.That(artilleryResult.Salvage, Is.EqualTo(3));
+            Assert.That(firstBaseResult.Destroyed, Is.False);
+            Assert.That(firstBaseResult.Funds, Is.EqualTo(200));
+            Assert.That(secondBaseResult.Destroyed, Is.True);
+            Assert.That(secondBaseResult.Funds, Is.EqualTo(350));
+            Assert.That(secondBaseResult.Salvage, Is.EqualTo(5));
+        }
+
+        [Test]
+        public void StrikePlanning_RequiresDiscoveredTargetAndCorrectAircraftRole()
+        {
+            var setup = CreateSetup(SortieType.GrenadeDrop, includeRack: true);
+            var contact = setup.battlefield.CaptureState().contacts.First(item => item.type == BattlefieldContactType.Artillery);
+            Assert.That(setup.missions.SelectTarget(contact.contactId), Is.False);
+            Reveal(setup.battlefield, contact, 1);
+            Assert.That(setup.missions.SelectTarget(contact.contactId), Is.True);
+            Assert.That(setup.missions.EvaluateDraft().Eligible, Is.True, setup.missions.EvaluateDraft().Reason);
+
             setup.actor.Runtime.isExpendableStrikeDrone = true;
-            var identity = setup.actor.Runtime.droneInstanceId;
-            var runtime = Launch(setup, 990);
-
-            setup.missions.Tick(10f);
-
-            Assert.That(runtime.state, Is.EqualTo(MissionRuntimeState.Resolved));
-            Assert.That(runtime.aircraftExpended, Is.True);
-            Assert.That(runtime.rewardsGranted, Is.True);
-            Assert.That(setup.fleet.FindActor(identity), Is.Null);
-            Assert.That(setup.fleet.DeployedDrone, Is.Null);
-            Assert.That(setup.actor.gameObject.activeSelf, Is.False);
-
-            var consumedFleetState = setup.fleet.CaptureState();
-            Assert.That(setup.fleet.RegisterExternalActor(setup.actor), Is.True);
-            Assert.That(setup.fleet.RestoreState(consumedFleetState), Is.True, setup.fleet.LastStatus);
-            Assert.That(setup.fleet.FindActor(identity), Is.Null);
-            Assert.That(setup.actor.gameObject.activeSelf, Is.False);
+            Assert.That(setup.missions.EvaluateDraft().Eligible, Is.False);
+            Assert.That(setup.missions.SetDraftType(SortieType.KamikazeStrike), Is.True);
+            Assert.That(setup.missions.SelectTarget(contact.contactId), Is.True);
+            Assert.That(setup.missions.EvaluateDraft().Eligible, Is.True, setup.missions.EvaluateDraft().Reason);
         }
 
         [Test]
-        public void ReturningState_WaitsSafelyForAnOccupiedServiceBay()
+        public void KamikazeConsumesAirframeWhileGrenadeDropReturnsReusableDrone()
         {
-            var ready = CreateReadyActor("drone.deployed", false);
-            var service = CreateReadyActor("drone.service", false, DroneStorageLocationKind.ServiceBay);
-            var fleet = CreateFleet(ready, service);
-            var definition = CreateMission(MissionArchetype.Recon, "return.wait");
-            var site = CreateSite();
-            var missions = Track(new GameObject("MissionSystem")).AddComponent<MissionSystem>();
-            missions.Configure(new[] { definition }, new[] { site }, fleet);
-            var runtime = missions.Missions.Single();
-            Assert.That(missions.TryAccept(runtime.missionInstanceId), Is.True);
-            Assert.That(missions.TryAssign(runtime.missionInstanceId, site.Id, 5), Is.True);
-            Assert.That(missions.TryLaunch(runtime.missionInstanceId), Is.True);
+            var kamikaze = CreateSetup(SortieType.KamikazeStrike, includeRack: true, expendable: true);
+            var kamikazeTarget = kamikaze.battlefield.CaptureState().contacts.First(item => item.type == BattlefieldContactType.Artillery);
+            Reveal(kamikaze.battlefield, kamikazeTarget, 1);
+            kamikaze.missions.SelectTarget(kamikazeTarget.contactId);
+            var kamikazeId = kamikaze.actor.Runtime.droneInstanceId;
+            Assert.That(kamikaze.missions.TryLaunchDraft(), Is.True, kamikaze.missions.LastStatus);
+            kamikaze.missions.Tick(100f);
+            Assert.That(kamikaze.fleet.FindActor(kamikazeId), Is.Null);
+            Assert.That(kamikaze.missions.LatestReport.aircraftExpended, Is.True);
 
-            missions.Tick(10f);
-
-            Assert.That(runtime.state, Is.EqualTo(MissionRuntimeState.Returning));
-            Assert.That(fleet.DeployedDrone, Is.SameAs(ready));
-            Assert.That(fleet.TryStoreInLocker(service, animate: false), Is.True);
-            missions.Tick(0f);
-            Assert.That(runtime.state, Is.EqualTo(MissionRuntimeState.Resolved));
-            Assert.That(fleet.ServiceDrone, Is.SameAs(ready));
+            var grenade = CreateSetup(SortieType.GrenadeDrop, includeRack: true);
+            var grenadeTarget = grenade.battlefield.CaptureState().contacts.First(item => item.type == BattlefieldContactType.Infantry);
+            Reveal(grenade.battlefield, grenadeTarget, 1);
+            grenade.missions.SelectTarget(grenadeTarget.contactId);
+            var rack = grenade.actor.InstalledParts.Single(item => item.Definition.Category == PartCategory.StrikeRack);
+            Assert.That(grenade.missions.TryLaunchDraft(), Is.True, grenade.missions.LastStatus);
+            grenade.missions.Tick(100f);
+            Assert.That(rack.Runtime.consumableCharges, Is.Zero);
+            Assert.That(grenade.fleet.ServiceDrone, Is.SameAs(grenade.actor));
+            Assert.That(grenade.missions.LatestReport.aircraftExpended, Is.False);
         }
 
         [Test]
-        public void SchemaEightRoundTrip_RestoresActiveMissionAndOperationalDay()
+        public void ContactRewards_AreGrantedExactlyOncePerIdentificationOrEffect()
         {
-            var setup = CreateMissionSetup(MissionArchetype.Recon);
+            var battlefield = CreateBattlefield(409);
+            var infantry = battlefield.CaptureState().contacts.First(item =>
+                item.type == BattlefieldContactType.Infantry);
+            var route = new[]
+            {
+                BattlefieldSystem.WorkshopPosition,
+                infantry.truePosition.ToVector2(),
+                BattlefieldSystem.WorkshopPosition
+            };
+
+            Assert.That(battlefield.RevealAlongRoute(route, 1f, 0.01f, 1)
+                .Single(item => item.ContactId == infantry.contactId).Reward, Is.EqualTo(30));
+            Assert.That(battlefield.RevealAlongRoute(route, 1f, 0.01f, 1), Is.Empty);
+
+            battlefield.AdvanceDay(2, 410);
+            var moved = battlefield.CaptureState().contacts.Single(item => item.contactId == infantry.contactId);
+            var reacquisitionRoute = new[]
+            {
+                BattlefieldSystem.WorkshopPosition,
+                moved.truePosition.ToVector2(),
+                BattlefieldSystem.WorkshopPosition
+            };
+            Assert.That(battlefield.RevealAlongRoute(reacquisitionRoute, 1f, 0.01f, 2)
+                .Single(item => item.ContactId == infantry.contactId).Reward, Is.EqualTo(15));
+
+            var artillery = battlefield.CaptureState().contacts.First(item =>
+                item.type == BattlefieldContactType.Artillery);
+            Reveal(battlefield, artillery, 2);
+            var firstStrike = battlefield.ApplyStrike(
+                artillery.contactId, artillery.truePosition.ToVector2(), 1, 2);
+            var repeatedStrike = battlefield.ApplyStrike(
+                artillery.contactId, artillery.truePosition.ToVector2(), 1, 2);
+            Assert.That((firstStrike.Funds, firstStrike.Salvage), Is.EqualTo((180, 3)));
+            Assert.That((repeatedStrike.Funds, repeatedStrike.Salvage), Is.EqualTo((0, 0)));
+        }
+
+        [Test]
+        public void BattlefieldDraftAndActiveSortie_RoundTripWithoutLeakingOrDuplicating()
+        {
+            var setup = CreateSetup(SortieType.Recon);
+            var contact = setup.battlefield.CaptureState().contacts.First();
+            Reveal(setup.battlefield, contact, 1);
+            setup.missions.AddWaypoint(contact.truePosition.ToVector2());
+            var draftState = setup.missions.CaptureState();
+            Assert.That(setup.missions.RestoreState(draftState), Is.True, setup.missions.LastStatus);
+            Assert.That(setup.missions.Draft.waypoints.Length, Is.EqualTo(1));
+            Assert.That(setup.missions.TryLaunchDraft(), Is.True, setup.missions.LastStatus);
+            setup.missions.Tick(1f);
+            var battlefieldState = setup.battlefield.CaptureState();
+            var missionState = setup.missions.CaptureState();
+
+            var restoredBattlefield = CreateBattlefield(777);
+            Assert.That(restoredBattlefield.RestoreState(battlefieldState), Is.True);
+            Assert.That(restoredBattlefield.VisibleContacts.Count, Is.EqualTo(1));
+            Assert.That(setup.missions.RestoreState(missionState), Is.True, setup.missions.LastStatus);
+            Assert.That(setup.missions.ActiveMission, Is.Not.Null);
+            Assert.That(setup.missions.ActiveMission.elapsedSeconds, Is.EqualTo(1f));
+            Assert.That(setup.missions.ActiveMission.plan.route.Length, Is.EqualTo(3));
+        }
+
+        [Test]
+        public void SchemaTenCapture_RejectsOlderMissionSavesBeforeMutation()
+        {
+            var setup = CreateSetup(SortieType.Recon);
             var day = Track(new GameObject("Day")).AddComponent<OperationalDaySystem>();
-            day.Configure(setup.missions);
-            var runtime = Launch(setup, 77);
-            setup.missions.Tick(0.25f);
+            day.Configure(setup.missions, battlefield: setup.battlefield);
             var save = Track(new GameObject("Save")).AddComponent<SaveSystem>();
             save.Configure(Array.Empty<InstallablePart>(), Array.Empty<PartSocket>());
-            save.ConfigureFleet(setup.fleet);
-            save.ConfigureMissions(setup.missions, day);
+            save.ConfigureMissions(setup.missions, day, setup.battlefield);
+
             var json = save.CaptureAllToJson(Array.Empty<InstallablePart>(), Array.Empty<PartSocket>());
 
-            Assert.That(json, Does.Contain("\"version\": 8"));
-            setup.missions.Tick(10f);
-            Assert.That(runtime.state, Is.EqualTo(MissionRuntimeState.Resolved));
+            Assert.That(json, Does.Contain("\"version\": 10"));
             Assert.That(save.RestoreAllFromJson(
-                json, Array.Empty<InstallablePart>(), Array.Empty<PartSocket>()), Is.True, save.LastStatus);
-            Assert.That(setup.missions.Missions.Single().state, Is.EqualTo(MissionRuntimeState.Active));
-            Assert.That(setup.fleet.DeployedDrone.Runtime.droneInstanceId, Is.EqualTo(setup.actor.Runtime.droneInstanceId));
-            Assert.That(day.Runtime.dayIndex, Is.EqualTo(1));
+                "{\"version\":9}", Array.Empty<InstallablePart>(), Array.Empty<PartSocket>()), Is.False);
+            Assert.That(save.LastStatus, Does.Contain("schema 10"));
         }
 
-        [Test]
-        public void OperationalDay_AllowsSeveralPhysicalSortiesAndVoluntaryEnd()
-        {
-            var setup = CreateMissionSetup(MissionArchetype.Recon);
-            var day = Track(new GameObject("Day")).AddComponent<OperationalDaySystem>();
-            day.Configure(setup.missions);
-            Launch(setup, 7);
-            Assert.That(day.TryEndOperations(), Is.False);
-            setup.missions.Tick(10f);
-
-            Assert.That(day.Runtime.completedSorties, Is.EqualTo(1));
-            Assert.That(day.TryEndOperations(), Is.True);
-            Assert.That(day.TryBeginNextDay(800), Is.True);
-            Assert.That(day.Runtime.dayIndex, Is.EqualTo(2));
-            Assert.That(day.Runtime.completedSorties, Is.Zero);
-            Assert.That(setup.missions.Missions.Single().state, Is.EqualTo(MissionRuntimeState.Available));
-        }
-
-        private (MissionSystem missions, FleetSystem fleet, DroneActor actor, DeploymentSiteDefinition site) CreateMissionSetup(
-            MissionArchetype archetype,
+        private (MissionSystem missions, BattlefieldSystem battlefield, FleetSystem fleet, DroneActor actor) CreateSetup(
+            SortieType type,
             bool includeRack = false,
-            bool actorReady = true,
-            string missionId = "test",
-            DroneBaseStats? frameStats = null,
-            float uncertainty = 0.12f)
+            bool expendable = false,
+            float endurance = 2f)
         {
-            var actor = CreateReadyActor(
-                $"drone.{missionId}.{created.Count}",
-                includeRack,
-                actorReady ? DroneStorageLocationKind.ReadyShelf : DroneStorageLocationKind.ServiceBay,
-                frameStats);
+            var battlefield = CreateBattlefield(1701 + created.Count);
+            var actor = CreateReadyActor($"drone.{created.Count}", includeRack, expendable, endurance);
             var fleet = CreateFleet(actor);
-            var definition = CreateMission(archetype, missionId, uncertainty);
-            var site = CreateSite();
             var missions = Track(new GameObject($"Missions.{created.Count}")).AddComponent<MissionSystem>();
-            missions.Configure(new[] { definition }, new[] { site }, fleet);
-            return (missions, fleet, actor, site);
+            missions.Configure(CreateProfiles(), battlefield, fleet);
+            Assert.That(missions.SetDraftType(type), Is.True);
+            return (missions, battlefield, fleet, actor);
         }
 
-        private MissionRuntimeData Launch(
-            (MissionSystem missions, FleetSystem fleet, DroneActor actor, DeploymentSiteDefinition site) setup,
-            int seed)
+        private BattlefieldSystem CreateBattlefield(int seed)
         {
-            var runtime = setup.missions.Missions.Single();
-            Assert.That(setup.missions.TryAccept(runtime.missionInstanceId), Is.True);
-            Assert.That(setup.missions.TryAssign(runtime.missionInstanceId, setup.site.Id, seed), Is.True,
-                setup.missions.LastStatus);
-            Assert.That(setup.missions.TryLaunch(runtime.missionInstanceId), Is.True, setup.missions.LastStatus);
-            return runtime;
+            var definition = Track(MissionReplayDefinition.CreateTransient(resolution: 25));
+            var battlefield = Track(new GameObject($"Battlefield.{created.Count}")).AddComponent<BattlefieldSystem>();
+            battlefield.Configure(definition, seed);
+            return battlefield;
         }
 
-        private DroneActor CreateReadyActor(
-            string id,
-            bool includeRack,
-            DroneStorageLocationKind location = DroneStorageLocationKind.ReadyShelf,
-            DroneBaseStats? frameStats = null)
+        private SortieProfileDefinition[] CreateProfiles() => new[]
         {
-            var stats = frameStats ?? new DroneBaseStats
-            {
-                speed = 0.7f, endurance = 0.7f, observation = 0.72f, durability = 0.65f,
-                payload = 0.55f, control = 0.7f, noise = 0.4f, reliability = 0.78f
-            };
+            Track(SortieProfileDefinition.CreateTransient("sortie.recon", "Recon", SortieType.Recon,
+                PartMissionCapability.Observation, Weights(false), 0f, 0.01f)),
+            Track(SortieProfileDefinition.CreateTransient("sortie.kamikaze", "Kamikaze", SortieType.KamikazeStrike,
+                PartMissionCapability.KamikazeWarhead,
+                Weights(true), 0f, 0.02f)),
+            Track(SortieProfileDefinition.CreateTransient("sortie.grenade", "Grenade", SortieType.GrenadeDrop,
+                PartMissionCapability.GrenadeDrop,
+                Weights(true), 0f, 0.02f))
+        };
+
+        private static MissionStatWeights Weights(bool strike) => new()
+        {
+            observation = 0.25f,
+            endurance = 0.15f,
+            control = 0.25f,
+            payload = strike ? 0.15f : 0f,
+            reliability = 0.15f,
+            durability = 0.05f
+        };
+
+        private DroneActor CreateReadyActor(string id, bool includeRack, bool expendable, float endurance)
+        {
             var frame = Track(DroneFrameDefinition.CreateTransient(
                 $"frame.{id}", "Test Frame", DroneFrameFamily.Scout, EquipmentGrade.Field,
-                stats, 300, 5, Array.Empty<DroneSocketRequirement>()));
+                new DroneBaseStats
+                {
+                    speed = 1f,
+                    endurance = endurance,
+                    observation = 1f,
+                    durability = 1f,
+                    payload = 1f,
+                    control = 1f,
+                    reliability = 1f
+                }, 300, 5, Array.Empty<DroneSocketRequirement>()));
             var root = Track(new GameObject(id));
             var assembly = root.AddComponent<DroneAssemblyState>();
             assembly.ConfigureRequirements(1, 0, 1, 1, 1);
             var actor = root.AddComponent<DroneActor>();
             actor.Configure(frame, assembly, Array.Empty<PartSocket>(), id,
-                new DroneStorageLocation(location, location == DroneStorageLocationKind.Locker ? 0 : -1));
-            Install(assembly, id, PartCategory.Motor, 1f);
-            Install(assembly, id, PartCategory.Battery, 1f, charge: 1f);
-            Install(assembly, id, PartCategory.Camera, 1f);
-            Install(assembly, id, PartCategory.Antenna, 1f);
+                new DroneStorageLocation(DroneStorageLocationKind.ReadyShelf));
+            Install(assembly, id, PartCategory.Motor);
+            Install(assembly, id, PartCategory.Battery, charge: 1f);
+            Install(assembly, id, PartCategory.Camera, capability: PartMissionCapability.Observation);
+            Install(assembly, id, PartCategory.Antenna);
             if (includeRack)
             {
-                Install(assembly, id, PartCategory.StrikeRack, 1f, charges: 1);
+                Install(assembly, id, PartCategory.StrikeRack, charges: 1,
+                    capability: expendable ? PartMissionCapability.KamikazeWarhead : PartMissionCapability.GrenadeDrop);
             }
+            actor.Runtime.isExpendableStrikeDrone = expendable;
             assembly.RecordDiagnostic(true);
             return actor;
         }
 
-        private InstallablePart Install(
+        private void Install(
             DroneAssemblyState assembly,
             string actorId,
             PartCategory category,
-            float condition,
             float charge = 1f,
-            int charges = 0)
+            int charges = 0,
+            PartMissionCapability capability = PartMissionCapability.None)
         {
-            var capability = category == PartCategory.StrikeRack
-                ? PartMissionCapability.PrecisionStrike
-                : category == PartCategory.Camera
-                    ? PartMissionCapability.Observation
-                    : PartMissionCapability.None;
             var definition = Track(PartDefinition.CreateTransient(
                 $"part.{actorId}.{category}", category.ToString(), category, Array.Empty<string>(),
                 value: 100, capabilities: capability));
@@ -350,14 +390,13 @@ namespace UnderStatic.Tests.EditMode
             var part = root.AddComponent<InstallablePart>();
             part.Initialize(definition, $"{actorId}.{category}");
             var runtime = part.Runtime.Copy();
-            runtime.condition = condition;
+            runtime.condition = 1f;
             runtime.chargeLevel = charge;
             runtime.consumableCharges = charges;
             runtime.currentState = InteractionState.Installed;
             runtime.lastStableState = InteractionState.Installed;
             part.RestoreRuntime(runtime);
             Assert.That(assembly.TryRecordInstalled($"{actorId}::{category}", part), Is.True);
-            return part;
         }
 
         private FleetSystem CreateFleet(params DroneActor[] actors)
@@ -371,27 +410,17 @@ namespace UnderStatic.Tests.EditMode
             return fleet;
         }
 
-        private MissionDefinition CreateMission(
-            MissionArchetype archetype,
-            string id,
-            float uncertainty = 0.12f)
+        private static void Reveal(BattlefieldSystem battlefield, BattlefieldContactRuntimeData contact, int day)
         {
-            var armed = archetype != MissionArchetype.Recon;
-            return Track(MissionDefinition.CreateTransient(
-                $"mission.{id}", id, archetype, "Test request", 100, 1f, 0.25f,
-                PartMissionCapability.Observation
-                | (armed ? PartMissionCapability.PrecisionStrike : PartMissionCapability.None),
-                new MissionStatWeights
-                {
-                    observation = 0.25f, endurance = 0.15f, control = 0.2f,
-                    payload = armed ? 0.15f : 0f, reliability = 0.2f, durability = 0.05f
-                },
-                uncertainty,
-                0.02f));
+            var route = new[]
+            {
+                BattlefieldSystem.WorkshopPosition,
+                contact.truePosition.ToVector2(),
+                BattlefieldSystem.WorkshopPosition
+            };
+            Assert.That(battlefield.RevealAlongRoute(route, 1f, 0.01f, day)
+                .Any(item => item.ContactId == contact.contactId), Is.True);
         }
-
-        private DeploymentSiteDefinition CreateSite() => Track(DeploymentSiteDefinition.CreateTransient(
-            $"site.{created.Count}", "Test Site", 0f, 1f, 0f, 0.1f));
 
         private T Track<T>(T item) where T : UnityEngine.Object
         {

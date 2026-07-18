@@ -10,6 +10,7 @@ using UnderStatic.Parts;
 using UnderStatic.Persistence;
 using UnderStatic.Tools;
 using UnderStatic.Visuals;
+using UnderStatic.Workshop;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.LowLevel;
@@ -21,7 +22,7 @@ namespace UnderStatic.Tests.PlayMode
     public sealed class Milestone04InventoryPlayModeTests
     {
         [UnityTest]
-        public IEnumerator SafeHouseBuildsDeterministicPhysicalInventory()
+        public IEnumerator SafeHouseBuildsDeterministicUiOnlyPartInventory()
         {
             SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
             yield return null;
@@ -43,10 +44,258 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(partsStorage.Contains(spareBattery), Is.True);
             Assert.That(spareMotor.Body.isKinematic, Is.True);
             Assert.That(spareBattery.Body.isKinematic, Is.True);
-            Assert.That(GameObject.Find("DroneReadyShelfControl"), Is.Not.Null);
+            Assert.That(partsStorage.GetComponent<Collider>(), Is.Null);
+            Assert.That(returns.GetComponent<Collider>(), Is.Null);
+            Assert.That(salvage.GetComponent<Collider>(), Is.Null);
+            Assert.That(spareMotor.transform.position.y, Is.LessThan(-7f));
+            Assert.That(GameObject.Find("ServiceableMotorTray"), Is.Null);
+            Assert.That(Object.FindObjectsByType<TextMesh>(FindObjectsSortMode.None), Is.Empty);
+            Assert.That(GameObject.Find("DroneReadyShelfControl"), Is.Null);
+            var diagnostic = Object.FindAnyObjectByType<DroneDiagnosticSwitch>();
+            Assert.That(diagnostic.GetComponent<Renderer>(), Is.Null);
+            Assert.That(diagnostic.GetComponent<Collider>(), Is.Null);
             Assert.That(GameObject.Find("DroneServiceModeControl"), Is.Not.Null);
             Assert.That(GameObject.Find("ReadyDronePad"), Is.Not.Null);
             Assert.That(inventory.Assembly.Runtime.location, Is.EqualTo(StorageLocationId.SafeHouseServiceBay));
+        }
+
+        [UnityTest]
+        public IEnumerator SafeHouseReplacesBatteryTraysAndServiceLabelWithFunctionalStations()
+        {
+            SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var charger = Object.FindAnyObjectByType<BatteryChargingStation>();
+            var serviceControl = GameObject.Find("DroneServiceModeControl");
+            var serviceVolume = serviceControl.GetComponent<BoxCollider>();
+
+            Assert.That(GameObject.Find("ChargedBatteryTray"), Is.Null);
+            Assert.That(GameObject.Find("DepletedBatteryTray"), Is.Null);
+            Assert.That(GameObject.Find("ServiceModeLabel"), Is.Null);
+            Assert.That(serviceControl.GetComponent<Renderer>(), Is.Null);
+            Assert.That(serviceVolume, Is.Not.Null);
+            Assert.That(serviceVolume.isTrigger, Is.True);
+            Assert.That(serviceVolume.size.x, Is.GreaterThan(1.7f));
+            Assert.That(charger, Is.Not.Null);
+            Assert.That(charger.Socket, Is.Not.Null);
+            Assert.That(charger.Socket.ProcedureType, Is.EqualTo(InstallationProcedureType.ChargingDock));
+            Assert.That(charger.transform.Find("BatteryLatch"), Is.Null);
+            Assert.That(charger.Socket.PersistenceSocketId,
+                Does.Contain("station.safehouse.battery-charger"));
+            Assert.That(charger.GetComponent<DroneServiceModeController>().InteractionPrompt,
+                Does.Contain("battery charger").IgnoreCase);
+            Assert.That(charger.GetComponent<DroneServiceModeController>().CanShowInstalledComponents, Is.False);
+            Assert.That(charger.GetComponent<DroneServiceModeController>()
+                .SelectPartsTab(ServicePartsTab.InstalledComponents), Is.False);
+        }
+
+        [UnityTest]
+        public IEnumerator DroneServiceModeShowsInstalledComponentsMissingSlotsAndActionableStatus()
+        {
+            SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var service = GameObject.Find("DroneServiceModeControl").GetComponent<DroneServiceModeController>();
+            var fleet = Object.FindAnyObjectByType<FleetSystem>();
+            var actor = fleet.ServiceDrone;
+
+            Assert.That(service.EnterServiceMode(), Is.True, service.ServiceStatus);
+            Assert.That(service.CanShowInstalledComponents, Is.True);
+            Assert.That(service.SelectPartsTab(ServicePartsTab.InstalledComponents), Is.True);
+            yield return null;
+
+            var rows = service.GetInstalledComponentStatuses();
+            var damagedMotor = rows.Single(row => row.SocketId.EndsWith("motor.rear-left"));
+            var battery = rows.Single(row => row.Category == PartCategory.Battery);
+
+            Assert.That(service.SelectedPartsTab, Is.EqualTo(ServicePartsTab.InstalledComponents));
+            Assert.That(rows.Count, Is.EqualTo(actor.Sockets.Count));
+            Assert.That(rows.Count(row => !row.IsEmpty), Is.EqualTo(actor.InstalledParts.Count));
+            Assert.That(rows.Any(row => row.IsEmpty && row.StatusLabel == "EMPTY"), Is.True);
+            Assert.That(damagedMotor.StatusLabel, Is.EqualTo("DAMAGED"));
+            Assert.That(damagedMotor.NeedsAttention, Is.True);
+            Assert.That(battery.StatusLabel, Is.EqualTo("DEPLETED"));
+            Assert.That(battery.Detail, Does.Contain("0%"));
+            Assert.That(service.SelectPartsTab(ServicePartsTab.Inventory), Is.True);
+            Assert.That(service.SelectedPartsTab, Is.EqualTo(ServicePartsTab.Inventory));
+            service.ExitServiceMode();
+        }
+
+        [UnityTest]
+        public IEnumerator ChargingStationUsesServiceDragDockChargeAndExtractionLoop()
+        {
+            SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var charger = Object.FindAnyObjectByType<BatteryChargingStation>();
+            var chargerService = charger.GetComponent<DroneServiceModeController>();
+            var inventory = Object.FindAnyObjectByType<InventorySystem>();
+            var partsStorage = inventory.FindLocation(StorageLocationId.SafeHouseParts);
+            var battery = GameObject.Find("SpareChargedBattery").GetComponent<InstallablePart>();
+            battery.SetChargeLevel(0f);
+
+            Assert.That(chargerService.TryInstallPart(battery, charger.Socket), Is.True,
+                chargerService.ServiceStatus);
+            Assert.That(battery.Runtime.currentState, Is.EqualTo(InteractionState.Installed));
+            Assert.That(charger.Socket.ProcedureType, Is.EqualTo(InstallationProcedureType.ChargingDock));
+            Assert.That(charger.AdvanceCharging(charger.ChargeDurationSeconds), Is.True);
+            Assert.That(battery.Runtime.chargeLevel, Is.EqualTo(1f).Within(0.001f));
+            Assert.That(charger.Status, Does.StartWith("CHARGED"));
+
+            Assert.That(charger.Socket.ReleaseChargingDock(), Is.True);
+            Assert.That(chargerService.TryExtractPart(battery), Is.True, chargerService.ServiceStatus);
+            Assert.That(charger.Socket.OccupiedPart, Is.Null);
+            Assert.That(partsStorage.Contains(battery), Is.True);
+            Assert.That(battery.Runtime.storageLocation, Is.EqualTo(StorageLocationId.SafeHouseParts));
+        }
+
+        [UnityTest]
+        public IEnumerator ChargingStationOccupancyAndPartialChargeSurviveSaveLoad()
+        {
+            SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var charger = Object.FindAnyObjectByType<BatteryChargingStation>();
+            var chargerService = charger.GetComponent<DroneServiceModeController>();
+            var persistence = Object.FindAnyObjectByType<SaveSystem>();
+            var battery = GameObject.Find("SpareChargedBattery").GetComponent<InstallablePart>();
+            var parts = Object.FindObjectsByType<InstallablePart>(
+                FindObjectsInactive.Include,
+                FindObjectsSortMode.None);
+            var sockets = Object.FindObjectsByType<PartSocket>(
+                FindObjectsInactive.Include,
+                FindObjectsSortMode.None);
+            battery.SetChargeLevel(0f);
+            Assert.That(chargerService.TryInstallPart(battery, charger.Socket), Is.True);
+            Assert.That(charger.AdvanceCharging(charger.ChargeDurationSeconds * 0.5f), Is.True);
+            var savedCharge = battery.Runtime.chargeLevel;
+            var json = persistence.CaptureAllToJson(parts, sockets);
+
+            battery.SetChargeLevel(0f);
+            Assert.That(persistence.RestoreAllFromJson(json, parts, sockets), Is.True,
+                persistence.LastStatus);
+            Assert.That(charger.Socket.OccupiedPart, Is.SameAs(battery));
+            Assert.That(charger.Socket.ProcedureType, Is.EqualTo(InstallationProcedureType.ChargingDock));
+            Assert.That(battery.Runtime.currentState, Is.EqualTo(InteractionState.Installed));
+            Assert.That(battery.Runtime.chargeLevel, Is.EqualTo(savedCharge).Within(0.001f));
+        }
+
+        [UnityTest]
+        public IEnumerator ChargingStationAcceptsTheActualServicePanelDragGesture()
+        {
+            SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var charger = Object.FindAnyObjectByType<BatteryChargingStation>();
+            var service = charger.GetComponent<DroneServiceModeController>();
+            var battery = GameObject.Find("SpareChargedBattery").GetComponent<InstallablePart>();
+            var camera = Camera.main;
+            battery.SetChargeLevel(0f);
+
+            Assert.That(service.EnterServiceMode(), Is.True, service.ServiceStatus);
+            yield return new WaitForSeconds(0.4f);
+            var socketScreen = camera.WorldToScreenPoint(charger.Socket.SeatedPosition);
+            var socketPointer = new Vector2(socketScreen.x, Screen.height - socketScreen.y);
+            Assert.That(socketScreen.z, Is.GreaterThan(0f));
+            Assert.That(service.BeginServiceDrag(battery), Is.True);
+            Assert.That(service.PromoteServiceDragToWorld(socketPointer), Is.True);
+            for (var step = 0; step < 12 && service.DraggedPart != null; step++)
+            {
+                Assert.That(service.UpdateServiceDrag(socketPointer, 0.05f), Is.True);
+                yield return null;
+            }
+
+            if (service.DraggedPart != null)
+            {
+                Assert.That(service.ReleaseServiceDrag(socketPointer), Is.True, service.ServiceStatus);
+            }
+
+            Assert.That(service.DraggedPart, Is.Null, service.ServiceStatus);
+            Assert.That(charger.Socket.OccupiedPart, Is.SameAs(battery));
+            Assert.That(battery.Runtime.currentState, Is.EqualTo(InteractionState.Installed));
+            Assert.That(charger.IsCharging, Is.True);
+            service.ExitServiceMode();
+        }
+
+        [UnityTest]
+        public IEnumerator DroneBatteryLatchHasAForgivingDirectInteractionTarget()
+        {
+            SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var service = GameObject.Find("DroneServiceModeControl").GetComponent<DroneServiceModeController>();
+            var socket = GameObject.Find("BatteryTraySocket").GetComponent<PartSocket>();
+            var oldBattery = socket.OccupiedPart;
+            Assert.That(socket.ToggleLatch(), Is.True);
+            Assert.That(service.TryExtractPart(oldBattery), Is.True);
+            var replacement = GameObject.Find("SpareChargedBattery").GetComponent<InstallablePart>();
+            Assert.That(service.TryInstallPart(replacement, socket), Is.True);
+            Assert.That(replacement.Runtime.currentState, Is.EqualTo(InteractionState.Seated));
+
+            var latch = GameObject.Find("BatteryLatch").GetComponent<LatchTarget>();
+            var targetCollider = latch.GetComponent<BoxCollider>();
+            Assert.That(latch.Socket, Is.SameAs(socket));
+            Assert.That(targetCollider, Is.Not.Null);
+            Assert.That(targetCollider.size.x, Is.GreaterThanOrEqualTo(0.4f));
+            latch.Activate();
+            Assert.That(socket.LatchClosed, Is.True);
+            Assert.That(replacement.Runtime.currentState, Is.EqualTo(InteractionState.Installed));
+        }
+
+        [UnityTest]
+        public IEnumerator ServiceFocusCleanupIgnoresRenderersRemovedDuringSalvageOrTeardown()
+        {
+            SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var socket = GameObject.Find("MotorSocket_rear-left").GetComponent<PartSocket>();
+            var service = GameObject.Find("DroneServiceModeControl").GetComponent<DroneServiceModeController>();
+            var salvagePart = GameObject.Find("SpareServiceableMotor").GetComponent<InstallablePart>();
+            salvagePart.SetCondition(0.1f);
+            Assert.That(service.EnterServiceMode(), Is.True, service.ServiceStatus);
+            var fixtureRenderer = socket.GetComponentsInChildren<Renderer>(true)
+                .First(renderer => renderer.GetComponentInParent<InstallablePart>() == null);
+            socket.SetFocused(true);
+            Assert.That(service.TrySalvagePart(salvagePart), Is.EqualTo(StorageOperationResult.Salvaged));
+            Object.Destroy(fixtureRenderer);
+            yield return null;
+
+            Assert.DoesNotThrow(() => socket.SetFocused(false));
+            Assert.DoesNotThrow(service.ExitServiceMode);
+        }
+
+        [UnityTest]
+        public IEnumerator DroneServiceEnvelopeCanBeFocusedFromEverySideOfTheAircraft()
+        {
+            SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var interactions = Object.FindAnyObjectByType<InteractionSystem>();
+            var controller = Object.FindAnyObjectByType<FirstPersonController>();
+            var serviceControl = GameObject.Find("DroneServiceModeControl");
+            var service = serviceControl.GetComponent<DroneServiceModeController>();
+            var camera = Camera.main;
+            controller.enabled = false;
+
+            foreach (var direction in new[] { Vector3.forward, Vector3.back, Vector3.left, Vector3.right })
+            {
+                camera.transform.SetPositionAndRotation(
+                    serviceControl.transform.position + direction * 1.35f,
+                    Quaternion.LookRotation(-direction, Vector3.up));
+                Physics.SyncTransforms();
+                yield return null;
+                yield return null;
+                Assert.That(interactions.Focused, Is.SameAs(service),
+                    $"Service envelope was not focusable from {direction}");
+            }
         }
 
         [UnityTest]
@@ -56,7 +305,7 @@ namespace UnderStatic.Tests.PlayMode
             yield return null;
             yield return null;
 
-            var service = Object.FindAnyObjectByType<DroneServiceModeController>();
+            var service = GameObject.Find("DroneServiceModeControl").GetComponent<DroneServiceModeController>();
             var interactions = Object.FindAnyObjectByType<InteractionSystem>();
             var controller = Object.FindAnyObjectByType<FirstPersonController>();
             var control = GameObject.Find("DroneServiceModeControl");
@@ -99,7 +348,7 @@ namespace UnderStatic.Tests.PlayMode
             yield return null;
             yield return null;
 
-            var service = Object.FindAnyObjectByType<DroneServiceModeController>();
+            var service = GameObject.Find("DroneServiceModeControl").GetComponent<DroneServiceModeController>();
             var interactions = Object.FindAnyObjectByType<InteractionSystem>();
             var controller = Object.FindAnyObjectByType<FirstPersonController>();
             var diagnostic = Object.FindAnyObjectByType<DroneDiagnosticSwitch>();
@@ -189,7 +438,7 @@ namespace UnderStatic.Tests.PlayMode
             yield return null;
             yield return null;
 
-            var service = Object.FindAnyObjectByType<DroneServiceModeController>();
+            var service = GameObject.Find("DroneServiceModeControl").GetComponent<DroneServiceModeController>();
             var inventory = Object.FindAnyObjectByType<InventorySystem>();
             var propellerSocket = GameObject.Find("PropellerSocket_rear-left").GetComponent<PartSocket>();
             var motorSocket = GameObject.Find("MotorSocket_rear-left").GetComponent<PartSocket>();
@@ -255,7 +504,7 @@ namespace UnderStatic.Tests.PlayMode
             yield return null;
             yield return null;
 
-            var service = Object.FindAnyObjectByType<DroneServiceModeController>();
+            var service = GameObject.Find("DroneServiceModeControl").GetComponent<DroneServiceModeController>();
             var inventory = Object.FindAnyObjectByType<InventorySystem>();
             var motorSocket = GameObject.Find("MotorSocket_rear-left").GetComponent<PartSocket>();
             var propellerSocket = GameObject.Find("PropellerSocket_rear-left").GetComponent<PartSocket>();
@@ -306,7 +555,7 @@ namespace UnderStatic.Tests.PlayMode
             yield return null;
             yield return null;
 
-            var service = Object.FindAnyObjectByType<DroneServiceModeController>();
+            var service = GameObject.Find("DroneServiceModeControl").GetComponent<DroneServiceModeController>();
             var socket = GameObject.Find("BatteryTraySocket").GetComponent<PartSocket>();
             var depleted = GameObject.Find("InstalledDepletedBattery").GetComponent<InstallablePart>();
             var replacement = GameObject.Find("SpareChargedBattery").GetComponent<InstallablePart>();
@@ -339,34 +588,23 @@ namespace UnderStatic.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator StoredPartCanBeRetrievedThroughNormalInteraction()
+        public IEnumerator StoredPartCanBeRetrievedOnlyThroughServiceInventory()
         {
             SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
             yield return null;
             yield return null;
 
             var inventory = Object.FindAnyObjectByType<InventorySystem>();
-            var interactions = Object.FindAnyObjectByType<InteractionSystem>();
-            var controller = Object.FindAnyObjectByType<FirstPersonController>();
             var part = GameObject.Find("SpareServiceableMotor").GetComponent<InstallablePart>();
             var storage = inventory.FindLocation(StorageLocationId.SafeHouseParts);
-            var camera = Camera.main;
-            controller.enabled = false;
-            var cameraPosition = part.transform.position + new Vector3(-0.65f, 0.08f, 0f);
-            camera.transform.SetPositionAndRotation(
-                cameraPosition,
-                Quaternion.LookRotation(part.transform.position - cameraPosition, Vector3.up));
-            Physics.SyncTransforms();
-            yield return null;
-            yield return null;
+            var service = GameObject.Find("DroneServiceModeControl").GetComponent<DroneServiceModeController>();
 
-            Assert.That(interactions.Focused, Is.SameAs(part));
-            yield return PressInteractKey();
-
-            Assert.That(interactions.HeldPart, Is.SameAs(part));
-            Assert.That(part.Runtime.currentState, Is.EqualTo(InteractionState.Held));
-            Assert.That(part.Runtime.storageLocation, Is.EqualTo(StorageLocationId.PlayerHeld));
-            Assert.That(storage.Contains(part), Is.False);
+            Assert.That(part.transform.position.y, Is.LessThan(-7f));
+            Assert.That(storage.GetComponent<Collider>(), Is.Null);
+            Assert.That(service.BeginServiceDrag(part), Is.True);
+            Assert.That(service.DraggedPart, Is.SameAs(part));
+            service.CancelServiceDrag();
+            Assert.That(storage.Contains(part), Is.True);
         }
 
         [UnityTest]
@@ -387,21 +625,8 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(assembly.Readiness.IsMissionReady, Is.True);
             Assert.That(inventory.TryMoveDroneToReady(false), Is.False);
             diagnostic.Activate();
-            var interactions = Object.FindAnyObjectByType<InteractionSystem>();
-            var controller = Object.FindAnyObjectByType<FirstPersonController>();
-            var camera = Camera.main;
-            var control = GameObject.Find("DroneReadyShelfControl");
-            controller.enabled = false;
-            var cameraPosition = control.transform.position + new Vector3(0f, 0.25f, -0.7f);
-            camera.transform.SetPositionAndRotation(
-                cameraPosition,
-                Quaternion.LookRotation(control.transform.position - cameraPosition, Vector3.up));
-            Physics.SyncTransforms();
-            yield return null;
-            yield return null;
-            Assert.That(interactions.Focused?.InteractionTransform, Is.SameAs(control.transform));
-            yield return PressInteractKey();
-            yield return new WaitForSeconds(0.9f);
+            Assert.That(GameObject.Find("DroneReadyShelfControl"), Is.Null);
+            Assert.That(inventory.TryMoveDroneToReady(false), Is.True);
             Assert.That(assembly.Runtime.location, Is.EqualTo(StorageLocationId.SafeHouseReadyShelf));
             Assert.That(assembly.InstalledPartCount, Is.EqualTo(11));
             Assert.That(inventory.TryMoveDroneToServiceBay(false), Is.True);
@@ -464,64 +689,24 @@ namespace UnderStatic.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator DamagedPartRequiresTwoNormalInteractionsToSalvage()
+        public IEnumerator DamagedPartUsesServiceSalvageWithoutAWorldConfirmationBin()
         {
             SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
             yield return null;
             yield return null;
 
             var inventory = Object.FindAnyObjectByType<InventorySystem>();
-            var interactions = Object.FindAnyObjectByType<InteractionSystem>();
-            var controller = Object.FindAnyObjectByType<FirstPersonController>();
-            var camera = Camera.main;
-            var motor = GameObject.Find("Motor_rear-left").GetComponent<InstallablePart>();
-            var motorSocket = GameObject.Find("MotorSocket_rear-left").GetComponent<PartSocket>();
-            var propellerSocket = GameObject.Find("PropellerSocket_rear-left").GetComponent<PartSocket>();
+            var motor = GameObject.Find("SpareServiceableMotor").GetComponent<InstallablePart>();
             var salvage = inventory.FindLocation(StorageLocationId.SafeHouseSalvage);
-            propellerSocket.ClearForRestore();
-            motorSocket.ClearForRestore();
-            var runtime = motor.Runtime.Copy();
-            runtime.currentState = InteractionState.Loose;
-            runtime.lastStableState = InteractionState.Loose;
-            runtime.installedSocketId = string.Empty;
-            runtime.storageLocation = StorageLocationId.WorkshopLoose;
-            runtime.currentOwner = "Workshop";
-            motor.RestoreRuntime(runtime);
-            motor.transform.SetPositionAndRotation(new Vector3(1.8f, 0.9f, -0.45f), Quaternion.identity);
-            motor.SetLoosePhysics();
+            var service = GameObject.Find("DroneServiceModeControl").GetComponent<DroneServiceModeController>();
+            motor.SetCondition(0.1f);
 
-            controller.enabled = false;
-            var pickupCamera = motor.transform.position + new Vector3(-0.65f, 0.08f, 0f);
-            camera.transform.SetPositionAndRotation(
-                pickupCamera,
-                Quaternion.LookRotation(motor.transform.position - pickupCamera, Vector3.up));
-            Physics.SyncTransforms();
-            yield return null;
-            yield return null;
-            Assert.That(interactions.Focused, Is.SameAs(motor));
-            yield return PressInteractKey();
-            Assert.That(interactions.HeldPart, Is.SameAs(motor));
-
-            var salvageAim = salvage.transform.position;
-            var salvageCamera = salvageAim + new Vector3(-0.7f, 0.08f, 0f);
-            camera.transform.SetPositionAndRotation(
-                salvageCamera,
-                Quaternion.LookRotation(salvageAim - salvageCamera, Vector3.up));
-            Physics.SyncTransforms();
-            yield return null;
-            yield return null;
-            Assert.That(interactions.Focused, Is.SameAs(salvage));
-
-            yield return PressInteractKey();
-            Assert.That(interactions.HeldPart, Is.SameAs(motor));
-            Assert.That(inventory.ScrapCount, Is.Zero);
-            yield return PressInteractKey();
-
-            Assert.That(interactions.HeldPart, Is.Null);
+            Assert.That(salvage.GetComponent<Collider>(), Is.Null);
+            Assert.That(service.TrySalvagePart(motor), Is.EqualTo(StorageOperationResult.Salvaged));
             Assert.That(motor.Runtime.isSalvaged, Is.True);
             Assert.That(motor.gameObject.activeSelf, Is.False);
             Assert.That(inventory.ScrapCount, Is.EqualTo(1));
-            Assert.That(GameObject.Find("ScrapToken_1"), Is.Not.Null);
+            Assert.That(GameObject.Find("ScrapToken_1").transform.position.y, Is.LessThan(-9f));
         }
 
         private static IEnumerator PressInteractKey()

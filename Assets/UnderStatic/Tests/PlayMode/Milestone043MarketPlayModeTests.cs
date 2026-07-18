@@ -32,11 +32,19 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(market, Is.Not.Null);
             Assert.That(terminal, Is.Not.Null);
             Assert.That(market.Funds, Is.EqualTo(600));
-            Assert.That(market.Listings.Count(item => item.isAvailable), Is.EqualTo(3));
+            Assert.That(market.Listings.Count(item => item.isAvailable), Is.EqualTo(11));
             Assert.That(market.Listings.Where(item => item.category == MarketListingCategory.Part)
-                .Sum(item => item.askingPrice), Is.EqualTo(550));
+                .Where(item => item.isAvailable)
+                .Sum(item => item.askingPrice), Is.EqualTo(615));
             Assert.That(fleet.Actors.Count, Is.EqualTo(3));
             Assert.That(fleet.FindActor("drone.market.utility-field.01"), Is.Null);
+            var visibleStock = market.Listings
+                .Where(item => item.category == MarketListingCategory.Part)
+                .Select(market.ResolvePart)
+                .Where(part => part != null && part.gameObject.activeInHierarchy)
+                .Select(part => part.name)
+                .ToArray();
+            Assert.That(visibleStock, Is.Empty, $"Market stock should remain non-physical until purchased: {string.Join(", ", visibleStock)}");
         }
 
         [UnityTest]
@@ -75,18 +83,96 @@ namespace UnderStatic.Tests.PlayMode
 
             var market = Object.FindAnyObjectByType<MarketSystem>();
             var inventory = Object.FindAnyObjectByType<InventorySystem>();
-            var listing = market.FindListing("market.initial.scout-motor-upgrade");
+            var listing = market.FindListing("market.stock.compact-field-motor");
             var part = market.ResolvePart(listing);
             var identity = part.Runtime.uniqueInstanceId;
 
             var result = market.TryBuy(listing.listingId);
 
             Assert.That(result.Succeeded, Is.True, result.Message);
-            Assert.That(market.Funds, Is.EqualTo(300));
+            Assert.That(market.Funds, Is.EqualTo(460));
             Assert.That(part.Runtime.uniqueInstanceId, Is.EqualTo(identity));
             Assert.That(part.Runtime.storageLocation, Is.EqualTo(StorageLocationId.SafeHouseParts));
             Assert.That(inventory.FindLocation(StorageLocationId.SafeHouseParts).Contains(part), Is.True);
             Assert.That(part.gameObject.activeInHierarchy, Is.True);
+        }
+
+        [UnityTest]
+        public IEnumerator CompleteDroneCardOpensDetailsAndPurchasePreservesCertifiedReadiness()
+        {
+            SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var market = Object.FindAnyObjectByType<MarketSystem>();
+            var fleet = Object.FindAnyObjectByType<FleetSystem>();
+            var terminal = Object.FindAnyObjectByType<MarketTerminal>();
+            var listing = market.FindListing("market.stock.scout-field-ready");
+            var actor = market.ResolveDrone(listing);
+
+            terminal.SelectView(MarketTerminalView.CompleteDrones);
+            Assert.That(terminal.SelectListing(listing.listingId), Is.True);
+            Assert.That(terminal.IsDetailOpen, Is.True);
+            terminal.Activate();
+            yield return null;
+            market.AwardFunds(500, "test payout");
+            var result = terminal.ConfirmPurchase();
+
+            Assert.That(result.Succeeded, Is.True, result.Message);
+            Assert.That(fleet.ContainsActor(actor), Is.True);
+            Assert.That(actor.Runtime.hasDiagnosticResult, Is.True);
+            Assert.That(actor.Runtime.latestDiagnosticPassed, Is.True);
+            Assert.That(actor.Readiness.IsMissionReady, Is.True);
+            Assert.That(terminal.IsDetailOpen, Is.False);
+        }
+
+        [UnityTest]
+        public IEnumerator StrikeDroneStockIsGuaranteedReadyArmedAndPersistent()
+        {
+            SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var market = Object.FindAnyObjectByType<MarketSystem>();
+            var fleet = Object.FindAnyObjectByType<FleetSystem>();
+            var save = Object.FindAnyObjectByType<SaveSystem>();
+            var terminal = Object.FindAnyObjectByType<MarketTerminal>();
+            var available = market.Listings
+                .Where(item => item.category == MarketListingCategory.StrikeDrone && item.isAvailable)
+                .ToArray();
+            Assert.That(available, Has.Length.EqualTo(2));
+
+            var listing = available[0];
+            var actor = market.ResolveDrone(listing);
+            terminal.SelectView(MarketTerminalView.StrikeDrones);
+            Assert.That(terminal.SelectListing(listing.listingId), Is.True);
+            var result = terminal.ConfirmPurchase();
+
+            Assert.That(result.Succeeded, Is.True, result.Message);
+            Assert.That(fleet.ContainsActor(actor), Is.True);
+            Assert.That(actor.IsExpendableStrikeDrone, Is.True);
+            Assert.That(actor.Readiness.IsMissionReady, Is.True);
+            Assert.That(actor.Runtime.latestDiagnosticPassed, Is.True);
+            var rack = actor.InstalledParts.Single(part => part.Definition.Category == UnderStatic.Core.PartCategory.StrikeRack);
+            Assert.That(rack.Runtime.consumableCharges, Is.EqualTo(1));
+            Assert.That(actor.InstalledParts.Single(part => part.Definition.Category == UnderStatic.Core.PartCategory.Battery)
+                .Runtime.chargeLevel, Is.EqualTo(1f));
+
+            market.AdvanceMarketCycle(7331);
+            Assert.That(market.Listings.Count(item =>
+                item.category == MarketListingCategory.StrikeDrone && item.isAvailable), Is.EqualTo(2));
+            Assert.That(listing.isAvailable, Is.False, "Purchased strike stock must not return during rotation");
+
+            var parts = Object.FindObjectsByType<InstallablePart>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            var sockets = Object.FindObjectsByType<PartSocket>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            var json = save.CaptureAllToJson(parts, sockets);
+            Assert.That(fleet.TrySwapLockerIntoService(2, false), Is.True);
+            Assert.That(save.RestoreAllFromJson(json, parts, sockets), Is.True, save.LastStatus);
+            var restored = fleet.Locker[2];
+            Assert.That(restored.Runtime.droneInstanceId, Is.EqualTo(actor.Runtime.droneInstanceId));
+            Assert.That(restored.IsExpendableStrikeDrone, Is.True);
+            Assert.That(restored.InstalledParts.Single(part =>
+                part.Definition.Category == UnderStatic.Core.PartCategory.StrikeRack).Runtime.consumableCharges, Is.EqualTo(1));
         }
 
         [UnityTest]
@@ -109,7 +195,7 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(fleet.Locker[2].Runtime.droneInstanceId, Is.EqualTo(identity));
             Assert.That(stock.Runtime.diagnosticFaultsDisclosed, Is.False);
             var json = save.CaptureAllToJson(parts, sockets);
-            Assert.That(json, Does.Contain("\"version\": 8"));
+            Assert.That(json, Does.Contain("\"version\": 9"));
             Assert.That(fleet.TrySwapLockerIntoService(2, false), Is.True);
 
             Assert.That(save.RestoreAllFromJson(json, parts, sockets), Is.True, save.LastStatus);

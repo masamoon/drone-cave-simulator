@@ -145,7 +145,21 @@ namespace UnderStatic.Replays
         public static MissionTopographyMap Generate(
             MissionTopographyProfile profile,
             int seed,
-            MissionReplayDefinition definition)
+            MissionReplayDefinition definition) => GenerateInternal(profile, seed, definition, true);
+
+        public static MissionTopographyMap GenerateBattlefield(
+            int seed,
+            MissionReplayDefinition definition) => GenerateInternal(
+                MissionTopographyProfile.RoadValley,
+                seed,
+                definition,
+                false);
+
+        private static MissionTopographyMap GenerateInternal(
+            MissionTopographyProfile profile,
+            int seed,
+            MissionReplayDefinition definition,
+            bool includeTarget)
         {
             if (definition == null)
             {
@@ -217,7 +231,10 @@ namespace UnderStatic.Replays
 
             var targetX = Mathf.Clamp(Mathf.RoundToInt(target.x * (resolution - 1)), 0, resolution - 1);
             var targetRow = Mathf.Clamp(Mathf.RoundToInt(target.y * (resolution - 1)), 0, resolution - 1);
-            features[targetRow * resolution + targetX] |= MissionMapFeature.Target;
+            if (includeTarget)
+            {
+                features[targetRow * resolution + targetX] |= MissionMapFeature.Target;
+            }
             var start = new Vector2(roadCenters[Mathf.RoundToInt((resolution - 1) * 0.04f)], 0.04f);
             var end = new Vector2(roadCenters[Mathf.RoundToInt((resolution - 1) * 0.94f)], 0.94f);
             return new MissionTopographyMap(

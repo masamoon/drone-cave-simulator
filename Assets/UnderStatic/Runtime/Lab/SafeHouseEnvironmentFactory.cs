@@ -79,7 +79,6 @@ namespace UnderStatic.Lab
                 board.transform.rotation = Quaternion.Euler(index * 5f, 0f, index * 7f);
             }
 
-            CreateLabel("SAFE HOUSE 04", new Vector3(0f, 2.5f, 3.05f), Quaternion.identity, new Color(0.65f, 0.61f, 0.48f));
         }
 
         private static void CreateTacticalMap(Transform root, Material metal, Material map, Material line)
@@ -96,7 +95,6 @@ namespace UnderStatic.Lab
             }
 
             Create("MapShelf", PrimitiveType.Cube, station.transform, new Vector3(-2.92f, 0.92f, -0.65f), new Vector3(0.55f, 0.08f, 1.95f), metal);
-            CreateLabel("TACTICAL MAP", new Vector3(-2.96f, 2.4f, -0.65f), Quaternion.Euler(0f, -90f, 0f), new Color(0.78f, 0.7f, 0.42f));
         }
 
         private static void CreateRadioStation(Transform root, Material timber, Material metal, Material bareMetal, Material redGlow)
@@ -114,7 +112,6 @@ namespace UnderStatic.Lab
             Create("RadioIndicator", PrimitiveType.Sphere, station.transform, new Vector3(-1.95f, 1.03f, 2.18f), Vector3.one * 0.045f, redGlow);
             var antenna = Create("RadioAntenna", PrimitiveType.Cylinder, station.transform, new Vector3(-2.48f, 1.45f, 2.42f), new Vector3(0.018f, 0.52f, 0.018f), bareMetal);
             InteractionLabFactory.DisableCollider(antenna);
-            CreateLabel("RADIO / COMMS", new Vector3(-2.22f, 1.72f, 3.05f), Quaternion.identity, new Color(0.72f, 0.62f, 0.4f));
         }
 
         private static void CreateReadyShelf(Transform root, Material metal, Material timber, Material crate)
@@ -131,7 +128,6 @@ namespace UnderStatic.Lab
             }
             Create("ReadyCase", PrimitiveType.Cube, station.transform, new Vector3(2.7f, 0.65f, 1.55f), new Vector3(0.4f, 0.24f, 0.55f), crate);
             Create("ReadyCase", PrimitiveType.Cube, station.transform, new Vector3(2.7f, 1.16f, 2.15f), new Vector3(0.4f, 0.24f, 0.55f), crate);
-            CreateLabel("READY SHELF", new Vector3(2.92f, 2.35f, 1.88f), Quaternion.Euler(0f, 90f, 0f), new Color(0.72f, 0.66f, 0.43f));
         }
 
         private static void CreatePartsStorage(Transform root, Material metal, Material crate, Material accent)
@@ -148,7 +144,6 @@ namespace UnderStatic.Lab
                     InteractionLabFactory.DisableCollider(tab);
                 }
             }
-            CreateLabel("PARTS / RETURNS", new Vector3(2.93f, 2.25f, -0.55f), Quaternion.Euler(0f, 90f, 0f), new Color(0.72f, 0.66f, 0.43f));
         }
 
         private static void CreateConcealmentControls(Transform root, Material metal, Material bareMetal, Material redGlow)
@@ -158,7 +153,6 @@ namespace UnderStatic.Lab
             Create("BreakerBox", PrimitiveType.Cube, station.transform, new Vector3(0.62f, 1.55f, -3.02f), new Vector3(0.62f, 0.82f, 0.14f), metal);
             Create("MasterCutoff", PrimitiveType.Cube, station.transform, new Vector3(0.62f, 1.52f, -2.92f), new Vector3(0.12f, 0.42f, 0.1f), bareMetal).transform.rotation = Quaternion.Euler(0f, 0f, -18f);
             Create("CutoffLamp", PrimitiveType.Sphere, station.transform, new Vector3(0.82f, 1.78f, -2.9f), Vector3.one * 0.055f, redGlow);
-            CreateLabel("LIGHT / RADIO CUTOFF", new Vector3(0.62f, 2.08f, -3f), Quaternion.Euler(0f, 180f, 0f), new Color(0.8f, 0.55f, 0.36f));
         }
 
         private static void CreateLivingCorner(Transform root, Material timber, Material fabric, Material crate)
@@ -242,17 +236,5 @@ namespace UnderStatic.Lab
             return material;
         }
 
-        private static void CreateLabel(string text, Vector3 position, Quaternion rotation, Color color)
-        {
-            var label = new GameObject($"Label_{text.Replace(' ', '_').Replace('/', '_')}");
-            label.transform.SetPositionAndRotation(position, rotation);
-            var mesh = label.AddComponent<TextMesh>();
-            mesh.text = text;
-            mesh.anchor = TextAnchor.MiddleCenter;
-            mesh.alignment = TextAlignment.Center;
-            mesh.fontSize = 48;
-            mesh.characterSize = text.Length > 16 ? 0.032f : 0.045f;
-            mesh.color = color;
-        }
     }
 }

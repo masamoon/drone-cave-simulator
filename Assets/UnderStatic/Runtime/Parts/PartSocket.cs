@@ -80,6 +80,8 @@ namespace UnderStatic.Parts
                     ? LatchClosed
                         ? "E: open empty battery latch"
                         : "LATCH OPEN · slide a compatible battery into the tray · E: close latch"
+                    : ProcedureType == InstallationProcedureType.ChargingDock
+                        ? "Drag a spent battery onto the charging connector"
                     : "Empty component socket"
             : RemovalBlocked && OccupiedPart.Runtime.currentState is InteractionState.Installed or InteractionState.Tested
                 ? "Remove the attached outer component first"
@@ -94,6 +96,8 @@ namespace UnderStatic.Parts
                     : LatchOpenedForExtraction
                         ? "LATCH OPEN · E: pull battery from tray"
                         : "LATCH OPEN · E: close battery latch",
+                InstallationProcedureType.ChargingDock =>
+                    "LMB: lift battery from charging dock",
                 _ => OccupiedPart.Runtime.currentState is InteractionState.Installed or InteractionState.Tested
                     ? "Use screwdriver to remove"
                     : "Use screwdriver to secure"
@@ -115,6 +119,7 @@ namespace UnderStatic.Parts
             EnsureProcedureState();
             BuildFastenerBindings();
             UpdateFastenerVisuals();
+            BindLatchTarget();
             renderers = GetComponentsInChildren<Renderer>(true);
         }
 
@@ -144,6 +149,7 @@ namespace UnderStatic.Parts
             EnsureProcedureState();
             BuildFastenerBindings();
             UpdateFastenerVisuals();
+            BindLatchTarget();
             UpdateLatchVisual();
         }
 
@@ -591,6 +597,24 @@ namespace UnderStatic.Parts
             return false;
         }
 
+        public bool ReleaseChargingDock()
+        {
+            if (ProcedureType != InstallationProcedureType.ChargingDock
+                || OccupiedPart == null
+                || OccupiedPart.Runtime.currentState is not (InteractionState.Installed or InteractionState.Tested))
+            {
+                return false;
+            }
+
+            if (!OccupiedPart.TryTransition(InteractionState.Removing))
+            {
+                return false;
+            }
+
+            ReturnToSeated();
+            return true;
+        }
+
         public bool BeginExtraction(InstallablePart part)
         {
             if (part != OccupiedPart
@@ -727,10 +751,22 @@ namespace UnderStatic.Parts
 
         public void SetFocused(bool focused)
         {
-            renderers ??= GetComponentsInChildren<Renderer>(true);
+            if (renderers == null || renderers.Any(socketRenderer => socketRenderer == null))
+            {
+                renderers = GetComponentsInChildren<Renderer>(true)
+                    .Where(socketRenderer => socketRenderer != null
+                        && socketRenderer.GetComponentInParent<InstallablePart>() == null)
+                    .ToArray();
+            }
+
             propertyBlock ??= new MaterialPropertyBlock();
             foreach (var socketRenderer in renderers)
             {
+                if (socketRenderer == null)
+                {
+                    continue;
+                }
+
                 if (!focused)
                 {
                     socketRenderer.SetPropertyBlock(null);
@@ -759,6 +795,11 @@ namespace UnderStatic.Parts
             procedureOpenedForExtraction = false;
             UpdateFastenerVisuals();
             audioFeedback?.PlayContact();
+            if (ProcedureType == InstallationProcedureType.ChargingDock
+                && part.TryTransition(InteractionState.Securing))
+            {
+                InstallOccupiedPart();
+            }
             return true;
         }
 
@@ -800,6 +841,7 @@ namespace UnderStatic.Parts
                 InstallationProcedureType.Fasteners => fastenerProgress.All(value => value <= 0.001f),
                 InstallationProcedureType.TwistLock => LockRotationProgress <= 0.001f,
                 InstallationProcedureType.Latch => !LatchClosed,
+                InstallationProcedureType.ChargingDock => true,
                 _ => false
             };
         }
@@ -834,6 +876,33 @@ namespace UnderStatic.Parts
         {
             InsertionProgress = 0f;
             AlignmentError = 0f;
+        }
+
+        private void BindLatchTarget()
+        {
+            if (latchVisual == null)
+            {
+                return;
+            }
+
+            var target = latchVisual.GetComponent<LatchTarget>();
+            if (target == null)
+            {
+                target = latchVisual.gameObject.AddComponent<LatchTarget>();
+            }
+
+            var targetCollider = latchVisual.GetComponent<BoxCollider>();
+            if (targetCollider == null)
+            {
+                targetCollider = latchVisual.gameObject.AddComponent<BoxCollider>();
+            }
+
+            targetCollider.enabled = true;
+            targetCollider.isTrigger = true;
+            targetCollider.center = new Vector3(0.12f, 0f, 0f);
+            targetCollider.size = new Vector3(0.42f, 0.18f, 0.2f);
+            var handle = latchVisual.Find("BatteryLatchHandle");
+            target.Configure(this, handle != null ? handle.GetComponent<Renderer>() : null);
         }
 
         private void UpdateLatchVisual()

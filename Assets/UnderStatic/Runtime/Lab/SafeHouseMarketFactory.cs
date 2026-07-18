@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System;
 using System.Linq;
 using UnderStatic.Core;
 using UnderStatic.Economy;
@@ -68,6 +69,58 @@ namespace UnderStatic.Lab
             allParts.Add(battery);
             saveSystem.RegisterParts(new[] { motor, battery });
 
+            var listings = new List<MarketListingRuntimeData>
+            {
+                PartListing("market.initial.scout-motor-upgrade", motor, 300, MarketAccessTier.Trusted),
+                PartListing("market.initial.scout-battery-upgrade", battery, 250, MarketAccessTier.Trusted)
+            };
+            var marketParts = new List<InstallablePart> { motor, battery };
+            AddPartStock(marketParts, listings, allParts, stockMaterial);
+
+            var marketActors = new List<DroneActor>();
+            var marketSockets = new List<PartSocket>();
+            if (salvageActor != null)
+            {
+                listings.Add(DroneListing(
+                    "market.initial.utility-salvage",
+                    salvageActor,
+                    520,
+                    MarketListingCategory.SalvageDrone,
+                    MarketAccessTier.Field,
+                    true));
+                marketActors.Add(salvageActor);
+            }
+
+            var sourceActor = playerActors?.FirstOrDefault(actor => actor != null && !actor.IsExpendableStrikeDrone);
+            if (sourceActor != null)
+            {
+                AddDroneStock(
+                    sourceActor,
+                    marketActors,
+                    marketSockets,
+                    allParts,
+                    listings);
+            }
+
+            var strikeSourceActor = playerActors?.FirstOrDefault(actor =>
+                actor != null && actor.IsExpendableStrikeDrone);
+            if (strikeSourceActor != null)
+            {
+                AddStrikeDroneStock(
+                    strikeSourceActor,
+                    marketActors,
+                    marketSockets,
+                    allParts,
+                    listings);
+            }
+
+            saveSystem.RegisterParts(allParts);
+            saveSystem.RegisterSockets(marketSockets);
+            foreach (var actor in marketActors)
+            {
+                fleet.RegisterKnownActor(actor);
+            }
+
             var marketObject = new GameObject("MarketSystem");
             marketObject.transform.SetParent(GameObject.Find("Systems")?.transform);
             var market = marketObject.AddComponent<MarketSystem>();
@@ -78,40 +131,8 @@ namespace UnderStatic.Lab
                 inventory,
                 fleet,
                 allParts,
-                playerActors.Concat(new[] { salvageActor }).Where(actor => actor != null),
-                new[]
-                {
-                    new MarketListingRuntimeData
-                    {
-                        listingId = "market.initial.scout-motor-upgrade",
-                        category = MarketListingCategory.Part,
-                        askingPrice = 300,
-                        isAvailable = true,
-                        partInstanceId = motor.Runtime.uniqueInstanceId,
-                        visibleConditionBand = MarketSystem.ConditionBand(motor.Runtime.condition),
-                        exactFaultsDisclosed = true
-                    },
-                    new MarketListingRuntimeData
-                    {
-                        listingId = "market.initial.scout-battery-upgrade",
-                        category = MarketListingCategory.Part,
-                        askingPrice = 250,
-                        isAvailable = true,
-                        partInstanceId = battery.Runtime.uniqueInstanceId,
-                        visibleConditionBand = MarketSystem.ConditionBand(battery.Runtime.condition),
-                        exactFaultsDisclosed = true
-                    },
-                    new MarketListingRuntimeData
-                    {
-                        listingId = "market.initial.utility-salvage",
-                        category = MarketListingCategory.SalvageDrone,
-                        askingPrice = 520,
-                        isAvailable = true,
-                        droneInstanceId = salvageActor.Runtime.droneInstanceId,
-                        visibleConditionBand = MarketSystem.ConditionBand(salvageActor.Runtime.frameCondition),
-                        exactFaultsDisclosed = false
-                    }
-                });
+                playerActors.Concat(marketActors).Where(actor => actor != null),
+                listings);
             saveSystem.ConfigureMarket(market);
 
             var terminalMaterial = InteractionLabFactory.CreateMaterial(
@@ -128,7 +149,6 @@ namespace UnderStatic.Lab
             terminalObject.transform.rotation = Quaternion.identity;
             var terminal = terminalObject.AddComponent<MarketTerminal>();
             terminal.Configure(market, inventory, fleet, controller, terminalObject.GetComponent<Renderer>());
-            CreateLabel("PARTS / SALVAGE EXCHANGE", new Vector3(-0.95f, 1.65f, 3.05f));
             return market;
         }
 
@@ -153,17 +173,460 @@ namespace UnderStatic.Lab
                 value: value);
         }
 
-        private static void CreateLabel(string text, Vector3 position)
+        private static MarketListingRuntimeData PartListing(
+            string id,
+            InstallablePart part,
+            int price,
+            MarketAccessTier tier) => new()
         {
-            var label = new GameObject("MarketTerminalLabel");
-            label.transform.SetPositionAndRotation(position, Quaternion.identity);
-            var mesh = label.AddComponent<TextMesh>();
-            mesh.text = text;
-            mesh.anchor = TextAnchor.MiddleCenter;
-            mesh.alignment = TextAlignment.Center;
-            mesh.fontSize = 44;
-            mesh.characterSize = 0.016f;
-            mesh.color = new Color(0.45f, 0.9f, 0.68f);
+            listingId = id,
+            category = MarketListingCategory.Part,
+            askingPrice = price,
+            isAvailable = tier == MarketAccessTier.Field,
+            partInstanceId = part.Runtime.uniqueInstanceId,
+            visibleConditionBand = MarketSystem.ConditionBand(part.Runtime.condition),
+            exactFaultsDisclosed = true,
+            minimumAccessTier = tier,
+            rotatesWithMarket = true
+        };
+
+        private static MarketListingRuntimeData DroneListing(
+            string id,
+            DroneActor actor,
+            int price,
+            MarketListingCategory category,
+            MarketAccessTier tier,
+            bool initiallyAvailable) => new()
+        {
+            listingId = id,
+            category = category,
+            askingPrice = price,
+            isAvailable = initiallyAvailable && tier == MarketAccessTier.Field,
+            droneInstanceId = actor.Runtime.droneInstanceId,
+            visibleConditionBand = MarketSystem.ConditionBand(actor.Runtime.frameCondition),
+            exactFaultsDisclosed = category is MarketListingCategory.CompleteDrone
+                or MarketListingCategory.StrikeDrone,
+            minimumAccessTier = tier,
+            rotatesWithMarket = true
+        };
+
+        private static void AddPartStock(
+            ICollection<InstallablePart> marketParts,
+            ICollection<MarketListingRuntimeData> listings,
+            ICollection<InstallablePart> allParts,
+            Material material)
+        {
+            var specs = new[]
+            {
+                new PartStockSpec(PartCategory.Motor, "Compact Field Motor", CompatibilityStandardId.CompactMotor, EquipmentGrade.Field, 140, MarketAccessTier.Field),
+                new PartStockSpec(PartCategory.Propeller, "Compact Field Propeller", CompatibilityStandardId.CompactPropeller, EquipmentGrade.Field, 45, MarketAccessTier.Field),
+                new PartStockSpec(PartCategory.Battery, "Compact Field Battery", CompatibilityStandardId.CompactBattery, EquipmentGrade.Field, 180, MarketAccessTier.Field),
+                new PartStockSpec(PartCategory.Camera, "Shared Field Camera", CompatibilityStandardId.SharedCamera, EquipmentGrade.Field, 160, MarketAccessTier.Field),
+                new PartStockSpec(PartCategory.Antenna, "Shared Field Antenna", CompatibilityStandardId.SharedAntenna, EquipmentGrade.Field, 90, MarketAccessTier.Field),
+                new PartStockSpec(PartCategory.Propeller, "Compact Professional Propeller", CompatibilityStandardId.CompactPropeller, EquipmentGrade.Professional, 105, MarketAccessTier.Trusted),
+                new PartStockSpec(PartCategory.Camera, "Shared Professional Camera", CompatibilityStandardId.SharedCamera, EquipmentGrade.Professional, 330, MarketAccessTier.Trusted),
+                new PartStockSpec(PartCategory.Antenna, "Shared Professional Antenna", CompatibilityStandardId.SharedAntenna, EquipmentGrade.Professional, 190, MarketAccessTier.Trusted),
+                new PartStockSpec(PartCategory.Motor, "Survey Field Motor", CompatibilityStandardId.SurveyMotor, EquipmentGrade.Field, 260, MarketAccessTier.Trusted),
+                new PartStockSpec(PartCategory.Propeller, "Survey Field Propeller", CompatibilityStandardId.SurveyPropeller, EquipmentGrade.Field, 80, MarketAccessTier.Trusted),
+                new PartStockSpec(PartCategory.Battery, "Survey Field Battery", CompatibilityStandardId.SurveyBattery, EquipmentGrade.Field, 340, MarketAccessTier.Trusted),
+                new PartStockSpec(PartCategory.Motor, "Heavy Field Motor", CompatibilityStandardId.HeavyMotor, EquipmentGrade.Field, 320, MarketAccessTier.Professional),
+                new PartStockSpec(PartCategory.Propeller, "Heavy Field Propeller", CompatibilityStandardId.HeavyPropeller, EquipmentGrade.Field, 100, MarketAccessTier.Professional),
+                new PartStockSpec(PartCategory.Battery, "Heavy Field Battery", CompatibilityStandardId.HeavyBattery, EquipmentGrade.Field, 420, MarketAccessTier.Professional)
+            };
+
+            for (var index = 0; index < specs.Length; index++)
+            {
+                var spec = specs[index];
+                var slug = spec.Name.ToLowerInvariant().Replace(' ', '-');
+                var definition = CreateStockPartDefinition(spec);
+                var part = InteractionLabFactory.CreateComponentPart(
+                    $"Market_{spec.Name.Replace(" ", string.Empty)}",
+                    null,
+                    new Vector3(0f, -20f, 0f),
+                    spec.Category,
+                    definition,
+                    material,
+                    $"market-part-{slug}-01");
+                part.SetCondition(0.88f + (index % 4) * 0.03f);
+                part.SetControlledPhysics();
+                part.SetLocation(StorageLocationId.MarketStock, "Market stock");
+                part.gameObject.SetActive(false);
+                marketParts.Add(part);
+                allParts.Add(part);
+                listings.Add(PartListing($"market.stock.{slug}", part, spec.Value, spec.Tier));
+            }
         }
+
+        private static PartDefinition CreateStockPartDefinition(PartStockSpec spec)
+        {
+            var modifiers = spec.Category switch
+            {
+                PartCategory.Motor => new PartStatModifiers { control = 0.025f, reliability = 0.02f },
+                PartCategory.Propeller => new PartStatModifiers { control = 0.012f, reliability = 0.01f },
+                PartCategory.Battery => new PartStatModifiers { endurance = 0.06f, reliability = 0.015f },
+                PartCategory.Camera => new PartStatModifiers { observation = 0.07f },
+                PartCategory.Antenna => new PartStatModifiers { control = 0.045f },
+                _ => default
+            };
+            if (spec.Grade == EquipmentGrade.Professional)
+            {
+                modifiers.control *= 1.6f;
+                modifiers.reliability *= 1.6f;
+                modifiers.endurance *= 1.6f;
+                modifiers.observation *= 1.6f;
+            }
+
+            return PartDefinition.CreateTransient(
+                $"part.market.{spec.Name.ToLowerInvariant().Replace(' ', '.')}",
+                spec.Name,
+                spec.Category,
+                new[] { LegacyTag(spec.Category) },
+                reliability: spec.Grade == EquipmentGrade.Professional ? 0.96f : 0.88f,
+                partMass: spec.Category == PartCategory.Battery ? 0.5f : 0.15f,
+                standards: new[] { spec.Standard },
+                equipmentGrade: spec.Grade,
+                modifiers: modifiers,
+                value: spec.Value);
+        }
+
+        private static void AddDroneStock(
+            DroneActor source,
+            ICollection<DroneActor> actors,
+            ICollection<PartSocket> sockets,
+            ICollection<InstallablePart> allParts,
+            ICollection<MarketListingRuntimeData> listings)
+        {
+            var specs = new[]
+            {
+                new DroneStockSpec("scout-field-ready", "ScoutField", true, 0, 0.97f, 980, MarketAccessTier.Field, true),
+                new DroneStockSpec("survey-field-ready", "SurveyField", true, 0, 0.95f, 2050, MarketAccessTier.Trusted, false),
+                new DroneStockSpec("utility-professional-ready", "UtilityProfessional", true, 0, 0.96f, 4650, MarketAccessTier.Professional, false),
+                new DroneStockSpec("scout-field-damaged-a", "ScoutField", false, 2, 0.68f, 430, MarketAccessTier.Field, true),
+                new DroneStockSpec("scout-field-damaged-b", "ScoutField", false, 4, 0.41f, 290, MarketAccessTier.Field, true),
+                new DroneStockSpec("survey-field-damaged", "SurveyField", false, 3, 0.57f, 760, MarketAccessTier.Trusted, false),
+                new DroneStockSpec("utility-field-damaged", "UtilityField", false, 4, 0.49f, 940, MarketAccessTier.Trusted, false),
+                new DroneStockSpec("survey-professional-damaged", "SurveyProfessional", false, 5, 0.52f, 1380, MarketAccessTier.Professional, false)
+            };
+
+            foreach (var spec in specs)
+            {
+                var actor = CreateStockDrone(source, spec, out var createdParts, out var createdSockets);
+                actors.Add(actor);
+                foreach (var part in createdParts) allParts.Add(part);
+                foreach (var socket in createdSockets) sockets.Add(socket);
+                listings.Add(DroneListing(
+                    $"market.stock.{spec.Id}",
+                    actor,
+                    spec.Price,
+                    spec.Complete ? MarketListingCategory.CompleteDrone : MarketListingCategory.SalvageDrone,
+                    spec.Tier,
+                    spec.InitiallyAvailable));
+            }
+        }
+
+        private static DroneActor CreateStockDrone(
+            DroneActor source,
+            DroneStockSpec spec,
+            out IReadOnlyList<InstallablePart> createdParts,
+            out IReadOnlyList<PartSocket> createdSockets)
+        {
+            var clone = UnityEngine.Object.Instantiate(source.gameObject);
+            clone.name = $"Market_{spec.Id}";
+            var assembly = clone.GetComponent<DroneAssemblyState>();
+            assembly.ClearAll();
+            assembly.ConfigureRequirements(4, 4, 1, 1, 1);
+            var sockets = clone.GetComponentsInChildren<PartSocket>(true)
+                .OrderBy(socket => socket.LocalSocketId, StringComparer.Ordinal)
+                .ToArray();
+            var parts = clone.GetComponentsInChildren<InstallablePart>(true)
+                .Where(part => part.transform.IsChildOf(clone.transform))
+                .OrderBy(part => part.name, StringComparer.Ordinal)
+                .ToArray();
+            var socketByPart = parts.ToDictionary(
+                part => part,
+                part => sockets.FirstOrDefault(socket => part.transform.IsChildOf(socket.transform)));
+            foreach (var socket in sockets) socket.ClearForRestore();
+
+            var frame = DroneFrameCatalog.Load(spec.FrameResource);
+            var actor = clone.GetComponent<DroneActor>();
+            actor.Configure(
+                frame,
+                assembly,
+                sockets,
+                $"drone.market.{spec.Id}.01",
+                new DroneStorageLocation(DroneStorageLocationKind.External),
+                spec.Complete ? "Broker-certified serviceable aircraft" : "Brokered battlefield recovery");
+
+            var installable = parts.Where(part => socketByPart[part] != null
+                && part.Definition.Category != PartCategory.StrikeRack).ToArray();
+            // Propeller sockets require their matching motor to be present during deterministic restore.
+            // Keep motors installed in broker stock and express motor faults through condition instead.
+            var missing = installable
+                .Where(part => part.Definition.Category != PartCategory.Motor)
+                .OrderBy(part => StableHash($"{spec.Id}:{part.name}"))
+                .Take(spec.MissingParts)
+                .ToHashSet();
+            var definitions = new Dictionary<PartCategory, PartDefinition>();
+            var counters = new Dictionary<PartCategory, int>();
+            var kept = new List<InstallablePart>();
+            foreach (var part in parts)
+            {
+                var socket = socketByPart[part];
+                if (socket == null || part.Definition.Category == PartCategory.StrikeRack || missing.Contains(part))
+                {
+                    part.transform.SetParent(null, true);
+                    UnityEngine.Object.Destroy(part.gameObject);
+                    continue;
+                }
+
+                if (!definitions.TryGetValue(part.Definition.Category, out var definition))
+                {
+                    definition = CreateDronePartDefinition(frame, part.Definition.Category);
+                    definitions[part.Definition.Category] = definition;
+                }
+                counters.TryGetValue(part.Definition.Category, out var categoryIndex);
+                categoryIndex++;
+                counters[part.Definition.Category] = categoryIndex;
+                part.Initialize(
+                    definition,
+                    $"market-{spec.Id}-{part.Definition.Category.ToString().ToLowerInvariant()}-{categoryIndex:00}");
+                var runtime = part.Runtime.Copy();
+                runtime.condition = Mathf.Clamp01(spec.FrameCondition + (categoryIndex % 3 - 1) * 0.06f);
+                runtime.chargeLevel = part.Definition.Category == PartCategory.Battery
+                    ? (spec.Complete ? 1f : 0.2f)
+                    : 1f;
+                runtime.currentState = InteractionState.Installed;
+                runtime.lastStableState = InteractionState.Installed;
+                runtime.tested = spec.Complete;
+                part.RestoreRuntime(runtime);
+                socket.RestorePart(part, new SocketRuntimeState
+                {
+                    socketId = socket.PersistenceSocketId,
+                    occupiedPartInstanceId = runtime.uniqueInstanceId,
+                    insertionProgress = 1f,
+                    lockRotationProgress = 1f,
+                    latchClosed = true,
+                    fastenerProgress = Enumerable.Repeat(1f, socket.FastenerProgress.Count).ToArray()
+                });
+                kept.Add(part);
+            }
+
+            actor.Runtime.frameCondition = spec.FrameCondition;
+            actor.Runtime.hasDiagnosticResult = spec.Complete;
+            actor.Runtime.latestDiagnosticPassed = spec.Complete;
+            actor.Runtime.diagnosticFaultsDisclosed = spec.Complete;
+            clone.SetActive(false);
+            createdParts = kept;
+            createdSockets = sockets;
+            return actor;
+        }
+
+        private static void AddStrikeDroneStock(
+            DroneActor source,
+            ICollection<DroneActor> actors,
+            ICollection<PartSocket> sockets,
+            ICollection<InstallablePart> allParts,
+            ICollection<MarketListingRuntimeData> listings)
+        {
+            const int stockPoolSize = 10;
+            for (var sequence = 1; sequence <= stockPoolSize; sequence++)
+            {
+                var actor = CreateStrikeStockDrone(
+                    source,
+                    sequence,
+                    out var createdParts,
+                    out var createdSockets);
+                actors.Add(actor);
+                foreach (var part in createdParts) allParts.Add(part);
+                foreach (var socket in createdSockets) sockets.Add(socket);
+                listings.Add(DroneListing(
+                    $"market.stock.expendable-strike-{sequence:00}",
+                    actor,
+                    460 + (sequence % 3) * 10,
+                    MarketListingCategory.StrikeDrone,
+                    MarketAccessTier.Field,
+                    sequence <= 2));
+            }
+        }
+
+        private static DroneActor CreateStrikeStockDrone(
+            DroneActor source,
+            int sequence,
+            out IReadOnlyList<InstallablePart> createdParts,
+            out IReadOnlyList<PartSocket> createdSockets)
+        {
+            var clone = UnityEngine.Object.Instantiate(source.gameObject);
+            clone.name = $"Market_ExpendableStrike_{sequence:00}";
+            foreach (var child in clone.GetComponentsInChildren<Transform>(true))
+            {
+                if (child != clone.transform)
+                {
+                    child.name = $"MarketStrike{sequence:00}_{child.name}";
+                }
+            }
+
+            var assembly = clone.GetComponent<DroneAssemblyState>();
+            assembly.ClearAll();
+            assembly.ConfigureRequirements(4, 4, 1, 1, 1);
+            var sockets = clone.GetComponentsInChildren<PartSocket>(true)
+                .OrderBy(socket => socket.LocalSocketId, StringComparer.Ordinal)
+                .ToArray();
+            var parts = clone.GetComponentsInChildren<InstallablePart>(true)
+                .Where(part => part.transform.IsChildOf(clone.transform))
+                .OrderBy(part => part.name, StringComparer.Ordinal)
+                .ToArray();
+            var socketByPart = parts.ToDictionary(
+                part => part,
+                part => sockets.FirstOrDefault(socket => part.transform.IsChildOf(socket.transform)));
+            foreach (var socket in sockets) socket.ClearForRestore();
+
+            var actor = clone.GetComponent<DroneActor>();
+            actor.Configure(
+                source.FrameDefinition,
+                assembly,
+                sockets,
+                $"drone.market.expendable-strike.{sequence:00}",
+                new DroneStorageLocation(DroneStorageLocationKind.External),
+                "Broker-certified one-way strike airframe");
+
+            var counters = new Dictionary<PartCategory, int>();
+            var kept = new List<InstallablePart>();
+            foreach (var part in parts)
+            {
+                var socket = socketByPart[part];
+                if (socket == null)
+                {
+                    UnityEngine.Object.Destroy(part.gameObject);
+                    continue;
+                }
+
+                var category = part.Definition.Category;
+                counters.TryGetValue(category, out var categoryIndex);
+                categoryIndex++;
+                counters[category] = categoryIndex;
+                part.Initialize(
+                    part.Definition,
+                    $"market-strike-{sequence:00}-{category.ToString().ToLowerInvariant()}-{categoryIndex:00}");
+                var runtime = part.Runtime.Copy();
+                runtime.condition = Mathf.Clamp01(0.93f + ((sequence + categoryIndex) % 4) * 0.01f);
+                runtime.chargeLevel = 1f;
+                runtime.consumableCharges = category == PartCategory.StrikeRack ? 1 : runtime.consumableCharges;
+                runtime.currentState = InteractionState.Tested;
+                runtime.lastStableState = InteractionState.Tested;
+                runtime.tested = true;
+                part.RestoreRuntime(runtime);
+                socket.RestorePart(part, new SocketRuntimeState
+                {
+                    socketId = socket.PersistenceSocketId,
+                    occupiedPartInstanceId = runtime.uniqueInstanceId,
+                    insertionProgress = 1f,
+                    lockRotationProgress = 1f,
+                    latchClosed = true,
+                    fastenerProgress = Enumerable.Repeat(1f, socket.FastenerProgress.Count).ToArray()
+                });
+                kept.Add(part);
+            }
+
+            actor.Runtime.frameCondition = 0.95f;
+            actor.Runtime.isExpendableStrikeDrone = true;
+            actor.Runtime.diagnosticFaultsDisclosed = true;
+            actor.Assembly.RecordDiagnostic(true);
+            clone.SetActive(false);
+            createdParts = kept;
+            createdSockets = sockets;
+            return actor;
+        }
+
+        private static PartDefinition CreateDronePartDefinition(DroneFrameDefinition frame, PartCategory category)
+        {
+            var requirements = frame.SocketRequirements.Count > 0
+                ? frame.SocketRequirements
+                : DroneFrameDefinition.DefaultRequirements(frame.Family);
+            var requirement = requirements.FirstOrDefault(item => item.category == category);
+            var value = category switch
+            {
+                PartCategory.Motor => 150,
+                PartCategory.Propeller => 45,
+                PartCategory.Battery => 210,
+                PartCategory.Camera => 160,
+                PartCategory.Antenna => 90,
+                _ => 50
+            };
+            if (frame.Grade == EquipmentGrade.Professional) value = Mathf.RoundToInt(value * 1.8f);
+            return PartDefinition.CreateTransient(
+                $"part.market.{frame.Family.ToString().ToLowerInvariant()}.{frame.Grade.ToString().ToLowerInvariant()}.{category.ToString().ToLowerInvariant()}",
+                $"{frame.Family} {frame.Grade} {category}",
+                category,
+                new[] { LegacyTag(category) },
+                reliability: frame.Grade == EquipmentGrade.Professional ? 0.96f : 0.88f,
+                standards: new[] { requirement.standard },
+                equipmentGrade: frame.Grade,
+                value: value);
+        }
+
+        private static string LegacyTag(PartCategory category) => category switch
+        {
+            PartCategory.Motor => "motor.standard",
+            PartCategory.Propeller => "propeller.quicklock",
+            PartCategory.Battery => "battery.slide",
+            PartCategory.Camera => "camera.rail",
+            PartCategory.Antenna => "antenna.thread",
+            _ => string.Empty
+        };
+
+        private static int StableHash(string value)
+        {
+            unchecked
+            {
+                var hash = 17;
+                foreach (var character in value ?? string.Empty) hash = hash * 31 + character;
+                return hash & int.MaxValue;
+            }
+        }
+
+        private readonly struct PartStockSpec
+        {
+            public PartStockSpec(PartCategory category, string name, CompatibilityStandardId standard, EquipmentGrade grade, int value, MarketAccessTier tier)
+            {
+                Category = category;
+                Name = name;
+                Standard = standard;
+                Grade = grade;
+                Value = value;
+                Tier = tier;
+            }
+
+            public PartCategory Category { get; }
+            public string Name { get; }
+            public CompatibilityStandardId Standard { get; }
+            public EquipmentGrade Grade { get; }
+            public int Value { get; }
+            public MarketAccessTier Tier { get; }
+        }
+
+        private readonly struct DroneStockSpec
+        {
+            public DroneStockSpec(string id, string frameResource, bool complete, int missingParts, float frameCondition, int price, MarketAccessTier tier, bool initiallyAvailable)
+            {
+                Id = id;
+                FrameResource = frameResource;
+                Complete = complete;
+                MissingParts = missingParts;
+                FrameCondition = frameCondition;
+                Price = price;
+                Tier = tier;
+                InitiallyAvailable = initiallyAvailable;
+            }
+
+            public string Id { get; }
+            public string FrameResource { get; }
+            public bool Complete { get; }
+            public int MissingParts { get; }
+            public float FrameCondition { get; }
+            public int Price { get; }
+            public MarketAccessTier Tier { get; }
+            public bool InitiallyAvailable { get; }
+        }
+
     }
 }

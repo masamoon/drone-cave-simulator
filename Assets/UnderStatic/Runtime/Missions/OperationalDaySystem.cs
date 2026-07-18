@@ -8,6 +8,7 @@ namespace UnderStatic.Missions
     public sealed class OperationalDaySystem : MonoBehaviour
     {
         [SerializeField] private MissionSystem missionSystem;
+        [SerializeField] private BattlefieldSystem battlefieldSystem;
         [SerializeField] private MarketSystem marketSystem;
         [SerializeField] private FleetSystem fleetSystem;
         [SerializeField] private OperationalDayRuntimeData runtime = new();
@@ -20,7 +21,8 @@ namespace UnderStatic.Missions
             int dayIndex = 1,
             int seed = 1701,
             MarketSystem market = null,
-            FleetSystem fleet = null)
+            FleetSystem fleet = null,
+            BattlefieldSystem battlefield = null)
         {
             if (missionSystem != null)
             {
@@ -29,6 +31,7 @@ namespace UnderStatic.Missions
             missionSystem = missions;
             marketSystem = market;
             fleetSystem = fleet;
+            battlefieldSystem = battlefield;
             runtime = new OperationalDayRuntimeData
             {
                 dayIndex = Mathf.Max(1, dayIndex),
@@ -67,8 +70,8 @@ namespace UnderStatic.Missions
             runtime.operationsEnded = false;
             fleetSystem?.PrepareForNextOperationalDay();
             marketSystem?.AdvanceMarketCycle(seed);
-            missionSystem.ResetOffers(runtime.dayIndex, seed);
-            LastStatus = $"Day {runtime.dayIndex} requests posted";
+            battlefieldSystem?.AdvanceDay(runtime.dayIndex, seed);
+            LastStatus = $"Day {runtime.dayIndex} operations available";
             return true;
         }
 

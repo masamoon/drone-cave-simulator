@@ -14,6 +14,8 @@ The physical locker has three authored shelves, three interaction controls, and 
 
 Incomplete, damaged, empty, diagnosed, and ready chassis may occupy the locker. Only a currently complete, serviceable, charged, diagnostically passed service drone may move to the ready shelf.
 
+The roster is now presented as a quick fleet tablet opened with the rebindable `Fleet Tablet` action (`Tab` by default). It groups thumbnail cards by service bay, ready shelf, and each physical locker slot. Tablet actions delegate to the same `FleetSystem` transfers as the world controls, so the UI never creates parallel occupancy or bypasses readiness checks.
+
 ## Drone aggregates and socket identity
 
 Each chassis is represented by a `DroneActor` containing its immutable frame definition, `DroneAssemblyState`, sockets, installed part instances, runtime chassis data, and physical root.

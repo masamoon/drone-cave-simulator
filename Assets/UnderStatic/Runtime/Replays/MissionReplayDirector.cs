@@ -6,6 +6,7 @@ using UnderStatic.Missions;
 using UnderStatic.UI;
 using UnderStatic.Visuals;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace UnderStatic.Replays
 {
@@ -13,6 +14,7 @@ namespace UnderStatic.Replays
     public sealed class MissionReplayDirector : MonoBehaviour
     {
         [SerializeField] private MissionSystem missions;
+        [SerializeField] private BattlefieldSystem battlefield;
         [SerializeField] private FirstPersonController controller;
         [SerializeField] private MissionReplayDefinition definition;
         [SerializeField] private PsxVisualKit visualKit;
@@ -21,22 +23,29 @@ namespace UnderStatic.Replays
         private readonly List<Material> runtimeMaterials = new();
         private readonly List<SuspendedBehaviour> suspendedWorkshopBehaviours = new();
         private GameObject reconstructionRoot;
-        private GameObject droneVisual;
         private GameObject targetVisual;
         private GameObject engagementFlash;
+        private GameObject bombVisual;
         private Camera replayCamera;
         private Mesh terrainMesh;
+        private Texture2D staticTexture;
+        private Color32[] staticPixels;
         private Camera workshopCamera;
         private bool workshopCameraWasEnabled;
         private bool controllerWasEnabled;
         private CursorLockMode previousCursorLock;
         private bool previousCursorVisible;
         private float elapsed;
+        private float staticRefreshElapsed;
+        private uint staticNoiseState;
         private MissionReplayPlan activePlan;
+        private InputAction cancelAction;
 
         public bool IsPlaying { get; private set; }
         public bool IsComplete { get; private set; }
         public bool EngagementVisible { get; private set; }
+        public bool StaticVisible { get; private set; }
+        public MissionReplayStrikeType ActiveStrikeType => activePlan.StrikeType;
         public MissionRuntimeData ActiveMission { get; private set; }
         public MissionTopographyMap ActiveMap { get; private set; }
         public MissionReplayPhase CurrentPhase => !IsPlaying
@@ -45,25 +54,22 @@ namespace UnderStatic.Replays
 
         public void Configure(
             MissionSystem missionSystem,
+            BattlefieldSystem battlefieldSystem,
             FirstPersonController firstPersonController,
             MissionReplayDefinition replayDefinition,
             PsxVisualKit psxVisualKit = null)
         {
             missions = missionSystem;
+            battlefield = battlefieldSystem;
             controller = firstPersonController;
             definition = replayDefinition;
             visualKit = psxVisualKit;
+            BindCancelAction();
         }
 
         public MissionTopographyMap TopographyFor(MissionRuntimeData runtime)
         {
-            var missionDefinition = missions?.DefinitionFor(runtime);
-            return missionDefinition == null || definition == null
-                ? null
-                : MissionTopographyGenerator.Generate(
-                    missionDefinition.TopographyProfile,
-                    runtime.resolutionSeed,
-                    definition);
+            return runtime == null ? null : battlefield?.Map;
         }
 
         public Texture2D PreviewFor(MissionRuntimeData runtime)
@@ -72,7 +78,7 @@ namespace UnderStatic.Replays
             {
                 return null;
             }
-            var key = $"{runtime.missionInstanceId}:{runtime.resolutionSeed}";
+            var key = $"battlefield:{battlefield?.Runtime.seed ?? 0}";
             if (previews.TryGetValue(key, out var preview) && preview != null)
             {
                 return preview;
@@ -89,11 +95,10 @@ namespace UnderStatic.Replays
 
         public bool TryPlay(MissionRuntimeData runtime)
         {
-            var missionDefinition = missions?.DefinitionFor(runtime);
             if (runtime == null
-                || missionDefinition == null
                 || runtime.state != MissionRuntimeState.Resolved
-                || definition == null)
+                || definition == null
+                || battlefield?.Map == null)
             {
                 return false;
             }
@@ -105,8 +110,8 @@ namespace UnderStatic.Replays
 
             ActiveMission = runtime;
             ActiveMap = TopographyFor(runtime);
-            activePlan = MissionReplayPlan.Create(missionDefinition, runtime);
-            BuildReconstruction(missionDefinition);
+            activePlan = MissionReplayPlan.Create(runtime);
+            BuildReconstruction();
             workshopCamera = Camera.main;
             workshopCameraWasEnabled = workshopCamera != null && workshopCamera.enabled;
             if (workshopCamera != null)
@@ -124,9 +129,13 @@ namespace UnderStatic.Replays
             Cursor.lockState = CursorLockMode.Confined;
             Cursor.visible = true;
             elapsed = 0f;
+            staticRefreshElapsed = 0f;
+            staticNoiseState = unchecked((uint)runtime.resolutionSeed) | 1u;
             EngagementVisible = false;
+            StaticVisible = false;
             IsComplete = false;
             IsPlaying = true;
+            cancelAction?.Enable();
             ApplyPose(0f);
             return true;
         }
@@ -137,20 +146,40 @@ namespace UnderStatic.Replays
             {
                 return;
             }
-            elapsed = Mathf.Min(definition.ReplayDuration, elapsed + Mathf.Max(0f, deltaSeconds));
-            var normalized = elapsed / definition.ReplayDuration;
+            var advancedElapsed = elapsed + Mathf.Max(0f, deltaSeconds);
+            elapsed = advancedElapsed;
+            var normalized = Mathf.Clamp01(elapsed / definition.ReplayDuration);
             ApplyPose(normalized);
-            if (activePlan.ShowEngagement && normalized >= 0.6f)
+            StaticVisible = activePlan.ShowEngagement
+                && activePlan.StrikeType == MissionReplayStrikeType.Kamikaze
+                && normalized >= 0.72f;
+            UpdateBombDrop(normalized);
+            if (StaticVisible)
+            {
+                staticRefreshElapsed += Mathf.Max(0f, deltaSeconds);
+                if (staticRefreshElapsed >= 0.055f)
+                {
+                    staticRefreshElapsed = 0f;
+                    RefreshStaticTexture();
+                }
+            }
+            var engagementStart = activePlan.StrikeType == MissionReplayStrikeType.Kamikaze
+                ? 0.715f
+                : 0.6f;
+            if (activePlan.ShowEngagement && normalized >= engagementStart)
             {
                 EngagementVisible = true;
                 if (engagementFlash != null)
                 {
                     engagementFlash.SetActive(true);
                     var pulse = 0.45f
-                        + Mathf.Sin(Mathf.Clamp01((normalized - 0.6f) / 0.08f) * Mathf.PI) * 0.85f;
+                        + Mathf.Sin(Mathf.Clamp01((normalized - engagementStart) / 0.08f) * Mathf.PI) * 0.85f;
                     engagementFlash.transform.localScale = Vector3.one * pulse;
                 }
-                if (targetVisual != null && normalized >= 0.66f)
+                var impactMoment = activePlan.StrikeType == MissionReplayStrikeType.Kamikaze
+                    ? 0.72f
+                    : 0.66f;
+                if (targetVisual != null && normalized >= impactMoment)
                 {
                     targetVisual.transform.localScale = new Vector3(1f, 0.35f, 1f);
                 }
@@ -158,6 +187,13 @@ namespace UnderStatic.Replays
             if (elapsed >= definition.ReplayDuration)
             {
                 IsComplete = true;
+            }
+            var automaticReturnStartsAt = activePlan.StrikeType == MissionReplayStrikeType.Kamikaze
+                ? definition.ReplayDuration * 0.72f
+                : definition.ReplayDuration;
+            if (advancedElapsed >= automaticReturnStartsAt + definition.WorkshopReturnDelay)
+            {
+                StopReplay();
             }
         }
 
@@ -170,6 +206,8 @@ namespace UnderStatic.Replays
             IsPlaying = false;
             IsComplete = false;
             EngagementVisible = false;
+            StaticVisible = false;
+            cancelAction?.Disable();
             if (workshopCamera != null)
             {
                 workshopCamera.enabled = workshopCameraWasEnabled;
@@ -201,25 +239,71 @@ namespace UnderStatic.Replays
             previews.Clear();
         }
 
+        private void OnDestroy()
+        {
+            UnbindCancelAction();
+        }
+
         private void OnGUI()
         {
             if (!IsPlaying || ActiveMission == null)
             {
                 return;
             }
-            var missionDefinition = missions.DefinitionFor(ActiveMission);
+            if (StaticVisible && staticTexture != null)
+            {
+                GUI.DrawTexture(
+                    new Rect(0f, 0f, Screen.width, Screen.height),
+                    staticTexture,
+                    ScaleMode.StretchToFill,
+                    false);
+                GUI.Box(
+                    new Rect(Screen.width * 0.5f - 130f, Screen.height * 0.5f - 28f, 260f, 56f),
+                    "SIGNAL LOST // CONTACT");
+            }
             GUI.Box(new Rect(18f, 18f, 480f, 88f),
-                $"AFTER-ACTION RECONSTRUCTION · {missionDefinition.DisplayName}\n" +
+                $"AFTER-ACTION RECONSTRUCTION · {ActiveMission.plan.sortieType}\n" +
                 $"{CurrentPhase.ToString().ToUpperInvariant()} · {activePlan.Classification}\n" +
                 $"Recorded result: {ActiveMission.outcome}");
             if (GUI.Button(new Rect(Screen.width - 224f, Screen.height - 62f, 206f, 44f),
-                    IsComplete ? "RETURN TO WORKSHOP" : "END RECONSTRUCTION"))
+                    IsComplete ? "RETURN TO WORKSHOP [ESC]" : "END RECONSTRUCTION [ESC]"))
             {
                 StopReplay();
             }
         }
 
-        private void BuildReconstruction(MissionDefinition missionDefinition)
+        private void BindCancelAction()
+        {
+            UnbindCancelAction();
+            cancelAction = controller?.GetComponent<PlayerInput>()?.actions
+                ?.FindAction("UI/Cancel")?.Clone();
+            if (cancelAction != null)
+            {
+                cancelAction.performed += OnCancelPerformed;
+            }
+        }
+
+        private void UnbindCancelAction()
+        {
+            if (cancelAction == null)
+            {
+                return;
+            }
+            cancelAction.performed -= OnCancelPerformed;
+            cancelAction.Disable();
+            cancelAction.Dispose();
+            cancelAction = null;
+        }
+
+        private void OnCancelPerformed(InputAction.CallbackContext context)
+        {
+            if (IsPlaying)
+            {
+                StopReplay();
+            }
+        }
+
+        private void BuildReconstruction()
         {
             DestroyReconstruction();
             reconstructionRoot = new GameObject("MissionReconstruction");
@@ -239,7 +323,6 @@ namespace UnderStatic.Replays
             var roadMaterial = ResolveMaterial(PsxSurface.Road, "Reconstruction Road", new Color(0.33f, 0.27f, 0.18f));
             var vegetationMaterial = ResolveMaterial(PsxSurface.Vegetation, "Reconstruction Vegetation", new Color(0.08f, 0.2f, 0.1f));
             var targetMaterial = ResolveMaterial(PsxSurface.PaintedMetal, "Reconstruction Target", new Color(0.27f, 0.28f, 0.26f));
-            var droneMaterial = ResolveMaterial(PsxSurface.FrameComposite, "Reconstruction Drone", new Color(0.08f, 0.1f, 0.11f));
             var flashMaterial = ResolveMaterial(PsxSurface.Warning, "Reconstruction Confirmation", new Color(0.9f, 0.34f, 0.08f));
 
             var terrain = new GameObject("TopographyMesh");
@@ -251,18 +334,35 @@ namespace UnderStatic.Replays
 
             BuildRoad(roadMaterial);
             BuildVegetation(vegetationMaterial);
-            targetVisual = BuildTarget(missionDefinition, targetMaterial);
-            droneVisual = BuildDrone(droneMaterial);
+            targetVisual = BuildTarget(targetMaterial);
             engagementFlash = CreatePrimitive(
                 "ImpactConfirmation",
                 PrimitiveType.Sphere,
                 reconstructionRoot.transform,
-                SurfacePoint(ActiveMap.TargetAnchor) + Vector3.up * 1.5f,
+                SurfacePoint(activePlan.TargetPosition) + Vector3.up * 1.5f,
                 Vector3.one,
                 flashMaterial);
             engagementFlash.SetActive(false);
 
-            var cameraObject = new GameObject("ReconstructionCamera");
+            if (activePlan.ShowEngagement
+                && activePlan.StrikeType == MissionReplayStrikeType.BombDrop)
+            {
+                bombVisual = CreatePrimitive(
+                    "BombDropOrdnance",
+                    PrimitiveType.Cylinder,
+                    reconstructionRoot.transform,
+                    Vector3.zero,
+                    new Vector3(0.12f, 0.3f, 0.12f),
+                    targetMaterial);
+                bombVisual.SetActive(false);
+            }
+
+            if (activePlan.StrikeType == MissionReplayStrikeType.Kamikaze)
+            {
+                BuildStaticTexture();
+            }
+
+            var cameraObject = new GameObject("FPVReconstructionCamera");
             cameraObject.transform.SetParent(reconstructionRoot.transform, false);
             replayCamera = cameraObject.AddComponent<Camera>();
             replayCamera.fieldOfView = 52f;
@@ -331,12 +431,52 @@ namespace UnderStatic.Replays
             }
         }
 
-        private GameObject BuildTarget(MissionDefinition missionDefinition, Material material)
+        private GameObject BuildTarget(Material material)
         {
             var target = new GameObject("ReconstructionTarget");
             target.transform.SetParent(reconstructionRoot.transform, false);
-            target.transform.localPosition = SurfacePoint(ActiveMap.TargetAnchor);
-            if (missionDefinition.Archetype == MissionArchetype.PrecisionStrike)
+            if (!activePlan.ShowTarget)
+            {
+                if (activePlan.StrikeType == MissionReplayStrikeType.None)
+                {
+                    return target;
+                }
+                var empty = new GameObject("SearchedPosition");
+                empty.transform.SetParent(target.transform, false);
+                empty.transform.localPosition = SurfacePoint(activePlan.TargetPosition);
+                CreatePrimitive("EmptyLastKnownPosition", PrimitiveType.Cylinder, empty.transform,
+                    new Vector3(0f, 0.18f, 0f), new Vector3(2.4f, 0.12f, 2.4f), material);
+                return target;
+            }
+
+            if (activePlan.RevealedPositions.Count > 0)
+            {
+                for (var index = 0; index < activePlan.RevealedPositions.Count; index++)
+                {
+                    var type = index < activePlan.RevealedTypes.Count
+                        ? activePlan.RevealedTypes[index]
+                        : BattlefieldContactType.Infantry;
+                    BuildContactTarget(target.transform, activePlan.RevealedPositions[index], type, material, index);
+                }
+                return target;
+            }
+
+            BuildContactTarget(target.transform, activePlan.TargetPosition, activePlan.TargetType, material, 0);
+            return target;
+        }
+
+        private void BuildContactTarget(
+            Transform parent,
+            Vector2 position,
+            BattlefieldContactType type,
+            Material material,
+            int contactIndex)
+        {
+            var target = new GameObject($"ReconstructionTarget.{contactIndex:00}");
+            target.transform.SetParent(parent, false);
+            target.transform.localPosition = SurfacePoint(position);
+
+            if (type == BattlefieldContactType.Artillery)
             {
                 if (visualKit != null)
                 {
@@ -351,56 +491,22 @@ namespace UnderStatic.Replays
                     barrel.transform.localRotation = Quaternion.Euler(70f, 0f, 0f);
                 }
             }
-            else if (missionDefinition.Archetype == MissionArchetype.ArmedSearch)
+            else if (type == BattlefieldContactType.EnemyBase)
             {
-                if (!activePlan.IdentificationConfirmed)
-                {
-                    CreatePrimitive("UnconfirmedSearchArea", PrimitiveType.Cylinder, target.transform,
-                        new Vector3(0f, 0.18f, 0f), new Vector3(2.4f, 0.12f, 2.4f), material);
-                }
-                else
-                {
-                    for (var index = 0; index < 3; index++)
-                    {
-                        CreatePrimitive($"DistantFigure.{index}", PrimitiveType.Capsule, target.transform,
-                            new Vector3((index - 1) * 1.4f, 0.65f, (index % 2) * 0.9f),
-                            new Vector3(0.36f, 0.65f, 0.36f), material);
-                    }
-                }
+                CreatePrimitive("EnemyBaseBuilding", PrimitiveType.Cube, target.transform,
+                    new Vector3(0f, 0.8f, 0f), new Vector3(3.6f, 1.6f, 3f), material);
+                CreatePrimitive("EnemyBaseAntenna", PrimitiveType.Cylinder, target.transform,
+                    new Vector3(0.8f, 2f, 0.4f), new Vector3(0.12f, 1.5f, 0.12f), material);
             }
             else
             {
-                if (visualKit != null)
+                for (var index = 0; index < 3; index++)
                 {
-                    PsxVisualFactory.CreateObservedVehicle(target.transform, visualKit);
-                }
-                else
-                {
-                    CreatePrimitive("ObservedVehicle", PrimitiveType.Cube, target.transform,
-                        new Vector3(0f, 0.55f, 0f), new Vector3(2.1f, 0.85f, 1.25f), material);
+                    CreatePrimitive($"DistantFigure.{index}", PrimitiveType.Capsule, target.transform,
+                        new Vector3((index - 1) * 1.4f, 0.65f, (index % 2) * 0.9f),
+                        new Vector3(0.36f, 0.65f, 0.36f), material);
                 }
             }
-            return target;
-        }
-
-        private GameObject BuildDrone(Material material)
-        {
-            if (visualKit != null)
-            {
-                return PsxVisualFactory.CreateReplayDrone(reconstructionRoot.transform, visualKit);
-            }
-            var drone = new GameObject("ReconstructionDrone");
-            drone.transform.SetParent(reconstructionRoot.transform, false);
-            CreatePrimitive("Body", PrimitiveType.Cube, drone.transform,
-                Vector3.zero, new Vector3(1.4f, 0.35f, 0.8f), material);
-            for (var index = 0; index < 4; index++)
-            {
-                var x = index % 2 == 0 ? -0.9f : 0.9f;
-                var z = index < 2 ? -0.62f : 0.62f;
-                CreatePrimitive($"Rotor.{index}", PrimitiveType.Cylinder, drone.transform,
-                    new Vector3(x, 0f, z), new Vector3(0.55f, 0.035f, 0.55f), material);
-            }
-            return drone;
         }
 
         private void ApplyPose(float normalized)
@@ -409,19 +515,62 @@ namespace UnderStatic.Replays
             {
                 return;
             }
-            var pose = MissionReplayCameraPath.Evaluate(ActiveMap, normalized);
+            var pose = MissionReplayCameraPath.Evaluate(ActiveMap, activePlan, normalized);
             replayCamera.transform.localPosition = pose.Position;
             replayCamera.transform.localRotation = Quaternion.LookRotation(pose.LookAt - pose.Position, Vector3.up);
-            if (droneVisual != null)
+        }
+
+        private void UpdateBombDrop(float normalized)
+        {
+            if (bombVisual == null)
             {
-                droneVisual.transform.localPosition = pose.DronePosition;
-                var nextPose = MissionReplayCameraPath.Evaluate(ActiveMap, Mathf.Min(1f, normalized + 0.01f));
-                var direction = nextPose.DronePosition - pose.DronePosition;
-                if (direction.sqrMagnitude > 0.0001f)
-                {
-                    droneVisual.transform.localRotation = Quaternion.LookRotation(direction, Vector3.up);
-                }
+                return;
             }
+            var isFalling = normalized >= 0.58f && normalized < 0.66f;
+            bombVisual.SetActive(isFalling);
+            if (!isFalling)
+            {
+                return;
+            }
+            var release = MissionReplayCameraPath.Evaluate(ActiveMap, activePlan, 0.58f).Position
+                + Vector3.down * 0.45f;
+            var impact = SurfacePoint(activePlan.TargetPosition) + Vector3.up * 0.35f;
+            var progress = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.58f, 0.66f, normalized));
+            bombVisual.transform.localPosition = Vector3.Lerp(release, impact, progress);
+        }
+
+        private void BuildStaticTexture()
+        {
+            staticTexture = new Texture2D(128, 72, TextureFormat.RGBA32, false)
+            {
+                name = "FPV Contact Static",
+                filterMode = FilterMode.Point,
+                wrapMode = TextureWrapMode.Repeat
+            };
+            staticPixels = new Color32[staticTexture.width * staticTexture.height];
+            RefreshStaticTexture();
+        }
+
+        private void RefreshStaticTexture()
+        {
+            if (staticTexture == null || staticPixels == null)
+            {
+                return;
+            }
+            for (var index = 0; index < staticPixels.Length; index++)
+            {
+                staticNoiseState ^= staticNoiseState << 13;
+                staticNoiseState ^= staticNoiseState >> 17;
+                staticNoiseState ^= staticNoiseState << 5;
+                var value = (byte)(staticNoiseState & 0xffu);
+                if ((index / staticTexture.width) % 9 == 0)
+                {
+                    value = (byte)(value / 3);
+                }
+                staticPixels[index] = new Color32(value, value, value, 255);
+            }
+            staticTexture.SetPixels32(staticPixels);
+            staticTexture.Apply(false, false);
         }
 
         private GameObject CreatePrimitive(
@@ -474,12 +623,18 @@ namespace UnderStatic.Replays
             {
                 DestroyRuntimeObject(terrainMesh);
             }
+            if (staticTexture != null)
+            {
+                DestroyRuntimeObject(staticTexture);
+            }
             reconstructionRoot = null;
             terrainMesh = null;
             replayCamera = null;
-            droneVisual = null;
             targetVisual = null;
             engagementFlash = null;
+            bombVisual = null;
+            staticTexture = null;
+            staticPixels = null;
             foreach (var material in runtimeMaterials)
             {
                 DestroyRuntimeObject(material);

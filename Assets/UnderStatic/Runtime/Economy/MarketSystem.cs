@@ -19,9 +19,12 @@ namespace UnderStatic.Economy
         private readonly Dictionary<string, InstallablePart> knownParts = new(StringComparer.Ordinal);
         private readonly Dictionary<string, DroneActor> knownDrones = new(StringComparer.Ordinal);
         private readonly List<MarketListingRuntimeData> listings = new();
+        private readonly List<MarketListingRuntimeData> authoredListings = new();
         private EconomyRuntimeData runtime = new();
 
         public int Funds => runtime.funds;
+        public int Reputation => runtime.reputation;
+        public MarketAccessTier AccessTier => definition.AccessTierFor(runtime.reputation);
         public int Cycle => runtime.market.cycle;
         public int Seed => runtime.market.seed;
         public IReadOnlyList<MarketListingRuntimeData> Listings => listings;
@@ -60,6 +63,8 @@ namespace UnderStatic.Economy
             listings.Clear();
             listings.AddRange(initialListings?.Where(item => item != null).Select(item => item.Copy())
                 ?? Enumerable.Empty<MarketListingRuntimeData>());
+            authoredListings.Clear();
+            authoredListings.AddRange(listings.Select(item => item.Copy()));
             runtime = new EconomyRuntimeData
             {
                 funds = definition.StartingFunds,
@@ -82,12 +87,25 @@ namespace UnderStatic.Economy
         public DroneActor ResolveDrone(MarketListingRuntimeData listing) =>
             listing != null && knownDrones.TryGetValue(listing.droneInstanceId, out var drone) ? drone : null;
 
+        public bool IsUnlocked(MarketListingRuntimeData listing) => listing != null
+            && listing.minimumAccessTier <= AccessTier;
+
+        public int ReputationRequiredFor(MarketAccessTier tier) => definition.ReputationRequiredFor(tier);
+
         public MarketTransactionResult TryBuy(string listingId)
         {
             var listing = FindListing(listingId);
             if (listing == null || !listing.isAvailable)
             {
                 return Reject(MarketTransactionFailure.ListingUnavailable, "Listing is no longer available");
+            }
+
+            if (!IsUnlocked(listing))
+            {
+                return Reject(
+                    MarketTransactionFailure.AccessLocked,
+                    $"Requires {listing.minimumAccessTier} broker access · " +
+                    $"{definition.ReputationRequiredFor(listing.minimumAccessTier)} reputation");
             }
 
             if (runtime.funds < listing.askingPrice)
@@ -126,8 +144,10 @@ namespace UnderStatic.Economy
                     return Reject(MarketTransactionFailure.StorageFull, "Drone locker is full");
                 }
 
-                drone.Runtime.hasDiagnosticResult = false;
-                drone.Runtime.latestDiagnosticPassed = false;
+                var completeDrone = listing.category is MarketListingCategory.CompleteDrone
+                    or MarketListingCategory.StrikeDrone;
+                drone.Runtime.hasDiagnosticResult = completeDrone;
+                drone.Runtime.latestDiagnosticPassed = completeDrone;
                 drone.Runtime.diagnosticFaultsDisclosed = listing.exactFaultsDisclosed;
                 if (!fleet.TryAcquireToLocker(drone))
                 {
@@ -188,7 +208,9 @@ namespace UnderStatic.Economy
             listings.Add(new MarketListingRuntimeData
             {
                 listingId = $"resale.drone.{actor.Runtime.droneInstanceId}",
-                category = MarketListingCategory.SalvageDrone,
+                category = actor.IsExpendableStrikeDrone
+                    ? MarketListingCategory.StrikeDrone
+                    : MarketListingCategory.SalvageDrone,
                 askingPrice = Mathf.Max(value + 1, CalculateWholeDroneMarketValue(actor)),
                 isAvailable = true,
                 originatedFromPlayer = true,
@@ -228,7 +250,10 @@ namespace UnderStatic.Economy
             runtime.funds = runtime.funds > int.MaxValue - amount
                 ? int.MaxValue
                 : runtime.funds + amount;
-            LastStatus = $"Received {amount} funds · {source}";
+            runtime.reputation = runtime.reputation > int.MaxValue - amount
+                ? int.MaxValue
+                : runtime.reputation + amount;
+            LastStatus = $"Received {amount} funds · {source} · broker reputation {runtime.reputation}";
             StateChanged?.Invoke();
             return amount;
         }
@@ -237,7 +262,7 @@ namespace UnderStatic.Economy
         {
             runtime.market.cycle++;
             runtime.market.seed = seed;
-            foreach (var listing in listings.Where(item => item.isAvailable && !item.originatedFromPlayer))
+            foreach (var listing in listings.Where(item => IsMarketOwned(item) && !item.originatedFromPlayer))
             {
                 var hash = StableHash($"{seed}:{runtime.market.cycle}:{listing.listingId}");
                 var variance = 0.94f + (hash % 13) * 0.01f;
@@ -246,6 +271,7 @@ namespace UnderStatic.Economy
 
             listings.Sort((left, right) => StableHash($"{seed}:{left.listingId}")
                 .CompareTo(StableHash($"{seed}:{right.listingId}")));
+            RefreshRotatingStock(seed);
             SyncRuntimeListings();
             LastStatus = $"Market cycle {runtime.market.cycle} prepared";
             StateChanged?.Invoke();
@@ -265,7 +291,7 @@ namespace UnderStatic.Economy
             }
 
             foreach (var saved in restored.market.listings.Where(item => item != null
-                         && item.category == MarketListingCategory.SalvageDrone))
+                         && item.category != MarketListingCategory.Part))
             {
                 if (!knownDrones.TryGetValue(saved.droneInstanceId, out var actor))
                 {
@@ -288,7 +314,7 @@ namespace UnderStatic.Economy
 
         public bool RestoreState(EconomyRuntimeData restored)
         {
-            if (restored?.market?.listings == null || restored.funds < 0)
+            if (restored?.market?.listings == null || restored.funds < 0 || restored.reputation < 0)
             {
                 LastStatus = "Market load rejected: invalid economy data";
                 return false;
@@ -310,7 +336,17 @@ namespace UnderStatic.Economy
             runtime = restored.Copy();
             listings.Clear();
             listings.AddRange(runtime.market.listings.Select(item => item.Copy()));
+            foreach (var authored in authoredListings.Where(authored =>
+                         listings.All(item => !string.Equals(
+                             item.listingId,
+                             authored.listingId,
+                             StringComparison.Ordinal))
+                         && IsMarketOwned(authored)))
+            {
+                listings.Add(authored.Copy());
+            }
             ApplyMarketOwnership();
+            SyncRuntimeListings();
             LastStatus = "Market restored";
             StateChanged?.Invoke();
             return true;
@@ -372,12 +408,55 @@ namespace UnderStatic.Economy
                     part.SetLocation(StorageLocationId.MarketStock, "Market stock");
                     part.gameObject.SetActive(false);
                 }
-                else if (listing.category == MarketListingCategory.SalvageDrone
+                else if (listing.category != MarketListingCategory.Part
                          && ResolveDrone(listing) is { } actor)
                 {
                     fleet?.UnregisterExternalActor(actor);
                 }
             }
+        }
+
+        private void RefreshRotatingStock(int seed)
+        {
+            foreach (var listing in listings.Where(item => item.rotatesWithMarket && IsMarketOwned(item)))
+            {
+                listing.isAvailable = false;
+            }
+
+            SelectRotatingStock(MarketListingCategory.Part, definition.RotatingPartCount, seed);
+            SelectRotatingStock(MarketListingCategory.StrikeDrone, definition.RotatingStrikeDroneCount, seed);
+            SelectRotatingStock(MarketListingCategory.CompleteDrone, definition.RotatingCompleteDroneCount, seed);
+            SelectRotatingStock(MarketListingCategory.SalvageDrone, definition.RotatingDamagedDroneCount, seed);
+        }
+
+        private void SelectRotatingStock(MarketListingCategory category, int count, int seed)
+        {
+            foreach (var listing in listings
+                         .Where(item => item.rotatesWithMarket
+                             && item.category == category
+                             && IsUnlocked(item)
+                             && IsMarketOwned(item))
+                         .OrderBy(item => StableHash($"stock:{seed}:{runtime.market.cycle}:{item.listingId}"))
+                         .Take(Mathf.Max(1, count)))
+            {
+                listing.isAvailable = true;
+            }
+        }
+
+        private bool IsMarketOwned(MarketListingRuntimeData listing)
+        {
+            if (listing == null)
+            {
+                return false;
+            }
+
+            if (listing.category == MarketListingCategory.Part)
+            {
+                return ResolvePart(listing)?.Runtime.storageLocation == StorageLocationId.MarketStock;
+            }
+
+            var drone = ResolveDrone(listing);
+            return drone != null && (fleet == null || !fleet.ContainsActor(drone));
         }
 
         private void SyncRuntimeListings()

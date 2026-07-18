@@ -1,5 +1,7 @@
 # MILESTONE 05 — Daily Sorties and Abstract Battlefield Missions
 
+> Historical scope note: Milestone 05.4 supersedes the authored daily-request, mission-definition, and deployment-site flow in this document. This file remains a record of the earlier implementation target.
+
 ## 1. Objective
 
 Connect workshop preparation to a playable daily operation loop:

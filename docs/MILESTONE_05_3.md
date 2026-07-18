@@ -1,5 +1,7 @@
 # MILESTONE 05.3 — Daily Continuity and Sortie Economy
 
+> Historical scope note: Milestone 05.4 supersedes daily request replacement and extends the saved mission state with a persistent battlefield, planning draft, active progress, and contact history. Economy and continuity decisions not explicitly changed by 05.4 remain applicable.
+
 ## Objective
 
 Close the prototype campaign loop around the existing mission, fleet, inventory, and market authorities:

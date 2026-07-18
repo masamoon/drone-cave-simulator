@@ -6,6 +6,7 @@ using UnderStatic.Lab;
 using UnderStatic.Parts;
 using UnderStatic.Persistence;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace UnderStatic.UI
 {
@@ -19,8 +20,33 @@ namespace UnderStatic.UI
         [SerializeField] private string workflowLabel = "SERVICE REPAIR";
         [SerializeField] private InventorySystem inventory;
         [SerializeField] private DroneServiceModeController serviceMode;
+        [SerializeField] private PlayerInput playerInput;
+        [SerializeField] private bool visibleOnStart;
         private readonly StringBuilder builder = new(512);
         private FleetSystem fleetSystem;
+        private InputAction toggleAction;
+
+        public bool IsVisible { get; private set; }
+
+        public void ToggleVisibility()
+        {
+            IsVisible = !IsVisible;
+        }
+
+        private void Awake()
+        {
+            IsVisible = visibleOnStart;
+        }
+
+        private void OnEnable()
+        {
+            BindToggleAction();
+        }
+
+        private void OnDisable()
+        {
+            UnbindToggleAction();
+        }
 
         public void Configure(
             DroneAssemblyState targetAssembly,
@@ -34,6 +60,12 @@ namespace UnderStatic.UI
             diagnostic = diagnosticSwitch;
             saveSystem = persistence;
             workflowLabel = string.IsNullOrWhiteSpace(workflow) ? "SERVICE REPAIR" : workflow;
+        }
+
+        public void ConfigureInput(PlayerInput input)
+        {
+            playerInput = input;
+            BindToggleAction();
         }
 
         public void ConfigureInventory(InventorySystem inventorySystem)
@@ -76,7 +108,7 @@ namespace UnderStatic.UI
 
         private void OnGUI()
         {
-            if (assembly == null || serviceMode?.IsActive == true)
+            if (!IsVisible || assembly == null || serviceMode?.IsActive == true)
             {
                 return;
             }
@@ -123,6 +155,37 @@ namespace UnderStatic.UI
                     410f,
                     (selectedPart == null ? 300f : 338f) + extraHeight + (inventory == null ? 0f : 58f)),
                 builder.ToString());
+        }
+
+        private void BindToggleAction()
+        {
+            UnbindToggleAction();
+            toggleAction = playerInput?.actions?.FindAction("Debug/Toggle Panel")?.Clone();
+            if (toggleAction == null)
+            {
+                return;
+            }
+
+            toggleAction.performed += OnTogglePerformed;
+            toggleAction.Enable();
+        }
+
+        private void UnbindToggleAction()
+        {
+            if (toggleAction == null)
+            {
+                return;
+            }
+
+            toggleAction.performed -= OnTogglePerformed;
+            toggleAction.Disable();
+            toggleAction.Dispose();
+            toggleAction = null;
+        }
+
+        private void OnTogglePerformed(InputAction.CallbackContext context)
+        {
+            ToggleVisibility();
         }
 
         private static string FormatMaintenance(string summary)

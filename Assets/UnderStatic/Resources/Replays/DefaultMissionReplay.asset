@@ -19,3 +19,4 @@ MonoBehaviour:
   contourBands: 9
   vegetationDensity: 0.085
   replayDuration: 12
+  workshopReturnDelay: 2

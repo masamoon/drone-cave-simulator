@@ -10,7 +10,7 @@ namespace UnderStatic.Persistence
     [Serializable]
     public sealed class MilestoneSaveData
     {
-        public int version = 8;
+        public int version = 10;
         public PartSaveRecord[] parts;
         public SocketRuntimeState[] sockets;
         public InventorySaveData inventory;
@@ -18,6 +18,7 @@ namespace UnderStatic.Persistence
         public EconomyRuntimeData economy;
         public MissionSaveData missions;
         public OperationalDayRuntimeData operationalDay;
+        public BattlefieldRuntimeData battlefield;
 
         // Version 1 fields remain readable for Milestone 1 saves.
         public PartRuntimeData part;

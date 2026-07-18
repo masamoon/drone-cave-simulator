@@ -4,7 +4,7 @@
 
 **Under Static** is a low-poly first-person workshop-management game about operating a concealed drone support cell near an active frontline.
 
-The player works inside a small hidden room. They repair damaged drones, construct serviceable aircraft from mismatched spare parts, charge batteries, sort components, and choose which battlefield requests deserve support.
+The player works inside a small hidden room. They repair damaged drones, construct serviceable aircraft from mismatched spare parts, charge batteries, sort components, and plan sorties against a persistent local battlefield picture.
 
 The enemy is materially superior. The player cannot dominate the battlefield. They can only influence individual moments:
 
@@ -44,7 +44,7 @@ The game combines:
 - subdued environmental storytelling;
 - short, sudden horror sequences.
 
-The player does not manually fly drones in the MVP. Their skill lies in preparation, equipment configuration, mission selection, deployment choice, reserve management, and recognizing when continued activity is too dangerous.
+The player does not manually fly drones in the MVP. Their skill lies in preparation, equipment configuration, route and target planning, intelligence management, reserve management, and recognizing when continued activity is too dangerous.
 
 ---
 
@@ -236,7 +236,7 @@ The player should often choose between:
 
 The player does not command conventional forces directly.
 
-Friendly units generate requests such as:
+The persistent battlefield presents opportunities such as:
 
 - inspect a road;
 - observe a tree line;
@@ -247,18 +247,17 @@ Friendly units generate requests such as:
 - maintain observation for artillery;
 - determine whether an enemy drone team is present.
 
-Each request has:
+Each discovered contact has:
 
 - location;
-- urgency;
-- required capability;
-- likely duration;
+- type and durability;
+- current or stale intelligence;
+- distance from the workshop;
 - operational value;
-- risk;
-- consequence of failure;
-- contribution to workshop exposure.
+- risk and suitability for the staged aircraft;
+- consequence of acting late or with the wrong loadout.
 
-The player cannot satisfy all requests.
+The player cannot observe or attack every contact immediately. Mobile infantry intelligence decays when a new day begins, forcing a choice between acting on nearby information now and pursuing more valuable distant targets.
 
 Success means changing important local outcomes while preserving enough capability to continue.
 
@@ -321,7 +320,7 @@ A normal session represents an operational shift lasting approximately 25–45 m
 
 The player reviews:
 
-- available mission requests;
+- the persistent battlefield map and known contacts;
 - returned equipment;
 - damaged components;
 - charged and depleted batteries;
@@ -342,21 +341,18 @@ The player:
 - performs functional tests;
 - moves completed drones to the ready area.
 
-New battlefield requests may arrive while preparation is underway.
+Active sorties may reveal new contacts while preparation is underway.
 
 ### 6.3 Deploy
 
 At the tactical map, the player chooses:
 
-- which mission to accept;
-- which completed drone to assign;
-- which launch or deployment position to use;
-- a broad route;
-- mission profile;
-- recovery plan;
-- lost-link behaviour.
+- which completed drone to stage;
+- Recon, Kamikaze Strike, or Grenade Drop;
+- a reconnaissance route or discovered target;
+- whether the intelligence is current enough to justify committing the aircraft or ordnance.
 
-The mission then runs as an abstract operation.
+All routes originate at the visible workshop marker. The sortie then runs as an abstract operation while its progress remains visible on the same map.
 
 ### 6.4 Manage concurrent work
 
@@ -623,53 +619,38 @@ For the vertical slice, battery interaction follows after the motor framework is
 
 Missions are abstract simulations rather than piloted sequences.
 
-Mission definition:
+Immutable sortie profiles define:
 
-- mission type;
-- location;
-- urgency;
+- sortie type;
 - required capabilities;
-- optional advantages;
-- duration;
-- environmental risk;
-- enemy risk;
-- detection contribution;
-- success and failure outcomes;
-- narrative report templates.
+- whether the airframe or a charge is committed;
+- distance and scoring weights;
+- target suitability;
+- wear and duration tuning.
+
+Mutable mission state owns the saved planning draft, one active sortie, resolved history, committed resources, rewards, and fleet transitions. It does not own battlefield truth.
 
 Mission result considers:
 
 - assigned drone statistics;
 - part condition;
-- deployment site;
-- route;
-- mission risk;
-- workshop exposure;
+- planned route or selected contact;
+- distance from the workshop;
+- intelligence age;
+- sortie-to-target suitability;
 - random variation within readable bounds.
 
 The player should understand why a mission was likely to succeed or fail.
 
 ---
 
-### 8.9 Deployment system
+### 8.9 Persistent battlefield system
 
-Missions can be launched from different positions:
+One deterministic 4 km × 4 km map persists for an entire run. The workshop is visible near its southwest corner. Hidden ground truth is kept separate from player-visible intelligence.
 
-- primary workshop exit;
-- secondary concealed hatch;
-- remote launch team;
-- temporary field point.
+Reconnaissance routes reveal contacts inside a sensor corridor as the aircraft reaches them. Artillery and the enemy base remain stationary. Infantry relocates between days, leaving a selectable stale last-known position that may produce a no-contact strike. Reconnaissance can reacquire it. Destroyed contacts remain crossed out, and rewards are granted once from contact state.
 
-Deployment positions trade:
-
-- preparation time;
-- route quality;
-- signal quality;
-- recovery chance;
-- workshop exposure;
-- availability.
-
-Repeated use of the same position increases detection risk.
+Changing workshop or launch location is a future mechanic. Until implemented, every sortie originates at the workshop marker.
 
 ---
 
@@ -683,7 +664,7 @@ Inputs include:
 - transmitter power;
 - number of launches;
 - repeated flight paths;
-- repeated deployment positions;
+- repeated flight paths;
 - active jammer use;
 - nighttime light leakage;
 - audible testing at dangerous times;
@@ -858,8 +839,9 @@ The smallest meaningful MVP contains:
 - visible spare-parts inventory;
 - damaged and intact part condition;
 - one simple salvage or cannibalization action;
-- one abstract reconnaissance mission;
-- two possible deployment positions;
+- one persistent battlefield map;
+- player-planned reconnaissance and strike sorties;
+- persistent current, stale, disproven, and destroyed contact intelligence;
 - returned equipment wear.
 
 ### Concealment
@@ -871,13 +853,13 @@ The smallest meaningful MVP contains:
 
 ### Content
 
-- one vertical-slice scenario: **Road Watch**.
+- one deterministic local battlefield containing infantry, artillery, and an enemy base.
 
 ---
 
-## 12. Vertical slice: Road Watch
+## 12. Vertical slice: Persistent Sorties
 
-The player receives a request to inspect a supply road.
+The player repairs and stages a reconnaissance drone, then creates the operation on the persistent tactical map.
 
 Sequence:
 
@@ -889,11 +871,11 @@ Sequence:
 6. The player installs a charged battery.
 7. The player performs a motor test.
 8. The player places the drone on the ready shelf.
-9. At the map, the player accepts the Road Watch mission.
-10. The player chooses between a safer remote launch and a faster workshop-adjacent launch.
-11. The mission resolves while the player continues working.
-12. A report identifies suspicious activity near the road.
-13. The drone returns with depleted battery and minor wear.
+9. At the map, the player draws a reconnaissance route within the aircraft's range.
+10. The mission resolves while the player continues working and contacts appear progressively.
+11. The reconnaissance drone returns with depleted battery and minor wear.
+12. The player stages a strike-capable drone and selects a discovered contact.
+13. The strike report updates that contact on the same persistent map.
 14. An unidentified aircraft is heard overhead.
 15. The radio operator warns that local transmissions may be exposed.
 16. The player shuts down the transmitter and darkens the relevant equipment.
@@ -904,8 +886,8 @@ The slice proves:
 - tactile repair;
 - modular construction;
 - physical inventory;
-- mission selection;
-- deployment choice;
+- hands-on route and target planning;
+- persistent intelligence;
 - persistent equipment wear;
 - workshop risk;
 - quiet-to-horror tonal transition.
@@ -970,7 +952,7 @@ Create visible storage, condition, salvage, and cannibalization.
 
 ### Milestone 5
 
-Implement one abstract reconnaissance mission and deployment choice.
+Implement the persistent battlefield, player-planned reconnaissance and strike sorties, and after-action reconstruction.
 
 ### Milestone 6
 

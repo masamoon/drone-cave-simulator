@@ -14,6 +14,7 @@ namespace UnderStatic.UI
     public sealed class TacticalMapTerminal : MonoBehaviour, IActivatable
     {
         [SerializeField] private MissionSystem missions;
+        [SerializeField] private BattlefieldSystem battlefield;
         [SerializeField] private OperationalDaySystem operationalDay;
         [SerializeField] private FleetSystem fleet;
         [SerializeField] private MarketSystem market;
@@ -22,20 +23,21 @@ namespace UnderStatic.UI
         [SerializeField] private Renderer focusRenderer;
         [SerializeField] private MissionReplayDirector replayDirector;
 
-        private string selectedMissionId = string.Empty;
-        private string selectedSiteId = string.Empty;
         private MaterialPropertyBlock propertyBlock;
+        private Texture2D mapPreview;
+        private int mapPreviewSeed = int.MinValue;
+        private Texture2D lineTexture;
+        private string selectedReportId = string.Empty;
+        private int draggingWaypoint = -1;
 
         public bool IsOpen { get; private set; }
-        public string SelectedMissionId => selectedMissionId;
-        public string SelectedSiteId => selectedSiteId;
-        public Texture2D SelectedTopographyPreview => replayDirector?.PreviewFor(
-            missions?.FindMission(selectedMissionId));
-        public string InteractionPrompt => "E: review daily sortie requests";
+        public string InteractionPrompt => "E: plan battlefield sortie";
         public Transform InteractionTransform => transform;
+        public Texture2D SelectedTopographyPreview => MapPreview();
 
         public void Configure(
             MissionSystem missionSystem,
+            BattlefieldSystem battlefieldSystem,
             OperationalDaySystem daySystem,
             FleetSystem fleetSystem,
             MarketSystem marketSystem,
@@ -45,6 +47,7 @@ namespace UnderStatic.UI
             MissionReplayDirector reconstructionDirector = null)
         {
             missions = missionSystem;
+            battlefield = battlefieldSystem;
             operationalDay = daySystem;
             fleet = fleetSystem;
             market = marketSystem;
@@ -52,7 +55,6 @@ namespace UnderStatic.UI
             controller = firstPersonController;
             focusRenderer = mapRenderer ?? GetComponent<Renderer>();
             replayDirector = reconstructionDirector;
-            selectedSiteId = missions?.Sites.FirstOrDefault()?.Id ?? string.Empty;
         }
 
         public void Activate()
@@ -73,6 +75,7 @@ namespace UnderStatic.UI
         public void Close()
         {
             IsOpen = false;
+            draggingWaypoint = -1;
             if (controller != null)
             {
                 controller.enabled = true;
@@ -81,74 +84,34 @@ namespace UnderStatic.UI
             Cursor.visible = false;
         }
 
-        public bool SelectMission(string missionInstanceId)
+        public bool SelectSortieType(SortieType type) => missions?.SetDraftType(type) == true;
+        public bool AddReconWaypoint(Vector2 normalized) => missions?.AddWaypoint(normalized) == true;
+        public bool MoveReconWaypoint(int index, Vector2 normalized) => missions?.MoveWaypoint(index, normalized) == true;
+        public bool RemoveReconWaypoint(int index) => missions?.RemoveWaypoint(index) == true;
+        public bool SelectTarget(string contactId) => missions?.SelectTarget(contactId) == true;
+
+        public bool LaunchDraft()
         {
-            if (missions?.FindMission(missionInstanceId) == null)
+            if (missions?.TryLaunchDraft() != true)
             {
                 return false;
             }
-            selectedMissionId = missionInstanceId;
-            return true;
-        }
-
-        public bool SelectSite(string siteId)
-        {
-            if (missions?.Sites.Any(site => string.Equals(site.Id, siteId, StringComparison.Ordinal)) != true)
-            {
-                return false;
-            }
-            selectedSiteId = siteId;
-            return true;
-        }
-
-        public bool AcceptSelected() => missions?.TryAccept(selectedMissionId) == true;
-
-        public bool AssignSelected()
-        {
-            var runtime = missions?.FindMission(selectedMissionId);
-            return runtime != null && missions.TryAssign(
-                selectedMissionId,
-                selectedSiteId,
-                runtime.resolutionSeed);
-        }
-
-        public bool LaunchSelected()
-        {
-            if (missions?.TryLaunch(selectedMissionId) != true)
-            {
-                return false;
-            }
-            Close();
-            return true;
-        }
-
-        public bool AcknowledgeSelected() => missions?.TryAcknowledgeReport(selectedMissionId) == true;
-
-        public bool EndOperations() => operationalDay?.TryEndOperations() == true;
-
-        public bool BeginNextDay()
-        {
-            if (operationalDay?.TryBeginNextDay() != true)
-            {
-                return false;
-            }
-
-            selectedMissionId = missions.Missions.FirstOrDefault()?.missionInstanceId ?? string.Empty;
             return true;
         }
 
         public bool ReplaySelected()
         {
-            var runtime = missions?.FindMission(selectedMissionId);
-            if (runtime == null
-                || runtime.state != MissionRuntimeState.Resolved
-                || replayDirector == null)
+            var runtime = missions?.FindMission(selectedReportId) ?? missions?.LatestReport;
+            if (runtime == null || replayDirector?.TryPlay(runtime) != true)
             {
                 return false;
             }
             Close();
-            return replayDirector.TryPlay(runtime);
+            return true;
         }
+
+        public bool EndOperations() => operationalDay?.TryEndOperations() == true;
+        public bool BeginNextDay() => operationalDay?.TryBeginNextDay() == true;
 
         public void SetFocused(bool focused)
         {
@@ -172,159 +135,372 @@ namespace UnderStatic.UI
             }
         }
 
+        private void OnDestroy()
+        {
+            DestroyRuntimeTexture(mapPreview);
+            DestroyRuntimeTexture(lineTexture);
+        }
+
         private void OnGUI()
         {
-            if (missions == null)
+            if (missions == null || battlefield == null)
             {
                 return;
             }
-
             if (!IsOpen)
             {
                 DrawActiveStatus();
                 return;
             }
 
-            var panel = new Rect((Screen.width - 980f) * 0.5f, (Screen.height - 680f) * 0.5f, 980f, 680f);
+            var panelWidth = Mathf.Min(1120f, Screen.width - 24f);
+            var panelHeight = Mathf.Min(720f, Screen.height - 24f);
+            var panel = new Rect(
+                (Screen.width - panelWidth) * 0.5f,
+                (Screen.height - panelHeight) * 0.5f,
+                panelWidth,
+                panelHeight);
             GUI.Box(panel, string.Empty);
-            GUI.Label(new Rect(panel.x + 22f, panel.y + 16f, 620f, 30f),
-                $"TACTICAL REQUESTS · DAY {operationalDay.Runtime.dayIndex} · " +
-                $"SORTIES {operationalDay.Runtime.completedSorties} · " +
-                $"FUNDS {market?.Funds ?? 0} · SALVAGE {inventory?.ScrapCount ?? 0}");
-            if (GUI.Button(new Rect(panel.xMax - 110f, panel.y + 14f, 88f, 32f), "CLOSE"))
+            GUI.Label(new Rect(panel.x + 18f, panel.y + 14f, panel.width - 140f, 28f),
+                $"PERSISTENT BATTLEFIELD · DAY {operationalDay.Runtime.dayIndex} · " +
+                $"SORTIES {operationalDay.Runtime.completedSorties} · FUNDS {market?.Funds ?? 0} · " +
+                $"SALVAGE {inventory?.ScrapCount ?? 0}");
+            if (GUI.Button(new Rect(panel.xMax - 104f, panel.y + 10f, 86f, 32f), "CLOSE"))
             {
                 Close();
                 return;
             }
 
-            var y = panel.y + 62f;
-            foreach (var runtime in missions.Missions)
-            {
-                var definition = missions.DefinitionFor(runtime);
-                var selected = runtime.missionInstanceId == selectedMissionId;
-                if (GUI.Button(new Rect(panel.x + 22f, y, 520f, 72f),
-                        $"{(selected ? "> " : string.Empty)}{definition.DisplayName} · {definition.Archetype}\n" +
-                        $"{runtime.state} · value {definition.OperationalValue} · {definition.DurationSeconds:0}s\n" +
-                        definition.Briefing))
-                {
-                    SelectMission(runtime.missionInstanceId);
-                }
-                y += 80f;
-            }
-
-            var selectedRuntime = missions.FindMission(selectedMissionId);
-            var preview = replayDirector?.PreviewFor(selectedRuntime);
-            if (preview != null)
-            {
-                GUI.Label(new Rect(panel.x + 22f, panel.y + 314f, 520f, 24f),
-                    "GENERATED TOPOGRAPHY · SAME SEED DRIVES 3D RECONSTRUCTION");
-                GUI.DrawTexture(
-                    new Rect(panel.x + 22f, panel.y + 340f, 520f, 240f),
-                    preview,
-                    ScaleMode.StretchToFill,
-                    false);
-            }
-
-            DrawSelectedDetails(panel);
+            DrawSortieTypeButtons(panel);
+            var mapRect = new Rect(panel.x + 18f, panel.y + 86f,
+                Mathf.Min(730f, panel.width * 0.67f), panel.height - 108f);
+            DrawMap(mapRect);
+            DrawPlannerPanel(new Rect(mapRect.xMax + 14f, mapRect.y,
+                panel.xMax - mapRect.xMax - 32f, mapRect.height));
+            HandleMapInput(mapRect);
         }
 
-        private void DrawSelectedDetails(Rect panel)
+        private void DrawSortieTypeButtons(Rect panel)
         {
-            var runtime = missions.FindMission(selectedMissionId);
-            if (runtime == null)
+            var x = panel.x + 18f;
+            foreach (var type in new[] { SortieType.Recon, SortieType.KamikazeStrike, SortieType.GrenadeDrop })
             {
-                GUI.Label(new Rect(panel.x + 568f, panel.y + 70f, 380f, 120f),
-                    "Select a request to inspect its requirements and aircraft fit.");
+                var selected = missions.Draft.sortieType == type;
+                if (GUI.Button(new Rect(x, panel.y + 48f, 184f, 30f),
+                        $"{(selected ? "> " : string.Empty)}{LabelFor(type)}"))
+                {
+                    missions.SetDraftType(type);
+                }
+                x += 192f;
+            }
+        }
+
+        private void DrawMap(Rect mapRect)
+        {
+            GUI.Box(mapRect, string.Empty);
+            var preview = MapPreview();
+            if (preview != null)
+            {
+                GUI.DrawTexture(new Rect(mapRect.x + 4f, mapRect.y + 4f,
+                    mapRect.width - 8f, mapRect.height - 8f), preview, ScaleMode.StretchToFill, false);
+            }
+
+            var active = missions.ActiveMission;
+            if (active == null && missions.Draft.sortieType == SortieType.Recon)
+            {
+                DrawReconRangeEnvelope(mapRect, fleet.ReadyDrone);
+            }
+            var plan = active?.plan ?? missions.PreviewPlan();
+            if (plan != null && plan.route?.Length >= 2)
+            {
+                DrawRoute(mapRect, plan, active?.pathProgress ?? 0f, active != null);
+            }
+            DrawContactMarker(mapRect, BattlefieldSystem.WorkshopPosition,
+                new Color(0.2f, 0.9f, 1f), "WORKSHOP", false);
+            foreach (var contact in battlefield.VisibleContacts)
+            {
+                DrawContact(mapRect, contact);
+            }
+            if (active != null && active.plan.route.Length >= 2)
+            {
+                DrawContactMarker(mapRect, RoutePoint(active.plan, active.pathProgress),
+                    Color.white, "DRONE", false);
+            }
+            GUI.Label(new Rect(mapRect.x + 8f, mapRect.yMax - 24f, mapRect.width - 16f, 20f),
+                $"4 × 4 KM · {battlefield.VisibleContacts.Count} KNOWN CONTACTS");
+        }
+
+        private void DrawReconRangeEnvelope(Rect mapRect, DroneActor actor)
+        {
+            if (actor == null)
+            {
                 return;
             }
 
-            var definition = missions.DefinitionFor(runtime);
-            var actor = fleet.ReadyDrone;
-            var eligibility = missions.EvaluateEligibility(runtime, actor);
-            var selectedSite = missions.Sites.FirstOrDefault(site => site.Id == selectedSiteId);
-            var expectedWear = Mathf.Clamp(
-                definition.ExpectedWear + (selectedSite != null ? selectedSite.WearModifier : 0f),
-                0f,
-                0.2f);
-            var y = panel.y + 70f;
-            GUI.Label(new Rect(panel.x + 568f, y, 380f, 28f), definition.DisplayName.ToUpperInvariant());
-            y += 34f;
-            GUI.Label(new Rect(panel.x + 568f, y, 380f, 55f),
-                $"Requires: {definition.RequiredCapabilities}\n" +
-                $"Battery reserve: {definition.MinimumBattery:P0} · expected frame wear: {expectedWear:P1}");
-            y += 62f;
-            GUI.Label(new Rect(panel.x + 568f, y, 380f, 96f), actor == null
-                ? "READY SHELF: EMPTY"
-                : $"READY: {actor.FrameDefinition.DisplayName} · value {actor.Stats.ComponentValue}\n" +
-                  $"OBS {actor.Stats.Observation:0.00} END {actor.Stats.Endurance:0.00} " +
-                  $"CTL {actor.Stats.Control:0.00} PAY {actor.Stats.Payload:0.00}\n" +
-                  (actor.IsExpendableStrikeDrone && definition.Archetype != MissionArchetype.Recon
-                      ? "EXPENDABLE · ARMED SORTIE CONSUMES THIS AIRFRAME\n"
-                      : string.Empty) +
-                  eligibility.Reason);
-            y += 106f;
-
-            GUI.Label(new Rect(panel.x + 568f, y, 380f, 26f), "DEPLOYMENT SITE");
-            y += 30f;
-            foreach (var site in missions.Sites)
+            var routeRange = MissionSystem.ReconRangeKilometres(actor);
+            var sensorHalfWidth = MissionSystem.ReconSensorHalfWidthKilometres(actor);
+            var contactReach = routeRange * 0.5f + sensorHalfWidth;
+            var normalizedRadius = contactReach / BattlefieldSystem.StrategicSizeKilometres;
+            const int segmentCount = 72;
+            for (var index = 0; index < segmentCount; index += 2)
             {
-                var selected = site.Id == selectedSiteId;
-                if (GUI.Button(new Rect(panel.x + 568f, y, 370f, 42f),
-                        $"{(selected ? "> " : string.Empty)}{site.DisplayName} · " +
-                        $"time ×{site.DurationMultiplier:0.00} · handling {site.WearModifier:+0.00;-0.00;0.00}"))
+                var startAngle = index / (float)segmentCount * Mathf.PI * 2f;
+                var endAngle = (index + 1f) / segmentCount * Mathf.PI * 2f;
+                var start = BattlefieldSystem.WorkshopPosition + new Vector2(
+                    Mathf.Cos(startAngle), Mathf.Sin(startAngle)) * normalizedRadius;
+                var end = BattlefieldSystem.WorkshopPosition + new Vector2(
+                    Mathf.Cos(endAngle), Mathf.Sin(endAngle)) * normalizedRadius;
+                var guiStart = MapToGui(mapRect, start);
+                var guiEnd = MapToGui(mapRect, end);
+                if (mapRect.Contains(guiStart) && mapRect.Contains(guiEnd))
                 {
-                    SelectSite(site.Id);
-                }
-                y += 48f;
-            }
-
-            if (runtime.state == MissionRuntimeState.Resolved)
-            {
-                y += 8f;
-                GUI.Box(new Rect(panel.x + 560f, y, 388f, 150f),
-                    $"{runtime.outcome} · score {runtime.breakdown.finalScore:0.00}\n" +
-                    $"ID {(runtime.breakdown.positiveIdentification ? "CONFIRMED" : "NOT CONFIRMED")} · " +
-                    $"{(runtime.aircraftExpended ? "AIRFRAME EXPENDED" : $"battery -{runtime.batteryConsumed:P0} · wear -{runtime.frameWear:P0}")}\n" +
-                    $"REWARD +{runtime.fundsAwarded} funds · +{runtime.salvageAwarded} salvage\n" +
-                    runtime.breakdown.summary);
-            }
-
-            var buttonY = panel.yMax - 58f;
-            if (runtime.state == MissionRuntimeState.Resolved)
-            {
-                GUI.enabled = replayDirector != null;
-                if (GUI.Button(new Rect(panel.x + 22f, buttonY, 180f, 36f), "VIEW RECONSTRUCTION"))
-                {
-                    ReplaySelected();
+                    DrawLine(guiStart, guiEnd, new Color(0.2f, 0.85f, 1f, 0.8f), 2f);
                 }
             }
-            else
+            GUI.Label(new Rect(mapRect.x + 8f, mapRect.y + 8f, 320f, 20f),
+                $"RECON CONTACT REACH {contactReach:0.00} KM · ROUTE {routeRange:0.00} KM");
+        }
+
+        private void DrawRoute(Rect mapRect, SortiePlanData plan, float progress, bool active)
+        {
+            var points = plan.route.Select(item => MapToGui(mapRect, item.ToVector2())).ToArray();
+            var colour = plan.routeDistanceKilometres > plan.availableRangeKilometres
+                ? new Color(0.9f, 0.2f, 0.15f)
+                : new Color(0.15f, 0.85f, 0.7f);
+            if (plan.sortieType == SortieType.Recon)
             {
-                GUI.enabled = runtime.state == MissionRuntimeState.Available;
-                if (GUI.Button(new Rect(panel.x + 22f, buttonY, 180f, 36f), "ACCEPT")) AcceptSelected();
-            }
-            GUI.enabled = runtime.state == MissionRuntimeState.Accepted && eligibility.Eligible;
-            if (GUI.Button(new Rect(panel.x + 210f, buttonY, 180f, 36f), "ASSIGN READY DRONE")) AssignSelected();
-            GUI.enabled = runtime.state == MissionRuntimeState.Assigned;
-            if (GUI.Button(new Rect(panel.x + 398f, buttonY, 180f, 36f), "LAUNCH")) LaunchSelected();
-            GUI.enabled = runtime.state == MissionRuntimeState.Resolved && !runtime.reportAcknowledged;
-            if (GUI.Button(new Rect(panel.x + 586f, buttonY, 180f, 36f), "ACKNOWLEDGE REPORT")) AcknowledgeSelected();
-            GUI.enabled = missions.ActiveMission == null;
-            var dayEnded = operationalDay.Runtime.operationsEnded;
-            if (GUI.Button(
-                    new Rect(panel.x + 774f, buttonY, 174f, 36f),
-                    dayEnded ? "BEGIN NEXT DAY" : "END OPERATIONS"))
-            {
-                if (dayEnded)
+                var corridorPixels = plan.sensorHalfWidthKilometres
+                    / BattlefieldSystem.StrategicSizeKilometres * mapRect.width * 2f;
+                for (var index = 1; index < points.Length; index++)
                 {
-                    BeginNextDay();
+                    DrawLine(points[index - 1], points[index], new Color(0.1f, 0.55f, 0.5f, 0.18f), corridorPixels);
+                }
+            }
+            for (var index = 1; index < points.Length; index++)
+            {
+                var isAutomaticReturn = plan.sortieType == SortieType.Recon && index == points.Length - 1;
+                if (isAutomaticReturn)
+                {
+                    DrawDashedLine(points[index - 1], points[index], colour);
                 }
                 else
                 {
-                    EndOperations();
+                    DrawLine(points[index - 1], points[index], colour, 2f);
                 }
             }
+            if (!active && missions.Draft.sortieType == SortieType.Recon)
+            {
+                for (var index = 0; index < missions.Draft.waypoints.Length; index++)
+                {
+                    var point = MapToGui(mapRect, missions.Draft.waypoints[index].ToVector2());
+                    GUI.Box(new Rect(point.x - 8f, point.y - 8f, 16f, 16f), (index + 1).ToString());
+                }
+            }
+        }
+
+        private void DrawContact(Rect mapRect, BattlefieldContactView contact)
+        {
+            var colour = contact.IntelState switch
+            {
+                BattlefieldIntelState.Current => contact.Type switch
+                {
+                    BattlefieldContactType.Infantry => new Color(0.95f, 0.72f, 0.18f),
+                    BattlefieldContactType.Artillery => new Color(0.95f, 0.35f, 0.18f),
+                    _ => new Color(0.8f, 0.18f, 0.14f)
+                },
+                BattlefieldIntelState.Stale => new Color(0.65f, 0.55f, 0.28f),
+                BattlefieldIntelState.Disproven => new Color(0.45f, 0.45f, 0.45f),
+                _ => new Color(0.25f, 0.25f, 0.25f)
+            };
+            var suffix = contact.IntelState switch
+            {
+                BattlefieldIntelState.Stale => $" STALE · LAST SEEN DAY {contact.LastSeenDay}",
+                BattlefieldIntelState.Disproven => " NOT FOUND",
+                BattlefieldIntelState.Destroyed => " DESTROYED",
+                _ when contact.CurrentStrength < contact.MaximumStrength =>
+                    $" DAMAGED {contact.CurrentStrength}/{contact.MaximumStrength}",
+                _ => string.Empty
+            };
+            DrawContactMarker(mapRect, contact.Position, colour,
+                $"{ShortLabel(contact.Type)}{suffix}", contact.IntelState == BattlefieldIntelState.Destroyed);
+        }
+
+        private void DrawPlannerPanel(Rect rect)
+        {
+            GUI.Box(rect, string.Empty);
+            var actor = fleet.ReadyDrone;
+            var eligibility = missions.EvaluateDraft(actor);
+            var plan = missions.PreviewPlan();
+            var y = rect.y + 12f;
+            GUI.Label(new Rect(rect.x + 12f, y, rect.width - 24f, 24f), LabelFor(missions.Draft.sortieType));
+            y += 28f;
+            GUI.Label(new Rect(rect.x + 12f, y, rect.width - 24f, 88f), actor == null
+                ? "READY SHELF: EMPTY"
+                : $"READY: {actor.FrameDefinition.DisplayName}\n" +
+                  $"END {actor.Stats.Endurance:0.00} OBS {actor.Stats.Observation:0.00} " +
+                  $"CTL {actor.Stats.Control:0.00} PAY {actor.Stats.Payload:0.00}\n" +
+                  (actor.IsExpendableStrikeDrone ? "EXPENDABLE AIRFRAME\n" : "RECOVERABLE AIRFRAME\n") +
+                  eligibility.Reason);
+            y += 94f;
+            if (plan != null)
+            {
+                GUI.Label(new Rect(rect.x + 12f, y, rect.width - 24f, 52f),
+                    $"ROUTE {plan.routeDistanceKilometres:0.00} / {plan.availableRangeKilometres:0.00} KM\n" +
+                    (plan.sortieType == SortieType.Recon
+                        ? $"SENSOR HALF-WIDTH {plan.sensorHalfWidthKilometres:0.00} KM"
+                        : $"TARGET {plan.targetContactId}"));
+            }
+            y += 58f;
+            if (missions.Draft.sortieType == SortieType.Recon)
+            {
+                if (GUI.Button(new Rect(rect.x + 12f, y, 90f, 30f), "UNDO")) missions.UndoWaypoint();
+                if (GUI.Button(new Rect(rect.x + 108f, y, 90f, 30f), "CLEAR")) missions.ClearDraftGeometry();
+                y += 38f;
+                GUI.Label(new Rect(rect.x + 12f, y, rect.width - 24f, 48f),
+                    "LEFT CLICK: add / drag waypoint\nRIGHT CLICK: remove waypoint\nReturn leg is automatic.");
+                y += 56f;
+            }
+            else
+            {
+                GUI.Label(new Rect(rect.x + 12f, y, rect.width - 24f, 48f),
+                    "Select a CURRENT or STALE contact icon.\nStale infantry may no longer be present.");
+                y += 56f;
+            }
+
+            GUI.enabled = eligibility.Eligible;
+            if (GUI.Button(new Rect(rect.x + 12f, y, rect.width - 24f, 36f), "LAUNCH PLANNED SORTIE"))
+            {
+                LaunchDraft();
+            }
             GUI.enabled = true;
+            y += 48f;
+            DrawSortieLog(new Rect(rect.x + 10f, y, rect.width - 20f, rect.yMax - y - 54f));
+
+            GUI.enabled = missions.ActiveMission == null;
+            var dayEnded = operationalDay.Runtime.operationsEnded;
+            if (GUI.Button(new Rect(rect.x + 12f, rect.yMax - 42f, rect.width - 24f, 30f),
+                    dayEnded ? "BEGIN NEXT DAY" : "END OPERATIONS"))
+            {
+                if (dayEnded) BeginNextDay(); else EndOperations();
+            }
+            GUI.enabled = true;
+        }
+
+        private void DrawSortieLog(Rect rect)
+        {
+            GUI.Box(rect, "SORTIE LOG");
+            var reports = missions.Missions.Where(item => item.state == MissionRuntimeState.Resolved)
+                .Reverse().Take(4).ToArray();
+            var y = rect.y + 24f;
+            foreach (var report in reports)
+            {
+                var selected = selectedReportId == report.missionInstanceId;
+                if (GUI.Button(new Rect(rect.x + 8f, y, rect.width - 16f, 28f),
+                        $"{(selected ? "> " : string.Empty)}{report.plan.sortieType} · {report.outcome}"))
+                {
+                    selectedReportId = report.missionInstanceId;
+                }
+                y += 32f;
+            }
+            var selectedReport = missions.FindMission(selectedReportId) ?? missions.LatestReport;
+            if (selectedReport == null)
+            {
+                return;
+            }
+            var reportStyle = new GUIStyle(GUI.skin.box)
+            {
+                alignment = TextAnchor.UpperLeft,
+                wordWrap = true,
+                clipping = TextClipping.Clip
+            };
+            var reportText = $"{selectedReport.outcome} · score {selectedReport.breakdown.finalScore:0.00}\n" +
+                $"REWARD +{selectedReport.fundsAwarded} funds · +{selectedReport.salvageAwarded} salvage\n" +
+                selectedReport.breakdown.summary;
+            var reportY = y + 4f;
+            var buttonY = rect.yMax - 34f;
+            GUI.Box(new Rect(rect.x + 8f, reportY, rect.width - 16f,
+                Mathf.Max(0f, buttonY - reportY - 4f)), reportText, reportStyle);
+            GUI.enabled = replayDirector != null;
+            if (GUI.Button(new Rect(rect.x + 8f, buttonY, rect.width * 0.55f - 12f, 26f), "RECONSTRUCTION"))
+            {
+                ReplaySelected();
+            }
+            GUI.enabled = !selectedReport.reportAcknowledged;
+            if (GUI.Button(new Rect(rect.x + rect.width * 0.55f, buttonY,
+                    rect.width * 0.45f - 8f, 26f), "ACKNOWLEDGE"))
+            {
+                missions.TryAcknowledgeReport(selectedReport.missionInstanceId);
+            }
+            GUI.enabled = true;
+        }
+
+        private void HandleMapInput(Rect mapRect)
+        {
+            if (missions.ActiveMission != null || !mapRect.Contains(Event.current.mousePosition))
+            {
+                if (Event.current.type == EventType.MouseUp)
+                {
+                    draggingWaypoint = -1;
+                }
+                return;
+            }
+            var normalized = GuiToMap(mapRect, Event.current.mousePosition);
+            if (missions.Draft.sortieType == SortieType.Recon)
+            {
+                var nearest = FindWaypoint(mapRect, Event.current.mousePosition);
+                if (Event.current.type == EventType.MouseDown && Event.current.button == 0)
+                {
+                    if (nearest >= 0)
+                    {
+                        draggingWaypoint = nearest;
+                    }
+                    else
+                    {
+                        missions.AddWaypoint(normalized);
+                    }
+                    Event.current.Use();
+                }
+                else if (Event.current.type == EventType.MouseDrag && draggingWaypoint >= 0)
+                {
+                    missions.MoveWaypoint(draggingWaypoint, normalized);
+                    Event.current.Use();
+                }
+                else if (Event.current.type == EventType.MouseUp)
+                {
+                    draggingWaypoint = -1;
+                }
+                else if (Event.current.type == EventType.MouseDown && Event.current.button == 1 && nearest >= 0)
+                {
+                    missions.RemoveWaypoint(nearest);
+                    Event.current.Use();
+                }
+                return;
+            }
+            if (Event.current.type == EventType.MouseDown && Event.current.button == 0)
+            {
+                var target = battlefield.VisibleContacts
+                    .Where(item => item.IsTargetable)
+                    .OrderBy(item => Vector2.Distance(MapToGui(mapRect, item.Position), Event.current.mousePosition))
+                    .FirstOrDefault();
+                if (!string.IsNullOrEmpty(target.ContactId)
+                    && Vector2.Distance(MapToGui(mapRect, target.Position), Event.current.mousePosition) <= 22f)
+                {
+                    missions.SelectTarget(target.ContactId);
+                    Event.current.Use();
+                }
+            }
+        }
+
+        private int FindWaypoint(Rect mapRect, Vector2 mouse)
+        {
+            for (var index = 0; index < missions.Draft.waypoints.Length; index++)
+            {
+                if (Vector2.Distance(MapToGui(mapRect, missions.Draft.waypoints[index].ToVector2()), mouse) <= 12f)
+                {
+                    return index;
+                }
+            }
+            return -1;
         }
 
         private void DrawActiveStatus()
@@ -334,13 +510,125 @@ namespace UnderStatic.UI
             {
                 return;
             }
-            var definition = missions.DefinitionFor(active);
-            var progress = active.resolvedDurationSeconds <= 0f
-                ? 0f
-                : Mathf.Clamp01(active.elapsedSeconds / active.resolvedDurationSeconds);
-            GUI.Box(new Rect(Screen.width - 390f, Screen.height - 92f, 374f, 70f),
-                $"SORTIE · {definition.DisplayName} · {active.state}\n" +
-                $"{progress:P0} · workshop interaction remains available\n{missions.LastStatus}");
+            GUI.Box(new Rect(Screen.width - 410f, Screen.height - 92f, 394f, 70f),
+                $"SORTIE · {active.plan.sortieType} · {active.state}\n" +
+                $"{active.pathProgress:P0} · workshop interaction remains available\n{missions.LastStatus}");
+        }
+
+        private Texture2D MapPreview()
+        {
+            var seed = battlefield?.Runtime.seed ?? int.MinValue;
+            if (mapPreview != null && mapPreviewSeed != seed)
+            {
+                DestroyRuntimeTexture(mapPreview);
+                mapPreview = null;
+            }
+            if (mapPreview == null && battlefield?.Map != null)
+            {
+                mapPreview = MissionTopographyPresentation.BuildPreview(battlefield.Map);
+                mapPreviewSeed = seed;
+            }
+            return mapPreview;
+        }
+
+        private void DrawContactMarker(Rect mapRect, Vector2 normalized, Color colour, string label, bool crossed)
+        {
+            var point = MapToGui(mapRect, normalized);
+            var previous = GUI.color;
+            GUI.color = colour;
+            GUI.Box(new Rect(point.x - 7f, point.y - 7f, 14f, 14f), string.Empty);
+            GUI.color = previous;
+            if (crossed)
+            {
+                DrawLine(point + new Vector2(-8f, -8f), point + new Vector2(8f, 8f), Color.gray, 2f);
+                DrawLine(point + new Vector2(-8f, 8f), point + new Vector2(8f, -8f), Color.gray, 2f);
+            }
+            GUI.Label(new Rect(point.x + 9f, point.y - 10f, 150f, 22f), label);
+        }
+
+        private void DrawDashedLine(Vector2 start, Vector2 end, Color colour)
+        {
+            var distance = Vector2.Distance(start, end);
+            var direction = distance <= 0f ? Vector2.zero : (end - start) / distance;
+            for (var offset = 0f; offset < distance; offset += 12f)
+            {
+                DrawLine(start + direction * offset,
+                    start + direction * Mathf.Min(distance, offset + 6f), colour, 2f);
+            }
+        }
+
+        private void DrawLine(Vector2 start, Vector2 end, Color colour, float width)
+        {
+            lineTexture ??= CreateLineTexture();
+            var matrix = GUI.matrix;
+            var previous = GUI.color;
+            var delta = end - start;
+            var angle = Mathf.Atan2(delta.y, delta.x) * Mathf.Rad2Deg;
+            GUI.color = colour;
+            GUIUtility.RotateAroundPivot(angle, start);
+            GUI.DrawTexture(new Rect(start.x, start.y - width * 0.5f, delta.magnitude, width), lineTexture);
+            GUI.matrix = matrix;
+            GUI.color = previous;
+        }
+
+        private static Vector2 MapToGui(Rect rect, Vector2 normalized) => new(
+            rect.x + normalized.x * rect.width,
+            rect.y + (1f - normalized.y) * rect.height);
+
+        private static Vector2 GuiToMap(Rect rect, Vector2 gui) => new(
+            Mathf.Clamp01((gui.x - rect.x) / rect.width),
+            Mathf.Clamp01(1f - (gui.y - rect.y) / rect.height));
+
+        private static Vector2 RoutePoint(SortiePlanData plan, float progress)
+        {
+            var route = plan.route.Select(item => item.ToVector2()).ToArray();
+            var total = BattlefieldSystem.RouteDistanceKilometres(route);
+            var remaining = total * Mathf.Clamp01(progress);
+            for (var index = 1; index < route.Length; index++)
+            {
+                var segment = BattlefieldSystem.MapDistanceKilometres(route[index - 1], route[index]);
+                if (remaining <= segment)
+                {
+                    return Vector2.Lerp(route[index - 1], route[index], segment <= 0f ? 1f : remaining / segment);
+                }
+                remaining -= segment;
+            }
+            return route[^1];
+        }
+
+        private static string LabelFor(SortieType type) => type switch
+        {
+            SortieType.KamikazeStrike => "KAMIKAZE STRIKE",
+            SortieType.GrenadeDrop => "GRENADE DROP",
+            _ => "RECON"
+        };
+
+        private static string ShortLabel(BattlefieldContactType type) => type switch
+        {
+            BattlefieldContactType.Artillery => "ARTILLERY",
+            BattlefieldContactType.EnemyBase => "ENEMY BASE",
+            _ => "INFANTRY"
+        };
+
+        private static Texture2D CreateLineTexture()
+        {
+            var texture = new Texture2D(1, 1, TextureFormat.RGBA32, false)
+            {
+                name = "Tactical Map Line",
+                hideFlags = HideFlags.HideAndDontSave
+            };
+            texture.SetPixel(0, 0, Color.white);
+            texture.Apply(false, true);
+            return texture;
+        }
+
+        private static void DestroyRuntimeTexture(Texture2D texture)
+        {
+            if (texture == null)
+            {
+                return;
+            }
+            if (Application.isPlaying) Destroy(texture); else DestroyImmediate(texture);
         }
     }
 }

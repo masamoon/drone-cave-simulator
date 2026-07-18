@@ -13,6 +13,44 @@ using UnityEngine.InputSystem;
 
 namespace UnderStatic.Interaction
 {
+    public enum ServicePartsTab
+    {
+        Inventory,
+        InstalledComponents
+    }
+
+    public readonly struct ServiceComponentStatus
+    {
+        public ServiceComponentStatus(
+            string socketId,
+            string slotLabel,
+            PartCategory category,
+            string componentName,
+            string detail,
+            string statusLabel,
+            bool isEmpty,
+            bool needsAttention)
+        {
+            SocketId = socketId ?? string.Empty;
+            SlotLabel = slotLabel ?? string.Empty;
+            Category = category;
+            ComponentName = componentName ?? string.Empty;
+            Detail = detail ?? string.Empty;
+            StatusLabel = statusLabel ?? string.Empty;
+            IsEmpty = isEmpty;
+            NeedsAttention = needsAttention;
+        }
+
+        public string SocketId { get; }
+        public string SlotLabel { get; }
+        public PartCategory Category { get; }
+        public string ComponentName { get; }
+        public string Detail { get; }
+        public string StatusLabel { get; }
+        public bool IsEmpty { get; }
+        public bool NeedsAttention { get; }
+    }
+
     [DisallowMultipleComponent]
     public sealed class DroneServiceModeController : MonoBehaviour, IActivatable
     {
@@ -41,6 +79,13 @@ namespace UnderStatic.Interaction
         [SerializeField, Min(0.1f)] private float serviceDragDistance = 1.35f;
         [SerializeField, Min(20f)] private float dragCapturePixels = 92f;
         [SerializeField, Min(0.01f)] private float dragPositionSharpness = 18f;
+        [SerializeField] private string serviceTitle = "DRONE SERVICE";
+        [SerializeField] private string activationPrompt = "E: enter drone service mode";
+        [SerializeField] private bool requiresServiceBayDrone = true;
+        [SerializeField] private bool supportsDiagnostic = true;
+        [SerializeField] private bool supportsSalvage = true;
+        [SerializeField] private bool filterInventoryCategory;
+        [SerializeField] private PartCategory inventoryCategoryFilter;
 
         private readonly RaycastHit[] pointerHits = new RaycastHit[32];
         private Transform originalCameraParent;
@@ -74,21 +119,26 @@ namespace UnderStatic.Interaction
         private FleetSystem fleetSystem;
         private MaterialPropertyBlock propertyBlock;
         private string serviceStatus = "Select a component or drag a replacement to an empty socket";
+        private ServicePartsTab selectedPartsTab;
+        private Vector2 installedPartsScroll;
         private Rect inventoryPanelRect;
         private Rect scrapRect;
         private Rect diagnosticRect;
         private Rect exitRect;
+        private float PartsRowStartY => CanShowInstalledComponents ? 126f : 92f;
 
         public bool IsActive { get; private set; }
         public bool IsDraggingPartInWorld => dragIsThreeDimensional;
         public InstallablePart DraggedPart => draggedPart;
         public Transform InteractionTransform => transform;
         public string InteractionPrompt => inventory == null
-            ? "Service bench unavailable"
-            : inventory.DroneIsReadyShelved
+            ? "Service interface unavailable"
+            : requiresServiceBayDrone && inventory.DroneIsReadyShelved
                 ? "Return the drone to the service bay before repair"
-                : "E: enter drone service mode";
+                : activationPrompt;
         public string ServiceStatus => serviceStatus;
+        public ServicePartsTab SelectedPartsTab => selectedPartsTab;
+        public bool CanShowInstalledComponents => requiresServiceBayDrone && sockets.Any(socket => socket != null);
 
         public void Configure(
             Camera targetCamera,
@@ -120,6 +170,33 @@ namespace UnderStatic.Interaction
             distance = Mathf.Clamp(initialDistance, minimumDistance, maximumDistance);
         }
 
+        public void ConfigureStation(
+            string title,
+            string prompt,
+            Vector3 focusOffset,
+            float viewDistance,
+            PartCategory? categoryFilter = null,
+            bool requireServiceDrone = false,
+            bool showDiagnostic = false,
+            bool showSalvage = false,
+            float dragTargetRadiusPixels = -1f)
+        {
+            serviceTitle = string.IsNullOrWhiteSpace(title) ? "SERVICE STATION" : title;
+            activationPrompt = string.IsNullOrWhiteSpace(prompt) ? "E: open service station" : prompt;
+            droneFocusOffset = focusOffset;
+            initialDistance = Mathf.Clamp(viewDistance, minimumDistance, maximumDistance);
+            distance = initialDistance;
+            filterInventoryCategory = categoryFilter.HasValue;
+            inventoryCategoryFilter = categoryFilter.GetValueOrDefault();
+            requiresServiceBayDrone = requireServiceDrone;
+            supportsDiagnostic = showDiagnostic;
+            supportsSalvage = showSalvage;
+            if (dragTargetRadiusPixels > 0f)
+            {
+                dragCapturePixels = Mathf.Max(20f, dragTargetRadiusPixels);
+            }
+        }
+
         public void ConfigureFleet(FleetSystem fleet)
         {
             if (fleetSystem != null)
@@ -133,6 +210,36 @@ namespace UnderStatic.Interaction
                 fleetSystem.ServiceDroneChanged += HandleServiceDroneChanged;
                 HandleServiceDroneChanged(fleetSystem.ServiceDrone);
             }
+        }
+
+        public bool SelectPartsTab(ServicePartsTab tab)
+        {
+            if (tab == ServicePartsTab.InstalledComponents && !CanShowInstalledComponents)
+            {
+                return false;
+            }
+
+            if (draggedPart != null)
+            {
+                CancelServiceDrag();
+            }
+
+            selectedPartsTab = tab;
+            installedPartsScroll = Vector2.zero;
+            serviceStatus = tab == ServicePartsTab.Inventory
+                ? "Drag a replacement from inventory onto a compatible empty socket"
+                : "Review installed, damaged, depleted, unsecured, and missing components";
+            return true;
+        }
+
+        public IReadOnlyList<ServiceComponentStatus> GetInstalledComponentStatuses()
+        {
+            return sockets
+                .Where(socket => socket != null)
+                .OrderBy(socket => socket.AcceptedPrimaryCategory)
+                .ThenBy(socket => socket.LocalSocketId, StringComparer.Ordinal)
+                .Select(CreateComponentStatus)
+                .ToArray();
         }
 
         public void Activate()
@@ -150,9 +257,9 @@ namespace UnderStatic.Interaction
             if (serviceCamera == null
                 || droneTransform == null
                 || inventory == null
-                || inventory.DroneIsReadyShelved)
+                || requiresServiceBayDrone && inventory.DroneIsReadyShelved)
             {
-                serviceStatus = inventory?.DroneIsReadyShelved == true
+                serviceStatus = requiresServiceBayDrone && inventory?.DroneIsReadyShelved == true
                     ? "Return the drone to the service bay before repair"
                     : "Service view is unavailable";
                 return false;
@@ -177,8 +284,12 @@ namespace UnderStatic.Interaction
             serviceCamera.transform.SetParent(null, true);
             Cursor.lockState = CursorLockMode.Confined;
             Cursor.visible = true;
+            selectedPartsTab = ServicePartsTab.Inventory;
+            installedPartsScroll = Vector2.zero;
             IsActive = true;
-            serviceStatus = "Drag a replacement from inventory or click an installed component";
+            serviceStatus = filterInventoryCategory
+                ? $"Drag a {inventoryCategoryFilter.ToString().ToLowerInvariant()} from inventory into the station"
+                : "Drag a replacement from inventory or click an installed component";
             return true;
         }
 
@@ -258,7 +369,7 @@ namespace UnderStatic.Interaction
             part.SetControlledPhysics();
             if (socket.TrySeatFromServiceMode(part))
             {
-                serviceStatus = $"{part.Definition.DisplayName} seated · {socket.InteractionPrompt}";
+                serviceStatus = ResolveInstalledPartStatus(part, socket);
                 return true;
             }
 
@@ -347,16 +458,20 @@ namespace UnderStatic.Interaction
                 var desired = dragGuidanceSocket.SeatedPosition
                     + dragGuidanceSocket.WorldInsertionAxis * remaining;
                 dragGuidanceSocket.UpdateGuidance(draggedPart, desired, deltaTime);
-                if (draggedPart.Runtime.currentState == InteractionState.Seated)
+                if (draggedPart.Runtime.currentState
+                    is InteractionState.Seated or InteractionState.Installed or InteractionState.Tested)
                 {
                     var seatedName = draggedPart.Definition.DisplayName;
+                    var completedSocket = dragGuidanceSocket;
                     dragGuidanceSocket.SetFocused(false);
                     dragGuidanceSocket = null;
                     dragHighlightedSocket = null;
                     draggedPart = null;
                     dragIsThreeDimensional = false;
                     dragOriginSlot = -1;
-                    serviceStatus = $"{seatedName} seated · secure it to finish installation";
+                    serviceStatus = completedSocket.ProcedureType == InstallationProcedureType.ChargingDock
+                        ? $"{seatedName} connected · charging started"
+                        : $"{seatedName} seated · secure it to finish installation";
                 }
 
                 return true;
@@ -417,7 +532,7 @@ namespace UnderStatic.Interaction
                 return false;
             }
 
-            if (scrapRect.Contains(guiPointer))
+            if (supportsSalvage && scrapRect.Contains(guiPointer))
             {
                 if (dragGuidanceSocket != null
                     && draggedPart.Runtime.currentState == InteractionState.Guided)
@@ -446,7 +561,6 @@ namespace UnderStatic.Interaction
                     ?? FindBestDragSocket(guiPointer, draggedPart, out _);
                 if (dropSocket != null && dropSocket.TrySeatFromServiceMode(draggedPart))
                 {
-                    var seatedName = draggedPart.Definition?.DisplayName ?? draggedPart.name;
                     dragGuidanceSocket?.SetFocused(false);
                     dragHighlightedSocket?.SetFocused(false);
                     draggedPart = null;
@@ -454,7 +568,7 @@ namespace UnderStatic.Interaction
                     dragGuidanceSocket = null;
                     dragHighlightedSocket = null;
                     dragOriginSlot = -1;
-                    serviceStatus = $"{seatedName} seated Â· secure it to finish installation";
+                    serviceStatus = ResolveInstalledPartStatus(dropSocket.OccupiedPart, dropSocket);
                     return true;
                 }
             }
@@ -777,6 +891,16 @@ namespace UnderStatic.Interaction
                         serviceStatus = socket.InteractionPrompt;
                     }
                     break;
+                case InstallationProcedureType.ChargingDock:
+                    if (socket.ReleaseChargingDock() && TryExtractPart(part))
+                    {
+                        serviceStatus = $"Removed {part.Definition.DisplayName} from charging dock";
+                    }
+                    else
+                    {
+                        serviceStatus = socket.InteractionPrompt;
+                    }
+                    break;
             }
         }
 
@@ -788,13 +912,14 @@ namespace UnderStatic.Interaction
                 pointerHits,
                 4f,
                 Physics.DefaultRaycastLayers,
-                QueryTriggerInteraction.Ignore);
+                QueryTriggerInteraction.Collide);
             IInteractable closest = null;
             var closestDistance = float.PositiveInfinity;
             for (var index = 0; index < hitCount; index++)
             {
                 var hit = pointerHits[index];
                 IInteractable candidate = hit.collider?.GetComponentInParent<FastenerTarget>();
+                candidate ??= hit.collider?.GetComponentInParent<LatchTarget>();
                 candidate ??= hit.collider?.GetComponentInParent<InstallablePart>();
                 candidate ??= hit.collider?.GetComponentInParent<PartSocket>();
                 if (candidate == null || hit.distance >= closestDistance)
@@ -815,6 +940,11 @@ namespace UnderStatic.Interaction
             if (pointed is PartSocket socket)
             {
                 return socket;
+            }
+
+            if (pointed is LatchTarget latch)
+            {
+                return latch.Socket;
             }
 
             if (pointed is InstallablePart part)
@@ -861,11 +991,24 @@ namespace UnderStatic.Interaction
                 return socket;
             }
 
+            if (hovered is LatchTarget latch)
+            {
+                return latch.Socket;
+            }
+
             return hovered is InstallablePart part ? FindSocketContaining(part) : null;
         }
 
         private PartSocket FindSocketContaining(InstallablePart part) =>
             part == null ? null : sockets.FirstOrDefault(socket => socket?.OccupiedPart == part);
+
+        private static string ResolveInstalledPartStatus(InstallablePart part, PartSocket socket)
+        {
+            var displayName = part?.Definition?.DisplayName ?? part?.name ?? "Part";
+            return socket?.ProcedureType == InstallationProcedureType.ChargingDock
+                ? $"{displayName} connected · charging started"
+                : $"{displayName} seated · {socket?.InteractionPrompt}";
+        }
 
         private PartSocket FindBestDragSocket(
             Vector2 guiPointer,
@@ -900,6 +1043,16 @@ namespace UnderStatic.Interaction
 
         private void SetHovered(IInteractable next)
         {
+            if (hovered is UnityEngine.Object hoveredObject && hoveredObject == null)
+            {
+                hovered = null;
+            }
+
+            if (next is UnityEngine.Object nextObject && nextObject == null)
+            {
+                next = null;
+            }
+
             if (ReferenceEquals(hovered, next))
             {
                 return;
@@ -912,14 +1065,15 @@ namespace UnderStatic.Interaction
 
         private bool PointerOverUi(Vector2 guiPointer) =>
             inventoryPanelRect.Contains(guiPointer)
-            || scrapRect.Contains(guiPointer)
-            || diagnosticRect.Contains(guiPointer)
+            || supportsSalvage && scrapRect.Contains(guiPointer)
+            || supportsDiagnostic && diagnosticRect.Contains(guiPointer)
             || exitRect.Contains(guiPointer);
 
         private bool UpdateDragInput(Vector2 guiPointer)
         {
             if (draggedPart == null
                 && tightenAction?.WasPressedThisFrame() == true
+                && selectedPartsTab == ServicePartsTab.Inventory
                 && inventoryPanelRect.Contains(guiPointer))
             {
                 BeginServiceDrag(FindInventoryPartAt(guiPointer));
@@ -933,7 +1087,7 @@ namespace UnderStatic.Interaction
             if (!dragIsThreeDimensional
                 && tightenAction?.IsPressed() == true
                 && !inventoryPanelRect.Contains(guiPointer)
-                && !scrapRect.Contains(guiPointer))
+                && (!supportsSalvage || !scrapRect.Contains(guiPointer)))
             {
                 PromoteServiceDragToWorld(guiPointer);
             }
@@ -953,9 +1107,14 @@ namespace UnderStatic.Interaction
 
         private InstallablePart FindInventoryPartAt(Vector2 guiPointer)
         {
+            if (selectedPartsTab != ServicePartsTab.Inventory)
+            {
+                return null;
+            }
+
             var available = AvailableInventoryParts();
-            var y = 92f;
-            var maximumY = scrapRect.yMin - 10f;
+            var y = PartsRowStartY;
+            var maximumY = supportsSalvage ? scrapRect.yMin - 10f : Screen.height - 50f;
             foreach (var part in available)
             {
                 if (y + 58f > maximumY)
@@ -980,7 +1139,9 @@ namespace UnderStatic.Interaction
                 .Where(part => part != null
                     && part.gameObject.activeInHierarchy
                     && !part.Runtime.isSalvaged
-                    && part.Runtime.currentState == InteractionState.Loose)
+                    && part.Runtime.currentState == InteractionState.Loose
+                    && (!filterInventoryCategory
+                        || part.Definition?.Category == inventoryCategoryFilter))
                 .OrderBy(part => part.Runtime.storageLocation.ToString())
                 .ThenBy(part => part.Definition?.DisplayName)
                 .ToArray();
@@ -988,8 +1149,12 @@ namespace UnderStatic.Interaction
         private void UpdateUiRects()
         {
             inventoryPanelRect = new Rect(14f, 14f, 340f, Screen.height - 28f);
-            scrapRect = new Rect(30f, Screen.height - 142f, 308f, 92f);
-            diagnosticRect = new Rect(Screen.width - 304f, 18f, 136f, 34f);
+            scrapRect = supportsSalvage
+                ? new Rect(30f, Screen.height - 142f, 308f, 92f)
+                : Rect.zero;
+            diagnosticRect = supportsDiagnostic
+                ? new Rect(Screen.width - 304f, 18f, 136f, 34f)
+                : Rect.zero;
             exitRect = new Rect(Screen.width - 154f, 18f, 136f, 34f);
         }
 
@@ -1009,12 +1174,42 @@ namespace UnderStatic.Interaction
             UpdateUiRects();
 
             GUI.Box(inventoryPanelRect, string.Empty);
-            GUI.Label(new Rect(30f, 24f, 300f, 28f), "SERVICE INVENTORY");
-            GUI.Label(new Rect(30f, 50f, 300f, 38f), "Drag a part onto a compatible empty socket");
-            DrawInventoryRows();
+            GUI.Label(new Rect(30f, 24f, 300f, 28f), "SERVICE PARTS");
+            if (CanShowInstalledComponents)
+            {
+                if (GUI.Button(
+                        new Rect(30f, 52f, 148f, 28f),
+                        selectedPartsTab == ServicePartsTab.Inventory ? "[ INVENTORY ]" : "INVENTORY"))
+                {
+                    SelectPartsTab(ServicePartsTab.Inventory);
+                }
+                if (GUI.Button(
+                        new Rect(190f, 52f, 148f, 28f),
+                        selectedPartsTab == ServicePartsTab.InstalledComponents ? "[ ON DRONE ]" : "ON DRONE"))
+                {
+                    SelectPartsTab(ServicePartsTab.InstalledComponents);
+                }
+            }
 
-            GUI.Box(scrapRect, $"SALVAGE\nDrag damaged parts here\nScrap: {inventory?.ScrapCount ?? 0}");
-            if (GUI.Button(diagnosticRect, "RUN DIAGNOSTIC"))
+            GUI.Label(
+                new Rect(30f, CanShowInstalledComponents ? 86f : 50f, 300f, 34f),
+                selectedPartsTab == ServicePartsTab.InstalledComponents
+                    ? $"{fleetSystem?.ServiceDrone?.FrameDefinition?.DisplayName ?? "Serviced drone"} · component status"
+                    : "Drag a part onto a compatible empty socket");
+            if (selectedPartsTab == ServicePartsTab.InstalledComponents && CanShowInstalledComponents)
+            {
+                DrawInstalledComponentRows();
+            }
+            else
+            {
+                DrawInventoryRows();
+            }
+
+            if (supportsSalvage)
+            {
+                GUI.Box(scrapRect, $"SALVAGE\nDrag damaged parts here\nScrap: {inventory?.ScrapCount ?? 0}");
+            }
+            if (supportsDiagnostic && GUI.Button(diagnosticRect, "RUN DIAGNOSTIC"))
             {
                 RunDiagnostic();
             }
@@ -1026,7 +1221,7 @@ namespace UnderStatic.Interaction
 
             GUI.Box(
                 new Rect(374f, 18f, Mathf.Max(300f, Screen.width - 548f), 54f),
-                "DRONE SERVICE · MMB orbit · wheel zoom · LMB tighten · RMB loosen · 1 save · 2 load");
+                $"{serviceTitle} · MMB orbit · wheel zoom · LMB interact · RMB loosen · 1 save · 2 load");
             var targetPrompt = hovered?.InteractionPrompt ?? ResolveHoveredSocket()?.InteractionPrompt;
             GUI.Box(
                 new Rect(374f, Screen.height - 78f, Mathf.Max(300f, Screen.width - 392f), 58f),
@@ -1052,8 +1247,8 @@ namespace UnderStatic.Interaction
             }
 
             var available = AvailableInventoryParts();
-            var y = 92f;
-            var maximumY = scrapRect.yMin - 10f;
+            var y = PartsRowStartY;
+            var maximumY = supportsSalvage ? scrapRect.yMin - 10f : Screen.height - 50f;
             foreach (var part in available)
             {
                 if (y + 58f > maximumY)
@@ -1077,6 +1272,122 @@ namespace UnderStatic.Interaction
             {
                 GUI.Label(new Rect(30f, y, 300f, 28f), "No loose parts in storage");
             }
+        }
+
+        private void DrawInstalledComponentRows()
+        {
+            var components = GetInstalledComponentStatuses();
+            var maximumY = supportsSalvage ? scrapRect.yMin - 10f : Screen.height - 50f;
+            var viewport = new Rect(30f, PartsRowStartY, 308f, Mathf.Max(80f, maximumY - PartsRowStartY));
+            var content = new Rect(0f, 0f, viewport.width - 18f, Mathf.Max(viewport.height, components.Count * 70f + 4f));
+            installedPartsScroll = GUI.BeginScrollView(viewport, installedPartsScroll, content);
+            for (var index = 0; index < components.Count; index++)
+            {
+                var component = components[index];
+                var row = new Rect(0f, index * 70f, content.width, 64f);
+                GUI.Box(row, string.Empty);
+                GUI.Label(new Rect(row.x + 8f, row.y + 4f, row.width - 92f, 20f), component.SlotLabel);
+                GUI.Label(new Rect(row.x + 8f, row.y + 24f, row.width - 16f, 20f), component.ComponentName);
+                GUI.Label(new Rect(row.x + 8f, row.y + 43f, row.width - 16f, 18f), component.Detail);
+
+                var previousColor = GUI.color;
+                GUI.color = StatusColor(component);
+                GUI.Label(
+                    new Rect(row.xMax - 92f, row.y + 4f, 84f, 20f),
+                    component.StatusLabel);
+                GUI.color = previousColor;
+            }
+            GUI.EndScrollView();
+        }
+
+        private static ServiceComponentStatus CreateComponentStatus(PartSocket socket)
+        {
+            var category = socket.AcceptedPrimaryCategory;
+            var slotLabel = FormatSocketLabel(socket);
+            var part = socket.OccupiedPart;
+            if (part == null)
+            {
+                return new ServiceComponentStatus(
+                    socket.PersistenceSocketId,
+                    slotLabel,
+                    category,
+                    "No component installed",
+                    $"{category} slot vacant",
+                    "EMPTY",
+                    true,
+                    true);
+            }
+
+            var state = part.Runtime.currentState;
+            string status;
+            var needsAttention = true;
+            if (state is not (InteractionState.Installed or InteractionState.Tested))
+            {
+                status = "UNSECURED";
+            }
+            else if (!part.IsServiceable)
+            {
+                status = "DAMAGED";
+            }
+            else if (part.IsBatteryDepleted)
+            {
+                status = "DEPLETED";
+            }
+            else if (part.Runtime.condition < 0.7f)
+            {
+                status = "WORN";
+            }
+            else if (part.Runtime.tested)
+            {
+                status = "TESTED";
+                needsAttention = false;
+            }
+            else
+            {
+                status = "SERVICEABLE";
+                needsAttention = false;
+            }
+
+            var testState = part.Runtime.tested ? "tested" : "not tested";
+            var detail = part.Definition?.Category == PartCategory.Battery
+                ? $"{part.ServiceDescription} · condition {part.Runtime.condition:P0} · {testState}"
+                : $"{part.ServiceDescription} · {testState}";
+            return new ServiceComponentStatus(
+                socket.PersistenceSocketId,
+                slotLabel,
+                category,
+                part.Definition?.DisplayName ?? part.name,
+                detail,
+                status,
+                false,
+                needsAttention);
+        }
+
+        private static string FormatSocketLabel(PartSocket socket)
+        {
+            var id = socket.LocalSocketId ?? string.Empty;
+            var suffixIndex = id.LastIndexOf('.');
+            var suffix = suffixIndex >= 0 && suffixIndex + 1 < id.Length
+                ? id[(suffixIndex + 1)..].Replace('-', ' ').ToUpperInvariant()
+                : string.Empty;
+            var category = socket.AcceptedPrimaryCategory.ToString().ToUpperInvariant();
+            return string.IsNullOrWhiteSpace(suffix)
+                || string.Equals(suffix, category, StringComparison.OrdinalIgnoreCase)
+                    ? category
+                    : $"{category} · {suffix}";
+        }
+
+        private static Color StatusColor(ServiceComponentStatus component)
+        {
+            if (component.IsEmpty || component.StatusLabel is "DAMAGED" or "DEPLETED")
+            {
+                return new Color(1f, 0.42f, 0.3f);
+            }
+            if (component.NeedsAttention)
+            {
+                return new Color(1f, 0.78f, 0.28f);
+            }
+            return new Color(0.42f, 0.92f, 0.62f);
         }
 
         private static string FormatLocation(StorageLocationId location) =>

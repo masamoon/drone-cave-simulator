@@ -19,6 +19,7 @@ namespace UnderStatic.Replays
         [SerializeField, Range(3, 16)] private int contourBands = 9;
         [SerializeField, Range(0f, 0.3f)] private float vegetationDensity = 0.085f;
         [SerializeField, Min(3f)] private float replayDuration = 12f;
+        [SerializeField, Min(0f)] private float workshopReturnDelay = 2f;
 
         public string Id => id;
         public int GridResolution => Mathf.Clamp(gridResolution, 17, 65);
@@ -27,6 +28,7 @@ namespace UnderStatic.Replays
         public int ContourBands => Mathf.Clamp(contourBands, 3, 16);
         public float VegetationDensity => Mathf.Clamp(vegetationDensity, 0f, 0.3f);
         public float ReplayDuration => Mathf.Max(3f, replayDuration);
+        public float WorkshopReturnDelay => Mathf.Max(0f, workshopReturnDelay);
 
         public static MissionReplayDefinition CreateTransient(
             string definitionId = "replay.default",
@@ -35,7 +37,8 @@ namespace UnderStatic.Replays
             float height = 7f,
             int contours = 9,
             float vegetation = 0.085f,
-            float duration = 12f)
+            float duration = 12f,
+            float returnDelay = 2f)
         {
             var definition = CreateInstance<MissionReplayDefinition>();
             definition.id = definitionId;
@@ -45,6 +48,7 @@ namespace UnderStatic.Replays
             definition.contourBands = Mathf.Clamp(contours, 3, 16);
             definition.vegetationDensity = Mathf.Clamp(vegetation, 0f, 0.3f);
             definition.replayDuration = Mathf.Max(3f, duration);
+            definition.workshopReturnDelay = Mathf.Max(0f, returnDelay);
             return definition;
         }
     }

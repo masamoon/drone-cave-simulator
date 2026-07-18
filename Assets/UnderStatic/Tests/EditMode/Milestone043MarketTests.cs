@@ -196,6 +196,54 @@ namespace UnderStatic.Tests.EditMode
         }
 
         [Test]
+        public void MissionPayoutReputation_UnlocksAdvancedStockWithoutBeingSpent()
+        {
+            var inventory = CreateInventory(1);
+            var stock = CreatePart("professional.motor", 0.98f, 200);
+            var listing = PartListing("listing.professional", stock, 200);
+            listing.minimumAccessTier = MarketAccessTier.Professional;
+            var market = CreateMarket(inventory, CreateFleet(), new[] { stock }, null, listing);
+
+            var locked = market.TryBuy(listing.listingId);
+            market.AwardFunds(700, "mission rewards");
+            var purchased = market.TryBuy(listing.listingId);
+
+            Assert.That(locked.Failure, Is.EqualTo(MarketTransactionFailure.AccessLocked));
+            Assert.That(market.AccessTier, Is.EqualTo(MarketAccessTier.Professional));
+            Assert.That(market.Reputation, Is.EqualTo(700));
+            Assert.That(purchased.Succeeded, Is.True, purchased.Message);
+            Assert.That(market.Reputation, Is.EqualTo(700), "Purchasing must not spend reputation");
+            Assert.That(market.CaptureState().reputation, Is.EqualTo(700));
+        }
+
+        [Test]
+        public void RotatingStock_OnlySelectsListingsUnlockedForCurrentReputation()
+        {
+            var fieldPart = CreatePart("field.stock", 1f, 100);
+            var trustedPart = CreatePart("trusted.stock", 1f, 100);
+            var field = PartListing("listing.field", fieldPart, 100);
+            field.rotatesWithMarket = true;
+            var trusted = PartListing("listing.trusted", trustedPart, 100);
+            trusted.minimumAccessTier = MarketAccessTier.Trusted;
+            trusted.rotatesWithMarket = true;
+            var market = CreateMarket(
+                CreateInventory(2),
+                CreateFleet(),
+                new[] { fieldPart, trustedPart },
+                null,
+                field,
+                trusted);
+
+            market.AdvanceMarketCycle(42);
+            Assert.That(market.FindListing(field.listingId).isAvailable, Is.True);
+            Assert.That(market.FindListing(trusted.listingId).isAvailable, Is.False);
+
+            market.AwardFunds(250, "mission rewards");
+            market.AdvanceMarketCycle(43);
+            Assert.That(market.FindListing(trusted.listingId).isAvailable, Is.True);
+        }
+
+        [Test]
         public void SchemaSixRoundTrip_RestoresFundsListingAndPurchasedIdentity()
         {
             var inventory = CreateInventory(2);
@@ -212,7 +260,7 @@ namespace UnderStatic.Tests.EditMode
             Assert.That(market.TryBuy("listing.schema").Succeeded, Is.True);
             var json = save.CaptureAllToJson(new[] { stock }, Array.Empty<PartSocket>());
 
-            Assert.That(json, Does.Contain("\"version\": 6"));
+            Assert.That(json, Does.Contain("\"version\": 9"));
             Assert.That(market.TrySellPart(stock).Succeeded, Is.True);
             Assert.That(save.RestoreAllFromJson(json, new[] { stock }, Array.Empty<PartSocket>()),
                 Is.True, save.LastStatus);

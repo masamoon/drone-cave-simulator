@@ -50,7 +50,7 @@ namespace UnderStatic.Tests.PlayMode
             yield return null;
 
             var fleet = Object.FindAnyObjectByType<FleetSystem>();
-            var service = Object.FindAnyObjectByType<DroneServiceModeController>();
+            var service = GameObject.Find("DroneServiceModeControl").GetComponent<DroneServiceModeController>();
             var diagnostic = Object.FindAnyObjectByType<DroneDiagnosticSwitch>();
             var scoutIdentity = fleet.ServiceDrone.Runtime.droneInstanceId;
             var strikeIdentity = fleet.Locker[0].Runtime.droneInstanceId;
@@ -63,6 +63,57 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(fleet.ServiceDrone.Runtime.hasDiagnosticResult, Is.True);
             Assert.That(fleet.ServiceDrone.Runtime.latestDiagnosticPassed, Is.True);
             Assert.That(fleet.Locker[0].Runtime.hasDiagnosticResult, Is.False);
+        }
+
+        [UnityTest]
+        public IEnumerator FleetTabletOpensFromBoundInputAndRestoresFirstPersonControl()
+        {
+            SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var tablet = Object.FindAnyObjectByType<FleetRosterPanel>();
+            var controller = Object.FindAnyObjectByType<FirstPersonController>();
+
+            Assert.That(tablet, Is.Not.Null);
+            Assert.That(tablet.IsOpen, Is.False);
+            Assert.That(tablet.InputBinding, Does.Contain("Tab").IgnoreCase);
+            Assert.That(controller.enabled, Is.True);
+
+            yield return PressKey(Key.Tab);
+            Assert.That(tablet.IsOpen, Is.True);
+            Assert.That(controller.enabled, Is.False);
+
+            yield return PressKey(Key.Tab);
+            Assert.That(tablet.IsOpen, Is.False);
+            Assert.That(controller.enabled, Is.True);
+        }
+
+        [UnityTest]
+        public IEnumerator FleetTabletShowsCachedThumbnailsAndUsesPhysicalFleetTransfers()
+        {
+            SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var fleet = Object.FindAnyObjectByType<FleetSystem>();
+            var tablet = Object.FindAnyObjectByType<FleetRosterPanel>();
+            var lockerDrone = fleet.Locker[0];
+            var thumbnail = tablet.ThumbnailFor(lockerDrone);
+
+            Assert.That(thumbnail, Is.Not.Null);
+            Assert.That(thumbnail.width, Is.EqualTo(96));
+            Assert.That(thumbnail.height, Is.EqualTo(64));
+            Assert.That(thumbnail.filterMode, Is.EqualTo(FilterMode.Point));
+            Assert.That(tablet.ThumbnailFor(lockerDrone), Is.SameAs(thumbnail));
+
+            Assert.That(tablet.TryBringLockerToService(0), Is.True, fleet.LastStatus);
+            Assert.That(fleet.ServiceDrone, Is.SameAs(lockerDrone));
+            Assert.That(tablet.TryStageService(), Is.True, fleet.LastStatus);
+            Assert.That(fleet.ReadyDrone, Is.SameAs(lockerDrone));
+            Assert.That(tablet.TryStoreReady(), Is.True, fleet.LastStatus);
+            Assert.That(fleet.ReadyDrone, Is.Null);
+            Assert.That(fleet.Locker, Does.Contain(lockerDrone));
         }
 
         [UnityTest]
@@ -107,7 +158,7 @@ namespace UnderStatic.Tests.PlayMode
             var originalService = fleet.ServiceDrone.Runtime.droneInstanceId;
             var originalLocker = fleet.Locker[0].Runtime.droneInstanceId;
 
-            Assert.That(json, Does.Contain("\"version\": 8"));
+            Assert.That(json, Does.Contain("\"version\": 9"));
             Assert.That(sockets.Select(socket => socket.PersistenceSocketId).Distinct().Count(),
                 Is.EqualTo(sockets.Length));
             Assert.That(fleet.TrySwapLockerIntoService(0, false), Is.True);
@@ -125,6 +176,19 @@ namespace UnderStatic.Tests.PlayMode
             yield return null;
             var pressed = new KeyboardState();
             pressed.Press(Key.E);
+            InputSystem.QueueStateEvent(Keyboard.current, pressed);
+            yield return null;
+            InputSystem.QueueStateEvent(Keyboard.current, new KeyboardState());
+            yield return null;
+        }
+
+        private static IEnumerator PressKey(Key key)
+        {
+            Assert.That(Keyboard.current, Is.Not.Null);
+            InputSystem.QueueStateEvent(Keyboard.current, new KeyboardState());
+            yield return null;
+            var pressed = new KeyboardState();
+            pressed.Press(key);
             InputSystem.QueueStateEvent(Keyboard.current, pressed);
             yield return null;
             InputSystem.QueueStateEvent(Keyboard.current, new KeyboardState());

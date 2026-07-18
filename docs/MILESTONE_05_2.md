@@ -1,5 +1,7 @@
 # MILESTONE 05.2 — PSX Visual Pipeline and Representative Asset Set
 
+> Historical scope note: Milestone 05.4 supersedes the old request flow referenced by the visual slice. Its PSX visual-language and representative-asset requirements remain applicable.
+
 ## Objective
 
 Replace the most visible greybox primitives with recognizable, textured, PSX-inspired presentation while preserving every deterministic interaction transform, collider, socket, part identity, and mission result.

@@ -15,3 +15,9 @@ MonoBehaviour:
   startingFunds: 600
   scrapTokenValue: 10
   saleFraction: 0.55
+  trustedReputation: 250
+  professionalReputation: 700
+  rotatingPartCount: 6
+  rotatingStrikeDroneCount: 2
+  rotatingCompleteDroneCount: 2
+  rotatingDamagedDroneCount: 3

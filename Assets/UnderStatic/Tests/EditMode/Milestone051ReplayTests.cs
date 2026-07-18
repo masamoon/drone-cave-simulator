@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using NUnit.Framework;
 using UnderStatic.Missions;
-using UnderStatic.Parts;
 using UnderStatic.Replays;
 using UnityEngine;
 
@@ -16,86 +15,38 @@ namespace UnderStatic.Tests
         {
             foreach (var item in created)
             {
-                if (item != null)
-                {
-                    Object.DestroyImmediate(item);
-                }
+                if (item != null) Object.DestroyImmediate(item);
             }
             created.Clear();
         }
 
         [Test]
-        public void SameSeedAndProfile_ProduceIdenticalTopography()
+        public void PersistentBattlefieldMap_IsDeterministicAndContainsNoBakedTarget()
         {
             var definition = ReplayDefinition();
-            var first = MissionTopographyGenerator.Generate(MissionTopographyProfile.RoadValley, 441, definition);
-            var second = MissionTopographyGenerator.Generate(MissionTopographyProfile.RoadValley, 441, definition);
+            var first = MissionTopographyGenerator.GenerateBattlefield(441, definition);
+            var second = MissionTopographyGenerator.GenerateBattlefield(441, definition);
 
             Assert.That(second.StableFingerprint(), Is.EqualTo(first.StableFingerprint()));
-            Assert.That(second.TargetAnchor, Is.EqualTo(first.TargetAnchor));
-            Assert.That(second.RouteStart, Is.EqualTo(first.RouteStart));
-        }
-
-        [Test]
-        public void DifferentSeeds_ProduceDifferentTopography()
-        {
-            var definition = ReplayDefinition();
-            var first = MissionTopographyGenerator.Generate(MissionTopographyProfile.GunPosition, 12, definition);
-            var second = MissionTopographyGenerator.Generate(MissionTopographyProfile.GunPosition, 13, definition);
-
-            Assert.That(second.StableFingerprint(), Is.Not.EqualTo(first.StableFingerprint()));
-        }
-
-        [Test]
-        public void GeneratedElevation_IsFiniteAndNormalized()
-        {
-            var map = MissionTopographyGenerator.Generate(
-                MissionTopographyProfile.BrokenTreeline,
-                991,
-                ReplayDefinition());
-
-            for (var row = 0; row < map.Resolution; row++)
+            for (var row = 0; row < first.Resolution; row++)
             {
-                for (var x = 0; x < map.Resolution; x++)
+                for (var x = 0; x < first.Resolution; x++)
                 {
-                    var height = map.ElevationAt(x, row);
-                    Assert.That(float.IsNaN(height) || float.IsInfinity(height), Is.False);
-                    Assert.That(height, Is.InRange(0f, 1f));
+                    Assert.That(first.FeaturesAt(x, row) & MissionMapFeature.Target, Is.EqualTo(MissionMapFeature.None));
                 }
             }
-            Assert.That(map.TargetAnchor.x, Is.InRange(0f, 1f));
-            Assert.That(map.TargetAnchor.y, Is.InRange(0f, 1f));
         }
 
         [Test]
-        public void RoadMask_CrossesEveryMapRow()
+        public void TerrainMeshAndPreview_ConsumeSamePersistentMap()
         {
-            var map = MissionTopographyGenerator.Generate(
-                MissionTopographyProfile.RoadValley,
-                73,
-                ReplayDefinition());
-
-            for (var row = 0; row < map.Resolution; row++)
-            {
-                var roadFound = false;
-                for (var x = 0; x < map.Resolution; x++)
-                {
-                    roadFound |= (map.FeaturesAt(x, row) & MissionMapFeature.Road) != 0;
-                }
-                Assert.That(roadFound, Is.True, $"Road missing from row {row}");
-            }
-        }
-
-        [Test]
-        public void TerrainMesh_UsesQuantizedSamplesFromTwoDimensionalMap()
-        {
-            var map = MissionTopographyGenerator.Generate(
-                MissionTopographyProfile.GunPosition,
-                640,
-                ReplayDefinition());
+            var map = MissionTopographyGenerator.GenerateBattlefield(640, ReplayDefinition());
             var mesh = Track(MissionTopographyPresentation.BuildTerrainMesh(map));
+            var preview = Track(MissionTopographyPresentation.BuildPreview(map));
 
             Assert.That(mesh.vertexCount, Is.EqualTo(map.Resolution * map.Resolution));
+            Assert.That(preview.width, Is.EqualTo(map.Resolution));
+            Assert.That(preview.height, Is.EqualTo(map.Resolution));
             var index = map.Resolution * 8 + 11;
             var expected = Mathf.Round(map.ElevationAt(11, 8) * (map.ContourBands - 1))
                 / (map.ContourBands - 1f) * map.ElevationScale;
@@ -103,98 +54,94 @@ namespace UnderStatic.Tests
         }
 
         [Test]
-        public void Preview_UsesMapResolutionAndObjectiveFeature()
+        public void ReplayPlan_UsesSavedRouteTargetAndStrikeType()
         {
-            var map = MissionTopographyGenerator.Generate(
-                MissionTopographyProfile.BrokenTreeline,
-                174,
-                ReplayDefinition());
-            var preview = Track(MissionTopographyPresentation.BuildPreview(map));
-
-            Assert.That(preview.width, Is.EqualTo(map.Resolution));
-            Assert.That(preview.height, Is.EqualTo(map.Resolution));
-            var targetX = Mathf.RoundToInt(map.TargetAnchor.x * (map.Resolution - 1));
-            var targetY = Mathf.RoundToInt(map.TargetAnchor.y * (map.Resolution - 1));
-            Assert.That((map.FeaturesAt(targetX, targetY) & MissionMapFeature.Target) != 0, Is.True);
-            Assert.That(preview.GetPixel(targetX, targetY).r, Is.GreaterThan(0.7f));
-        }
-
-        [Test]
-        public void ReplayPlan_OnlyShowsSupportedConfirmedSuccessfulEngagement()
-        {
-            var strike = Mission(MissionArchetype.PrecisionStrike);
-            var runtime = Runtime(MissionOutcome.Success, identified: true, ordnance: true);
-            Assert.That(MissionReplayPlan.Create(strike, runtime).ShowEngagement, Is.True);
-
-            runtime.outcome = MissionOutcome.Aborted;
-            Assert.That(MissionReplayPlan.Create(strike, runtime).ShowEngagement, Is.False);
-            runtime.outcome = MissionOutcome.ObservationOnly;
-            runtime.breakdown.positiveIdentification = false;
-            Assert.That(MissionReplayPlan.Create(strike, runtime).ShowEngagement, Is.False);
-
-            var recon = Mission(MissionArchetype.Recon);
-            runtime.outcome = MissionOutcome.ExceptionalSuccess;
+            var runtime = Runtime(SortieType.GrenadeDrop, MissionOutcome.Success, new Vector2(0.7f, 0.6f));
+            runtime.ordnanceConsumed = true;
             runtime.breakdown.positiveIdentification = true;
-            Assert.That(MissionReplayPlan.Create(recon, runtime).ShowEngagement, Is.False);
+            runtime.targetType = BattlefieldContactType.Artillery;
+            var grenade = MissionReplayPlan.Create(runtime);
+
+            Assert.That(grenade.ShowEngagement, Is.True);
+            Assert.That(grenade.StrikeType, Is.EqualTo(MissionReplayStrikeType.BombDrop));
+            Assert.That(grenade.TargetPosition, Is.EqualTo(new Vector2(0.7f, 0.6f)));
+
+            runtime.plan.sortieType = SortieType.KamikazeStrike;
+            runtime.aircraftExpended = true;
+            var kamikaze = MissionReplayPlan.Create(runtime);
+            Assert.That(kamikaze.StrikeType, Is.EqualTo(MissionReplayStrikeType.Kamikaze));
+            Assert.That(kamikaze.PhaseAt(0.8f), Is.EqualTo(MissionReplayPhase.SignalLost));
         }
 
         [Test]
-        public void ArmedSearchWithoutIdentification_UsesHoldPhase()
+        public void NoContactReplay_ShowsEmptyAimedPositionWithoutHiddenTruth()
         {
-            var armed = Mission(MissionArchetype.ArmedSearch);
-            var runtime = Runtime(MissionOutcome.ObservationOnly, identified: false, ordnance: true);
-            var plan = MissionReplayPlan.Create(armed, runtime);
+            var runtime = Runtime(SortieType.KamikazeStrike, MissionOutcome.NoContact, new Vector2(0.4f, 0.5f));
+            runtime.ordnanceConsumed = true;
+            runtime.breakdown.positiveIdentification = false;
 
+            var plan = MissionReplayPlan.Create(runtime);
+
+            Assert.That(plan.ShowTarget, Is.False);
             Assert.That(plan.ShowEngagement, Is.False);
-            Assert.That(plan.PhaseAt(0.64f), Is.EqualTo(MissionReplayPhase.Hold));
-            Assert.That(plan.Classification, Does.Contain("not confirmed"));
+            Assert.That(plan.TargetPosition, Is.EqualTo(new Vector2(0.4f, 0.5f)));
+            Assert.That(plan.Classification, Does.Contain("empty"));
         }
 
         [Test]
-        public void CameraPath_IsDeterministicAndReachesEgress()
+        public void ReconReplay_OnlyShowsContactsSavedByThatSortie()
         {
-            var map = MissionTopographyGenerator.Generate(
-                MissionTopographyProfile.RoadValley,
-                515,
-                ReplayDefinition());
-            var first = MissionReplayCameraPath.Evaluate(map, 0.81f);
-            var second = MissionReplayCameraPath.Evaluate(map, 0.81f);
+            var runtime = Runtime(SortieType.Recon, MissionOutcome.Success, Vector2.zero);
+            runtime.discoveredContactIds = new[] { "contact.artillery.01" };
+            runtime.discoveredPositions = new[] { new BattlefieldMapPoint(new Vector2(0.62f, 0.74f)) };
+            runtime.discoveredTypes = new[] { BattlefieldContactType.Artillery };
 
-            Assert.That(second.Position, Is.EqualTo(first.Position));
-            Assert.That(second.LookAt, Is.EqualTo(first.LookAt));
-            var plan = MissionReplayPlan.Create(
-                Mission(MissionArchetype.Recon),
-                Runtime(MissionOutcome.Success, true, false));
-            Assert.That(plan.PhaseAt(0.81f), Is.EqualTo(MissionReplayPhase.Egress));
-            Assert.That(plan.PhaseAt(1f), Is.EqualTo(MissionReplayPhase.Complete));
+            var plan = MissionReplayPlan.Create(runtime);
+
+            Assert.That(plan.ShowTarget, Is.True);
+            Assert.That(plan.TargetPosition, Is.EqualTo(new Vector2(0.62f, 0.74f)));
+            Assert.That(plan.TargetType, Is.EqualTo(BattlefieldContactType.Artillery));
+            Assert.That(plan.RevealedPositions, Has.Count.EqualTo(1));
+            Assert.That(plan.Classification, Does.Contain("1 contact"));
+        }
+
+        [Test]
+        public void FpvCamera_FollowsSavedRouteAndKamikazeDivesToAimedPosition()
+        {
+            var map = MissionTopographyGenerator.GenerateBattlefield(616, ReplayDefinition());
+            var runtime = Runtime(SortieType.KamikazeStrike, MissionOutcome.Success, new Vector2(0.72f, 0.68f));
+            runtime.ordnanceConsumed = true;
+            runtime.aircraftExpended = true;
+            runtime.breakdown.positiveIdentification = true;
+            var plan = MissionReplayPlan.Create(runtime);
+            var beforeDive = MissionReplayCameraPath.Evaluate(map, plan, 0.58f);
+            var contact = MissionReplayCameraPath.Evaluate(map, plan, 0.72f);
+            var target = map.ToWorld(plan.TargetPosition) + Vector3.up * 1.25f;
+
+            Assert.That(Vector3.Distance(contact.Position, target), Is.LessThan(0.01f));
+            Assert.That(Vector3.Distance(contact.Position, target),
+                Is.LessThan(Vector3.Distance(beforeDive.Position, target)));
+            Assert.That(contact.Position, Is.EqualTo(contact.DronePosition));
         }
 
         private MissionReplayDefinition ReplayDefinition() => Track(
             MissionReplayDefinition.CreateTransient(resolution: 25, duration: 5f));
 
-        private MissionDefinition Mission(MissionArchetype archetype) => Track(
-            MissionDefinition.CreateTransient(
-                $"mission.{archetype}",
-                archetype.ToString(),
-                archetype,
-                "Replay test",
-                1,
-                1f,
-                0.1f,
-                PartMissionCapability.Observation,
-                new MissionStatWeights(),
-                0f,
-                0f));
-
-        private static MissionRuntimeData Runtime(
-            MissionOutcome outcome,
-            bool identified,
-            bool ordnance) => new()
+        private static MissionRuntimeData Runtime(SortieType type, MissionOutcome outcome, Vector2 aim) => new()
         {
             state = MissionRuntimeState.Resolved,
             outcome = outcome,
-            ordnanceConsumed = ordnance,
-            breakdown = new MissionResultBreakdown { positiveIdentification = identified }
+            plan = new SortiePlanData
+            {
+                sortieType = type,
+                route = new[]
+                {
+                    new BattlefieldMapPoint(BattlefieldSystem.WorkshopPosition),
+                    new BattlefieldMapPoint(aim == Vector2.zero ? new Vector2(0.7f, 0.7f) : aim)
+                },
+                aimedPosition = new BattlefieldMapPoint(aim)
+            },
+            breakdown = new MissionResultBreakdown()
         };
 
         private T Track<T>(T item) where T : Object

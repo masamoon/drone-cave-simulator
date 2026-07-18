@@ -486,6 +486,11 @@ namespace UnderStatic.Interaction
                 return fastener.Socket;
             }
 
+            if (focused is LatchTarget latch)
+            {
+                return latch.Socket;
+            }
+
             if (focused is InstallablePart part)
             {
                 return FindSocketContaining(part);
@@ -531,17 +536,19 @@ namespace UnderStatic.Interaction
                     focusHits,
                     interactionRange,
                     Physics.DefaultRaycastLayers,
-                    QueryTriggerInteraction.Ignore)
+                    QueryTriggerInteraction.Collide)
                 : Physics.SphereCastNonAlloc(
                     ray,
                     sphereRadius,
                     focusHits,
                     interactionRange,
                     Physics.DefaultRaycastLayers,
-                    QueryTriggerInteraction.Ignore);
+                    QueryTriggerInteraction.Collide);
 
             IInteractable closest = null;
             var closestDistance = float.PositiveInfinity;
+            IInteractable closestServiceEnvelope = null;
+            var closestServiceEnvelopeDistance = float.PositiveInfinity;
             for (var index = 0; index < hitCount; index++)
             {
                 var hit = focusHits[index];
@@ -555,11 +562,25 @@ namespace UnderStatic.Interaction
                     continue;
                 }
 
+                // Service activation volumes deliberately surround their station so they can
+                // be acquired from any side. Treat them as a fallback so the invisible volume
+                // never steals focus from a physical part, shelf, or storage location inside it.
+                if (hit.collider.isTrigger && candidate is DroneServiceModeController)
+                {
+                    if (hit.distance < closestServiceEnvelopeDistance)
+                    {
+                        closestServiceEnvelope = candidate;
+                        closestServiceEnvelopeDistance = hit.distance;
+                    }
+
+                    continue;
+                }
+
                 closest = candidate;
                 closestDistance = hit.distance;
             }
 
-            return closest;
+            return closest ?? closestServiceEnvelope;
         }
 
         private bool AllowsFirstPersonInteraction(IInteractable candidate)
@@ -578,10 +599,13 @@ namespace UnderStatic.Interaction
             {
                 PartSocket partSocket => partSocket,
                 FastenerTarget fastener => fastener.Socket,
+                LatchTarget latch => latch.Socket,
                 InstallablePart part => FindSocketContaining(part),
                 _ => null
             };
-            if (socket != null && socket.GetComponentInParent<DroneActor>() != null)
+            if (socket != null
+                && (socket.GetComponentInParent<DroneActor>() != null
+                    || socket.GetComponentInParent<DroneServiceModeController>() != null))
             {
                 return false;
             }

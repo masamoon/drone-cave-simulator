@@ -27,7 +27,7 @@ The Safe House Scout kit now includes:
 
 The tactical terminal now has a textured bezel, recessed screen, and physical side buttons while IMGUI continues to own its functional interface.
 
-After-action reconstructions now use the same atlas for terraced terrain, roads, foliage, targets, the replay drone, and warning accents. Precision-strike results build an artillery silhouette with a shield, breech, barrel, wheels, carriage, and trails. Recon results build a utility vehicle with a cab, windscreen, cargo body, and wheels.
+After-action reconstructions now use the same atlas for terraced terrain, roads, foliage, targets, and warning accents. The active reconstruction is viewed through the drone's first-person camera, so no external replay-drone mesh is rendered. Precision-strike results build an artillery silhouette with a shield, breech, barrel, wheels, carriage, and trails. Recon results build a utility vehicle with a cab, windscreen, cargo body, and wheels.
 
 ## Validation
 

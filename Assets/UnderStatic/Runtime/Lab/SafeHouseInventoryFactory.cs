@@ -20,16 +20,7 @@ namespace UnderStatic.Lab
             inventoryObject.transform.SetParent(systems);
             var inventory = inventoryObject.AddComponent<InventorySystem>();
 
-            var root = new GameObject("PhysicalInventory");
-            var storageMaterial = InteractionLabFactory.CreateMaterial(
-                "Inventory Green",
-                new Color(0.12f, 0.22f, 0.16f));
-            var returnsMaterial = InteractionLabFactory.CreateMaterial(
-                "Returns Orange",
-                new Color(0.42f, 0.19f, 0.055f));
-            var salvageMaterial = InteractionLabFactory.CreateMaterial(
-                "Salvage Grey",
-                new Color(0.2f, 0.22f, 0.21f));
+            var root = new GameObject("InventoryRuntime");
             var readyMaterial = InteractionLabFactory.CreateMaterial(
                 "Ready Marker",
                 new Color(0.58f, 0.42f, 0.07f));
@@ -61,44 +52,20 @@ namespace UnderStatic.Lab
                 root.transform,
                 "ServiceablePartsStorage",
                 partsDefinition,
-                new Vector3(2.43f, 1.53f, -0.72f),
-                new Vector3(0.18f, 0.52f, 1.15f),
-                storageMaterial,
-                new[]
-                {
-                    new Vector3(2.27f, 1.68f, -1.05f),
-                    new Vector3(2.27f, 1.32f, -1.02f),
-                    new Vector3(2.27f, 1.68f, -0.68f),
-                    new Vector3(2.27f, 1.32f, -0.63f),
-                    new Vector3(2.27f, 1.68f, -0.3f),
-                    new Vector3(2.27f, 1.32f, -0.28f)
-                });
+                new Vector3(0f, -8f, 0f),
+                partsDefinition.Capacity);
             var returnsLocation = CreateLocation(
                 root.transform,
                 "FaultedReturnsStorage",
                 returnsDefinition,
-                new Vector3(2.43f, 0.93f, 0.32f),
-                new Vector3(0.18f, 0.42f, 0.82f),
-                returnsMaterial,
-                new[]
-                {
-                    new Vector3(2.27f, 1.02f, 0.08f),
-                    new Vector3(2.27f, 0.76f, 0.08f),
-                    new Vector3(2.27f, 1.02f, 0.52f),
-                    new Vector3(2.27f, 0.76f, 0.52f)
-                });
+                new Vector3(0f, -9f, 0f),
+                returnsDefinition.Capacity);
             var salvageLocation = CreateLocation(
                 root.transform,
                 "SalvageBin",
                 salvageDefinition,
-                new Vector3(2.38f, 0.35f, -0.45f),
-                new Vector3(0.36f, 0.38f, 0.62f),
-                salvageMaterial,
-                Array.Empty<Vector3>());
-
-            CreateLabel("SERVICEABLE PARTS", new Vector3(2.29f, 1.91f, -0.72f));
-            CreateLabel("FAULTED RETURNS", new Vector3(2.29f, 1.25f, 0.32f));
-            CreateLabel("SALVAGE · CONFIRM E×2", new Vector3(2.15f, 0.55f, -0.45f));
+                new Vector3(0f, -10f, 0f),
+                0);
 
             var serviceAnchorObject = new GameObject("DroneServiceBayAnchor");
             serviceAnchorObject.transform.SetParent(root.transform);
@@ -115,7 +82,7 @@ namespace UnderStatic.Lab
                 root.transform,
                 new Vector3(2.73f, 1.4f, 1.88f),
                 new Vector3(0.72f, 0.055f, 1.42f),
-                storageMaterial);
+                readyMaterial);
             InteractionLabFactory.DisableCollider(readyPad);
 
             var scrapRoot = new GameObject("VisibleScrapTokens");
@@ -140,16 +107,6 @@ namespace UnderStatic.Lab
                 }
             }
 
-            var control = InteractionLabFactory.CreatePrimitive(
-                "DroneReadyShelfControl",
-                PrimitiveType.Cube,
-                drone,
-                new Vector3(0f, 1.31f, 0.86f),
-                new Vector3(0.16f, 0.055f, 0.16f),
-                readyMaterial,
-                true);
-            var storageControl = control.AddComponent<DroneStorageControl>();
-            storageControl.Configure(inventory, control.GetComponent<Renderer>());
             return inventory;
         }
 
@@ -158,30 +115,23 @@ namespace UnderStatic.Lab
             string name,
             StorageLocationDefinition definition,
             Vector3 position,
-            Vector3 scale,
-            Material material,
-            IReadOnlyList<Vector3> slotPositions)
+            int slotCount)
         {
-            var locationObject = InteractionLabFactory.CreatePrimitive(
-                name,
-                PrimitiveType.Cube,
-                root,
-                position,
-                scale,
-                material);
-            var slots = new Transform[slotPositions.Count];
-            for (var index = 0; index < slotPositions.Count; index++)
+            var locationObject = new GameObject(name);
+            locationObject.transform.SetParent(root);
+            locationObject.transform.position = position;
+            var slots = new Transform[Mathf.Max(0, slotCount)];
+            for (var index = 0; index < slots.Length; index++)
             {
                 var slot = new GameObject($"Slot_{index + 1}");
-                slot.transform.SetParent(root);
-                slot.transform.SetPositionAndRotation(
-                    slotPositions[index],
-                    Quaternion.Euler(0f, 90f, 0f));
+                slot.transform.SetParent(locationObject.transform);
+                slot.transform.localPosition = new Vector3(index * 0.35f, 0f, 0f);
+                slot.transform.localRotation = Quaternion.Euler(0f, 90f, 0f);
                 slots[index] = slot.transform;
             }
 
             var location = locationObject.AddComponent<StorageLocation>();
-            location.Configure(definition, slots, locationObject.GetComponent<Renderer>());
+            location.Configure(definition, slots);
             return location;
         }
 
@@ -202,17 +152,5 @@ namespace UnderStatic.Lab
                     categories);
         }
 
-        private static void CreateLabel(string text, Vector3 position)
-        {
-            var label = new GameObject($"InventoryLabel_{text.Replace(' ', '_').Replace('·', '_')}");
-            label.transform.SetPositionAndRotation(position, Quaternion.Euler(0f, 90f, 0f));
-            var mesh = label.AddComponent<TextMesh>();
-            mesh.text = text;
-            mesh.anchor = TextAnchor.MiddleCenter;
-            mesh.alignment = TextAlignment.Center;
-            mesh.fontSize = 48;
-            mesh.characterSize = 0.018f;
-            mesh.color = new Color(0.78f, 0.7f, 0.42f);
-        }
     }
 }

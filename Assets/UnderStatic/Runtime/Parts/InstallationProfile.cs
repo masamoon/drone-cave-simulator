@@ -6,7 +6,8 @@ namespace UnderStatic.Parts
     {
         Fasteners,
         TwistLock,
-        Latch
+        Latch,
+        ChargingDock
     }
 
     [CreateAssetMenu(menuName = "Under Static/Installation Profile", fileName = "InstallationProfile")]

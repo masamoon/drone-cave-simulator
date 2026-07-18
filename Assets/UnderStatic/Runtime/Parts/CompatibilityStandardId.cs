@@ -72,7 +72,8 @@ namespace UnderStatic.Parts
         None = 0,
         Observation = 1 << 0,
         Communications = 1 << 1,
-        PrecisionStrike = 1 << 2
+        KamikazeWarhead = 1 << 3,
+        GrenadeDrop = 1 << 4
     }
 
     [Serializable]
