@@ -105,8 +105,13 @@ namespace UnderStatic.Visuals
             var material = new Material(shader) { name = $"PSX {surface}" };
             var cells = profile.SwatchesPerAxis;
             var index = (int)surface;
-            var scale = Vector2.one / cells;
-            var offset = new Vector2(index % cells, index / cells) / cells;
+            var cellPixels = profile.AtlasSize / cells;
+            var gutterPixels = Mathf.Clamp(3, 1, cellPixels / 4);
+            var sampledPixels = cellPixels - gutterPixels * 2;
+            var scale = Vector2.one * (sampledPixels / (float)profile.AtlasSize);
+            var offset = new Vector2(
+                index % cells * cellPixels + gutterPixels,
+                index / cells * cellPixels + gutterPixels) / profile.AtlasSize;
             if (material.HasProperty("_BaseMap"))
             {
                 material.SetTexture("_BaseMap", Atlas);
@@ -134,7 +139,7 @@ namespace UnderStatic.Visuals
 
         private static Color BaseColour(PsxSurface surface) => surface switch
         {
-            PsxSurface.FrameComposite => new Color(0.075f, 0.095f, 0.09f),
+            PsxSurface.FrameComposite => new Color(0.09f, 0.115f, 0.105f),
             PsxSurface.PaintedMetal => new Color(0.19f, 0.25f, 0.21f),
             PsxSurface.BareMetal => new Color(0.42f, 0.45f, 0.43f),
             PsxSurface.Electronics => new Color(0.12f, 0.24f, 0.2f),
@@ -151,16 +156,35 @@ namespace UnderStatic.Visuals
         private static float Pattern(PsxSurface surface, int x, int y, int cell, float wear)
         {
             var border = x < 2 || y < 2 || x >= cell - 2 || y >= cell - 2;
-            if (surface is PsxSurface.FrameComposite or PsxSurface.PaintedMetal or PsxSurface.BareMetal)
+            if (surface == PsxSurface.FrameComposite)
             {
                 if (border) return -0.2f;
-                if ((x == 5 || x == cell - 6) && (y == 5 || y == cell - 6)) return 0.24f;
-                if ((x + y) % 17 == 0) return -0.08f * wear;
+                var diagonal = (x + y) % 9;
+                var grain = diagonal < 2 ? 0.18f : -0.055f;
+                if ((x + y * 2) % 17 == 0) grain += 0.07f;
+                if (Hash01(x, y, 401) < 0.025f + wear * 0.045f) grain += 0.45f * wear;
+                return grain;
+            }
+            if (surface == PsxSurface.PaintedMetal)
+            {
+                if (border) return -0.18f;
+                var brushed = y % 6 == 0 ? 0.1f : -0.025f;
+                if (x is 4 or 5 || x == cell - 5 || x == cell - 6) brushed += 0.15f * wear;
+                if ((x * 5 + y * 3) % 31 == 0) brushed -= 0.24f * wear;
+                return brushed;
+            }
+            if (surface == PsxSurface.BareMetal)
+            {
+                if (border) return -0.16f;
+                var brushing = y % 5 == 0 ? 0.16f : y % 5 == 1 ? -0.075f : 0f;
+                if ((x * 7 + y * 11) % 37 == 0) brushing -= 0.18f * wear;
+                return brushing;
             }
             if (surface == PsxSurface.Electronics)
             {
-                if (x % 8 == 0 || y % 11 == 0) return 0.1f;
-                if ((x + 3 * y) % 19 == 0) return 0.28f;
+                if (x % 8 == 0 || y % 11 == 0) return 0.24f;
+                if ((x + 3 * y) % 19 == 0) return 0.42f;
+                if ((x / 5 + y / 4) % 7 == 0) return -0.12f;
             }
             if (surface == PsxSurface.Label)
             {
@@ -172,6 +196,11 @@ namespace UnderStatic.Visuals
             {
                 var distance = Vector2.Distance(new Vector2(x, y), Vector2.one * (cell - 1) * 0.5f) / cell;
                 return distance < 0.18f ? 0.34f : distance > 0.38f ? -0.35f : 0f;
+            }
+            if (surface == PsxSurface.Rubber)
+            {
+                if ((x + y) % 10 < 2) return -0.075f;
+                if ((x * 3 + y * 7) % 29 == 0) return 0.12f * wear;
             }
             if (surface is PsxSurface.Earth or PsxSurface.Road)
             {

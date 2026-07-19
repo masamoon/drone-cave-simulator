@@ -3,6 +3,7 @@ using UnderStatic.Fleet;
 using UnderStatic.Interaction;
 using UnderStatic.Parts;
 using UnityEngine;
+using System;
 
 namespace UnderStatic.Lab
 {
@@ -24,6 +25,7 @@ namespace UnderStatic.Lab
                 : lastResult;
         public string InteractionPrompt => "E: run complete-drone diagnostic";
         public Transform InteractionTransform => transform;
+        public event Action<DroneReadinessSnapshot> DiagnosticPerformed;
 
         public void Configure(DroneAssemblyState targetAssembly, AudioFeedbackSystem feedback)
         {
@@ -64,10 +66,17 @@ namespace UnderStatic.Lab
 
         public void Activate()
         {
+            if (assembly == null)
+            {
+                lastResult = "NO AIRCRAFT IN SERVICE BAY";
+                return;
+            }
             var readiness = assembly.Readiness;
             assembly.RecordDiagnostic(readiness.IsMissionReady);
             lastResult = readiness.IsMissionReady
-                ? "PASS · drone ready"
+                ? readiness.HasAdvisories
+                    ? $"PASS WITH ADVISORY · {readiness.AdvisorySummary}"
+                    : "PASS · drone ready"
                 : $"FAIL · {readiness.MaintenanceSummary}";
             if (readiness.IsMissionReady)
             {
@@ -77,6 +86,7 @@ namespace UnderStatic.Lab
             {
                 audioFeedback?.PlayTestFailure();
             }
+            DiagnosticPerformed?.Invoke(readiness);
         }
 
         public void SetFocused(bool focused)

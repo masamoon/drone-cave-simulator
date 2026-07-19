@@ -19,7 +19,8 @@ namespace UnderStatic.Parts
             float control,
             bool complete,
             bool ready,
-            string maintenanceSummary)
+            string maintenanceSummary,
+            string advisorySummary = "")
         {
             InstalledCount = installed;
             RequiredCount = required;
@@ -31,6 +32,7 @@ namespace UnderStatic.Parts
             IsComplete = complete;
             IsMissionReady = ready;
             MaintenanceSummary = maintenanceSummary;
+            AdvisorySummary = advisorySummary ?? string.Empty;
         }
 
         public int InstalledCount { get; }
@@ -44,6 +46,8 @@ namespace UnderStatic.Parts
         public bool IsComplete { get; }
         public bool IsMissionReady { get; }
         public string MaintenanceSummary { get; }
+        public string AdvisorySummary { get; }
+        public bool HasAdvisories => !string.IsNullOrWhiteSpace(AdvisorySummary);
     }
 
     [DisallowMultipleComponent]
@@ -165,7 +169,10 @@ namespace UnderStatic.Parts
                 entry.Value,
                 parts.Count(part => part.Definition.Category == entry.Key)));
             var complete = required > 0 && installedRequired == required;
-            var condition = parts.Length == 0 ? 0f : parts.Average(part => part.Runtime.condition);
+            var condition = parts.Length == 0
+                ? 0f
+                : (parts.Sum(part => part.Runtime.condition) + Mathf.Clamp01(runtime.frameCondition))
+                  / (parts.Length + 1f);
             var reliability = parts.Length == 0
                 ? 0f
                 : parts.Average(part => part.Definition.BaseReliability * part.Runtime.condition);
@@ -183,7 +190,21 @@ namespace UnderStatic.Parts
             var control = antenna == null ? motorHealth * 0.5f : (motorHealth + antenna.Runtime.condition) * 0.5f;
             var damaged = parts.Where(part => !part.IsServiceable).ToArray();
             var depleted = battery != null && battery.IsBatteryDepleted;
-            var ready = complete && damaged.Length == 0 && !depleted;
+            var frameFailed = runtime.frameCondition < 0.45f;
+            var ready = complete && damaged.Length == 0 && !depleted && !frameFailed;
+
+            var advisories = new List<string>();
+            if (runtime.frameCondition is >= 0.45f and < 0.75f)
+            {
+                advisories.Add($"worn frame {runtime.frameCondition:P0}");
+            }
+            advisories.AddRange(parts
+                .Where(part => part.Runtime.condition is >= 0.45f and < 0.75f)
+                .Select(part => $"worn {part.Definition.DisplayName} {part.Runtime.condition:P0}"));
+            if (battery != null && battery.Runtime.chargeLevel is > 0.05f and < 0.35f)
+            {
+                advisories.Add($"low battery {battery.Runtime.chargeLevel:P0}");
+            }
 
             string summary;
             if (!complete)
@@ -193,7 +214,7 @@ namespace UnderStatic.Parts
                     .Select(entry => $"{entry.Key} {parts.Count(part => part.Definition.Category == entry.Key)}/{entry.Value}");
                 summary = $"Missing: {string.Join(", ", missing)}";
             }
-            else if (depleted || damaged.Length > 0)
+            else if (depleted || damaged.Length > 0 || frameFailed)
             {
                 var faults = new List<string>();
                 if (depleted)
@@ -202,7 +223,15 @@ namespace UnderStatic.Parts
                 }
 
                 faults.AddRange(damaged.Select(part => $"replace damaged {part.Definition.DisplayName}"));
+                if (frameFailed)
+                {
+                    faults.Add("frame unserviceable");
+                }
                 summary = string.Join("; ", faults);
+            }
+            else if (advisories.Count > 0)
+            {
+                summary = $"Serviceable with advisory: {string.Join("; ", advisories)}";
             }
             else
             {
@@ -219,7 +248,8 @@ namespace UnderStatic.Parts
                 control,
                 complete,
                 ready,
-                summary);
+                summary,
+                string.Join("; ", advisories));
         }
 
         public void ClearAll()

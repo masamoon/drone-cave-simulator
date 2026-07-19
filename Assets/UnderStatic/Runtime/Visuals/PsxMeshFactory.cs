@@ -111,6 +111,55 @@ namespace UnderStatic.Visuals
             return Build("PSX Faceted Canopy", vertices, triangles, uvs);
         }
 
+        public static Mesh SweptPropellerBlade(
+            float rootRadius,
+            float length,
+            float rootWidth,
+            float tipWidth,
+            float tipSweep,
+            float thickness)
+        {
+            rootRadius = Mathf.Max(0.01f, rootRadius);
+            length = Mathf.Max(rootRadius + 0.01f, length);
+            rootWidth = Mathf.Max(0.01f, rootWidth);
+            tipWidth = Mathf.Max(0.01f, tipWidth);
+            thickness = Mathf.Max(0.005f, thickness);
+
+            var halfHeight = thickness * 0.5f;
+            var rootLeading = -rootWidth * 0.42f;
+            var rootTrailing = rootWidth * 0.58f;
+            var tipLeading = tipSweep - tipWidth * 0.62f;
+            var tipTrailing = tipSweep + tipWidth * 0.38f;
+            var vertices = new[]
+            {
+                new Vector3(rootRadius, -halfHeight, rootLeading),
+                new Vector3(rootRadius, -halfHeight, rootTrailing),
+                new Vector3(length, -halfHeight, tipLeading),
+                new Vector3(length, -halfHeight, tipTrailing),
+                new Vector3(rootRadius, halfHeight, rootLeading),
+                new Vector3(rootRadius, halfHeight, rootTrailing),
+                new Vector3(length, halfHeight, tipLeading),
+                new Vector3(length, halfHeight, tipTrailing)
+            };
+            var triangles = new[]
+            {
+                0, 2, 1, 1, 2, 3,
+                4, 5, 6, 5, 7, 6,
+                0, 4, 2, 2, 4, 6,
+                1, 3, 5, 3, 7, 5,
+                0, 1, 4, 1, 5, 4,
+                2, 6, 3, 3, 6, 7
+            };
+            var uvs = new[]
+            {
+                new Vector2(0f, 0f), new Vector2(0f, 1f),
+                new Vector2(1f, 0f), new Vector2(1f, 1f),
+                new Vector2(0f, 0f), new Vector2(0f, 1f),
+                new Vector2(1f, 0f), new Vector2(1f, 1f)
+            };
+            return Build("PSX Swept Propeller Blade", vertices, triangles, uvs);
+        }
+
         private static Mesh Build(string name, Vector3[] vertices, int[] triangles, Vector2[] uvs)
         {
             var mesh = new Mesh { name = name };

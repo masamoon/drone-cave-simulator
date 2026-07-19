@@ -98,7 +98,7 @@ The first milestone intentionally implements only one motor, one socket, one flo
 
 ## Prototype status
 
-The repository now contains a Unity `6000.4.8f1` Universal Render Pipeline project implemented through Milestone 5.2. Open `Assets/Scenes/SafeHouse.unity` for the current playable workshop: maintain modular drones in a focused PC-building-game style service view, store whole chassis in a three-slot physical locker, trade persistent parts and salvage aircraft through the constrained market, and launch abstract daily sorties from the tactical map. Recon, precision-strike, and armed-search requests resolve while the workshop remains interactive and return the same aircraft with physical resource consumption and wear. Resolved reports can generate deterministic in-engine after-action reconstructions from the same 2D topography shown on the map. A deterministic 128×128 pixel atlas and presentation-only low-poly mesh kit now give the Scout, its service parts, the tactical terminal, terrain, foliage, artillery, vehicles, and replay drone more recognizable PSX-level detail without changing functional colliders or authored interaction poses. The three lab scenes remain regression fixtures.
+The repository now contains a Unity `6000.4.8f1` Universal Render Pipeline project implemented through Milestone 6.1. Open `Assets/Scenes/SafeHouse.unity` for the current playable workshop: maintain modular drones, store whole chassis, trade persistent parts and salvage aircraft, and launch abstract daily sorties from the tactical map. Returning reusable sorties now create deterministic localized maintenance, while workshop launches, powered transmissions, motor tests, and repeated routes build persistent qualitative exposure. The physical transmitter can be silenced at the cost of lost-link recall or delayed strike confirmation. One authored remote cache supports short first-person setup, aircraft recovery, and limited-capacity salvage excursions while preserving the same drone identity across the complete workshop–field cycle. Resolved reports retain deterministic after-action reconstruction and the PSX-level low-poly presentation kit. The three lab scenes remain regression fixtures.
 
 Controls use the checked-in Input System action asset:
 
@@ -117,6 +117,9 @@ Controls use the checked-in Input System action asset:
 - `E` on the tactical map — review daily Recon, Precision Strike, and Armed Search requests
 - in the tactical map — accept a request, choose workshop-adjacent or remote-team deployment, assign the ready-shelf drone, and launch
 - after launch — continue normal workshop work while the sortie timer and radio status run
+- `E` on the radio transmitter — power the workshop link on or off
+- tactical map during Recon or a pre-release Grenade Drop — recall while the link is powered
+- tactical map remote controls — plan deployment, retrieve a cached aircraft, or recover a salvage cache
 - reopen the tactical map after recovery — inspect and acknowledge the deterministic report or end operations
 - on a resolved report, `VIEW RECONSTRUCTION` — generate the seeded topography as a temporary in-engine replay
 - in a reconstruction, `END RECONSTRUCTION` / `RETURN TO WORKSHOP` — restore the previous workshop camera and controls
@@ -132,4 +135,4 @@ Controls use the checked-in Input System action asset:
 - in service mode, `Escape` — cancel the active drag first, otherwise return to first-person workshop mode
 - `EXIT SERVICE` — return to first-person workshop mode
 
-See `docs/MILESTONE_04_3_IMPLEMENTATION.md` for the market handoff, `docs/MILESTONE_05_IMPLEMENTATION.md` for the mission handoff, `docs/MILESTONE_05_1.md` plus `docs/MILESTONE_05_1_IMPLEMENTATION.md` for the procedural reconstruction handoff, and `docs/MILESTONE_05_2.md` plus `docs/MILESTONE_05_2_IMPLEMENTATION.md` for the PSX visual-pipeline scope and validation notes.
+See the milestone documents in `docs/`. The current handoffs are `MILESTONE_05_5_IMPLEMENTATION.md`, `MILESTONE_06_IMPLEMENTATION.md`, and `MILESTONE_06_1_IMPLEMENTATION.md`.

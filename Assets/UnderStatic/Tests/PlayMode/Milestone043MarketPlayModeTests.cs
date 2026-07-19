@@ -176,6 +176,66 @@ namespace UnderStatic.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator ExpendedStrikeDroneNeverRotatesBackIntoMarketStock()
+        {
+            SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var market = Object.FindAnyObjectByType<MarketSystem>();
+            var fleet = Object.FindAnyObjectByType<FleetSystem>();
+            var listing = market.Listings.First(item =>
+                item.category == MarketListingCategory.StrikeDrone && item.isAvailable);
+            var actor = market.ResolveDrone(listing);
+            var rack = actor.InstalledParts.Single(part =>
+                part.Definition.Category == UnderStatic.Core.PartCategory.StrikeRack);
+
+            Assert.That(market.TryBuy(listing.listingId).Succeeded, Is.True);
+            Assert.That(fleet.TrySwapLockerIntoService(fleet.FindLockerSlot(actor), false), Is.True);
+            Assert.That(fleet.TryMoveServiceToReady(false), Is.True);
+            Assert.That(fleet.TryDeployReady(actor), Is.True);
+            rack.Runtime.consumableCharges = 0;
+            Assert.That(fleet.TryConsumeDeployed(actor), Is.True);
+
+            for (var cycle = 1; cycle <= 64; cycle++)
+            {
+                market.AdvanceMarketCycle(7300 + cycle);
+                Assert.That(listing.isAvailable, Is.False,
+                    "An expended one-way airframe must never be sold a second time");
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator SchemaThirteenLoadRepairsPreviouslyRepurchasedUnarmedStrikeDrone()
+        {
+            SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var market = Object.FindAnyObjectByType<MarketSystem>();
+            var fleet = Object.FindAnyObjectByType<FleetSystem>();
+            var save = Object.FindAnyObjectByType<SaveSystem>();
+            var listing = market.Listings.First(item =>
+                item.category == MarketListingCategory.StrikeDrone && item.isAvailable);
+            var actor = market.ResolveDrone(listing);
+            var rack = actor.InstalledParts.Single(part =>
+                part.Definition.Category == UnderStatic.Core.PartCategory.StrikeRack);
+
+            Assert.That(market.TryBuy(listing.listingId).Succeeded, Is.True);
+            rack.Runtime.consumableCharges = 0;
+            var parts = Object.FindObjectsByType<InstallablePart>(FindObjectsInactive.Include,
+                FindObjectsSortMode.None);
+            var sockets = Object.FindObjectsByType<PartSocket>(FindObjectsInactive.Include,
+                FindObjectsSortMode.None);
+            var json = save.CaptureAllToJson(parts, sockets);
+
+            Assert.That(save.RestoreAllFromJson(json, parts, sockets), Is.True, save.LastStatus);
+            Assert.That(fleet.ContainsActor(actor), Is.True);
+            Assert.That(rack.Runtime.consumableCharges, Is.EqualTo(1),
+                "Owned market strike stock from an affected save should be repaired as armed");
+        }
+
+        [UnityTest]
         public IEnumerator SalvageDronePurchaseAndSchemaSixLoadPreserveLockerIdentityAndFaultSecrecy()
         {
             SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
@@ -195,7 +255,7 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(fleet.Locker[2].Runtime.droneInstanceId, Is.EqualTo(identity));
             Assert.That(stock.Runtime.diagnosticFaultsDisclosed, Is.False);
             var json = save.CaptureAllToJson(parts, sockets);
-            Assert.That(json, Does.Contain("\"version\": 9"));
+            Assert.That(json, Does.Contain("\"version\": 13"));
             Assert.That(fleet.TrySwapLockerIntoService(2, false), Is.True);
 
             Assert.That(save.RestoreAllFromJson(json, parts, sockets), Is.True, save.LastStatus);
@@ -207,14 +267,14 @@ namespace UnderStatic.Tests.PlayMode
 
         private static IEnumerator PressInteractKey()
         {
-            Assert.That(Keyboard.current, Is.Not.Null);
-            InputSystem.QueueStateEvent(Keyboard.current, new KeyboardState());
+            var keyboard = Keyboard.current ?? InputSystem.AddDevice<Keyboard>();
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState());
             yield return null;
             var pressed = new KeyboardState();
             pressed.Press(Key.E);
-            InputSystem.QueueStateEvent(Keyboard.current, pressed);
+            InputSystem.QueueStateEvent(keyboard, pressed);
             yield return null;
-            InputSystem.QueueStateEvent(Keyboard.current, new KeyboardState());
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState());
             yield return null;
         }
     }

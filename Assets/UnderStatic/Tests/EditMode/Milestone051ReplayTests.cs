@@ -101,7 +101,7 @@ namespace UnderStatic.Tests
             Assert.That(plan.ShowTarget, Is.True);
             Assert.That(plan.TargetPosition, Is.EqualTo(new Vector2(0.62f, 0.74f)));
             Assert.That(plan.TargetType, Is.EqualTo(BattlefieldContactType.Artillery));
-            Assert.That(plan.RevealedPositions, Has.Count.EqualTo(1));
+            Assert.That(plan.RevealedPositions.Count, Is.EqualTo(1));
             Assert.That(plan.Classification, Does.Contain("1 contact"));
         }
 

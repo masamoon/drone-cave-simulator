@@ -8,6 +8,7 @@ using UnderStatic.Missions;
 using UnderStatic.Parts;
 using UnderStatic.Persistence;
 using UnderStatic.UI;
+using UnderStatic.Workshop;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.LowLevel;
@@ -28,6 +29,8 @@ namespace UnderStatic.Tests.PlayMode
             var battlefield = Object.FindAnyObjectByType<BattlefieldSystem>();
             var missions = Object.FindAnyObjectByType<MissionSystem>();
             var fleet = Object.FindAnyObjectByType<FleetSystem>();
+            var risk = Object.FindAnyObjectByType<WorkshopRiskSystem>();
+            var field = Object.FindAnyObjectByType<FieldOperationsSystem>();
 
             Assert.That(battlefield, Is.Not.Null);
             Assert.That(battlefield.CaptureState().contacts.Length, Is.EqualTo(7));
@@ -40,6 +43,14 @@ namespace UnderStatic.Tests.PlayMode
             }));
             Assert.That(fleet.Actors.Count, Is.EqualTo(3));
             Assert.That(fleet.Actors.Count(item => item.IsExpendableStrikeDrone), Is.EqualTo(2));
+            Assert.That(risk, Is.Not.Null);
+            Assert.That(risk.IsTransmitterPowered, Is.True);
+            Assert.That(Object.FindAnyObjectByType<WorkshopTransmitterControl>(), Is.Not.Null);
+            Assert.That(field, Is.Not.Null);
+            Assert.That(field.RemoteSite.position.ToVector2(), Is.EqualTo(new Vector2(0.30f, 0.18f)));
+            Assert.That(Object.FindAnyObjectByType<FieldExcursionDirector>(), Is.Not.Null);
+            Assert.That(Object.FindAnyObjectByType<FieldDeploymentCase>(), Is.Not.Null);
+            Assert.That(Object.FindAnyObjectByType<FieldExitControl>(), Is.Not.Null);
             Assert.That(Object.FindAnyObjectByType<TacticalMapTerminal>().SelectedTopographyPreview, Is.Not.Null);
         }
 
@@ -50,11 +61,21 @@ namespace UnderStatic.Tests.PlayMode
             yield return null;
             yield return null;
             var terminal = Object.FindAnyObjectByType<TacticalMapTerminal>();
-            var player = GameObject.Find("Player");
-            player.transform.position = terminal.transform.position - terminal.transform.forward * 0.8f;
-            player.transform.rotation = Quaternion.LookRotation(terminal.transform.position - player.transform.position);
+            var interactions = Object.FindAnyObjectByType<InteractionSystem>();
+            var controller = Object.FindAnyObjectByType<FirstPersonController>();
+            var camera = Camera.main;
+            controller.enabled = false;
+            var cameraPosition = terminal.transform.position
+                - terminal.transform.forward * 0.8f
+                + Vector3.up * 0.05f;
+            camera.transform.SetPositionAndRotation(
+                cameraPosition,
+                Quaternion.LookRotation(terminal.transform.position - cameraPosition, Vector3.up));
+            Physics.SyncTransforms();
+            yield return null;
             yield return null;
 
+            Assert.That(interactions.Focused?.InteractionTransform, Is.SameAs(terminal.transform));
             yield return PressInteractKey();
 
             Assert.That(terminal.IsOpen, Is.True);
@@ -108,7 +129,7 @@ namespace UnderStatic.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator SchemaTenSaveContainsBattlefieldDraftAndRejectsSchemaNine()
+        public IEnumerator SchemaThirteenSaveContainsFieldStateAndRejectsSchemaTwelve()
         {
             SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
             yield return null;
@@ -121,13 +142,15 @@ namespace UnderStatic.Tests.PlayMode
                 Object.FindObjectsByType<InstallablePart>(FindObjectsSortMode.None),
                 Object.FindObjectsByType<PartSocket>(FindObjectsSortMode.None));
 
-            Assert.That(json, Does.Contain("\"version\": 10"));
+            Assert.That(json, Does.Contain("\"version\": 13"));
             Assert.That(json, Does.Contain("battlefield"));
             Assert.That(json, Does.Contain("waypoints"));
-            Assert.That(save.RestoreAllFromJson("{\"version\":9}",
+            Assert.That(json, Does.Contain("workshopRisk"));
+            Assert.That(json, Does.Contain("fieldOperations"));
+            Assert.That(save.RestoreAllFromJson("{\"version\":12}",
                 Object.FindObjectsByType<InstallablePart>(FindObjectsSortMode.None),
                 Object.FindObjectsByType<PartSocket>(FindObjectsSortMode.None)), Is.False);
-            Assert.That(save.LastStatus, Does.Contain("schema 10"));
+            Assert.That(save.LastStatus, Does.Contain("schema 13"));
         }
 
         private static void PrepareServiceDrone(DroneActor actor)
@@ -150,13 +173,12 @@ namespace UnderStatic.Tests.PlayMode
 
         private static IEnumerator PressInteractKey()
         {
-            var keyboard = Keyboard.current;
-            Assert.That(keyboard, Is.Not.Null);
+            var keyboard = Keyboard.current ?? InputSystem.AddDevice<Keyboard>();
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState());
+            yield return null;
             InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.E));
-            InputSystem.Update();
             yield return null;
             InputSystem.QueueStateEvent(keyboard, new KeyboardState());
-            InputSystem.Update();
             yield return null;
         }
     }

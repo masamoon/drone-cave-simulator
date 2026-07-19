@@ -7,6 +7,7 @@ using UnderStatic.Parts;
 using UnderStatic.Persistence;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnderStatic.Workshop;
 
 namespace UnderStatic.UI
 {
@@ -25,6 +26,7 @@ namespace UnderStatic.UI
         private readonly StringBuilder builder = new(512);
         private FleetSystem fleetSystem;
         private InputAction toggleAction;
+        private WorkshopRiskSystem workshopRisk;
 
         public bool IsVisible { get; private set; }
 
@@ -76,6 +78,11 @@ namespace UnderStatic.UI
         public void ConfigureServiceMode(DroneServiceModeController controller)
         {
             serviceMode = controller;
+        }
+
+        public void ConfigureRisk(WorkshopRiskSystem risk)
+        {
+            workshopRisk = risk;
         }
 
         public void ConfigureFleet(FleetSystem fleet)
@@ -136,6 +143,10 @@ namespace UnderStatic.UI
             builder.Append("Control: ").AppendLine(status.ControlReliability.ToString("P0"));
             builder.Append("Readiness: ").AppendLine(status.IsMissionReady ? "READY" : "MAINTENANCE");
             builder.AppendLine(FormatMaintenance(status.MaintenanceSummary));
+            if (status.HasAdvisories)
+            {
+                builder.Append("Advisory: ").AppendLine(status.AdvisorySummary);
+            }
             builder.Append("Diagnostic: ").AppendLine(CompactDiagnostic(diagnostic?.LastResult));
             if (inventory != null)
             {
@@ -147,13 +158,32 @@ namespace UnderStatic.UI
                 builder.Append("Scrap: ").AppendLine(inventory.ScrapCount.ToString());
             }
             builder.Append("Save: ").AppendLine(saveSystem?.LastStatus ?? "Unavailable");
+            if (workshopRisk != null)
+            {
+                var risk = workshopRisk.Runtime;
+                builder.Append("Exposure: ").Append(risk.exposure.ToString("0.0")).Append("/100 · ")
+                    .AppendLine(risk.state.ToString());
+                builder.Append("Sources L/T/R/D/F: ")
+                    .Append(risk.launchTotal.ToString("0.0")).Append('/')
+                    .Append(risk.transmissionTotal.ToString("0.0")).Append('/')
+                    .Append(risk.repeatedRouteTotal.ToString("0.0")).Append('/')
+                    .Append(risk.diagnosticTotal.ToString("0.0")).Append('/')
+                    .AppendLine(risk.fieldTraceTotal.ToString("0.0"));
+                builder.Append("Transmitter: ").Append(risk.transmitterPowered ? "ON" : "OFF")
+                    .Append(" · Discovery pending: ").AppendLine(risk.discoveryPending.ToString());
+                builder.Append("Route: ").Append(risk.lastRouteLabel).Append(" · ")
+                    .Append(risk.lastRouteSimilarity.ToString("P0"))
+                    .Append(" · Link timer: ").Append(workshopRisk.ActiveLinkTimer.ToString("0.0"))
+                    .AppendLine("s");
+            }
             var extraHeight = status.MaintenanceSummary.StartsWith("Missing:") ? 32f : 0f;
             GUI.Box(
                 new Rect(
                     12f,
                     12f,
                     410f,
-                    (selectedPart == null ? 300f : 338f) + extraHeight + (inventory == null ? 0f : 58f)),
+                    (selectedPart == null ? 300f : 338f) + extraHeight + (inventory == null ? 0f : 58f)
+                    + (workshopRisk == null ? 0f : 90f)),
                 builder.ToString());
         }
 

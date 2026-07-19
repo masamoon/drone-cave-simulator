@@ -7,6 +7,7 @@ using UnderStatic.Inventory;
 using UnderStatic.Missions;
 using UnderStatic.Replays;
 using UnityEngine;
+using UnderStatic.Workshop;
 
 namespace UnderStatic.UI
 {
@@ -22,6 +23,8 @@ namespace UnderStatic.UI
         [SerializeField] private FirstPersonController controller;
         [SerializeField] private Renderer focusRenderer;
         [SerializeField] private MissionReplayDirector replayDirector;
+        [SerializeField] private WorkshopRiskSystem workshopRisk;
+        [SerializeField] private FieldOperationsSystem fieldOperations;
 
         private MaterialPropertyBlock propertyBlock;
         private Texture2D mapPreview;
@@ -44,7 +47,9 @@ namespace UnderStatic.UI
             InventorySystem inventorySystem,
             FirstPersonController firstPersonController,
             Renderer mapRenderer = null,
-            MissionReplayDirector reconstructionDirector = null)
+            MissionReplayDirector reconstructionDirector = null,
+            WorkshopRiskSystem riskSystem = null,
+            FieldOperationsSystem operations = null)
         {
             missions = missionSystem;
             battlefield = battlefieldSystem;
@@ -55,6 +60,8 @@ namespace UnderStatic.UI
             controller = firstPersonController;
             focusRenderer = mapRenderer ?? GetComponent<Renderer>();
             replayDirector = reconstructionDirector;
+            workshopRisk = riskSystem;
+            fieldOperations = operations;
         }
 
         public void Activate()
@@ -92,6 +99,13 @@ namespace UnderStatic.UI
 
         public bool LaunchDraft()
         {
+            if (string.Equals(missions?.Draft.launchSiteId, FieldOperationsSystem.RemoteSiteId,
+                    System.StringComparison.Ordinal))
+            {
+                if (fieldOperations?.StageRemoteDeployment() != true) return false;
+                Close();
+                return true;
+            }
             if (missions?.TryLaunchDraft() != true)
             {
                 return false;
@@ -164,7 +178,9 @@ namespace UnderStatic.UI
             GUI.Label(new Rect(panel.x + 18f, panel.y + 14f, panel.width - 140f, 28f),
                 $"PERSISTENT BATTLEFIELD · DAY {operationalDay.Runtime.dayIndex} · " +
                 $"SORTIES {operationalDay.Runtime.completedSorties} · FUNDS {market?.Funds ?? 0} · " +
-                $"SALVAGE {inventory?.ScrapCount ?? 0}");
+                $"SALVAGE {inventory?.ScrapCount ?? 0} · " +
+                $"RISK {workshopRisk?.Runtime.state.ToString().ToUpperInvariant() ?? "UNAVAILABLE"} · " +
+                $"TX {(workshopRisk?.IsTransmitterPowered == false ? "OFF" : "ON")}");
             if (GUI.Button(new Rect(panel.xMax - 104f, panel.y + 10f, 86f, 32f), "CLOSE"))
             {
                 Close();
@@ -217,6 +233,16 @@ namespace UnderStatic.UI
             }
             DrawContactMarker(mapRect, BattlefieldSystem.WorkshopPosition,
                 new Color(0.2f, 0.9f, 1f), "WORKSHOP", false);
+            if (fieldOperations != null)
+            {
+                DrawContactMarker(mapRect, fieldOperations.RemoteSite.position.ToVector2(),
+                    new Color(0.35f, 0.8f, 0.55f), "REMOTE CACHE", false);
+                foreach (var cache in fieldOperations.SalvageCaches.Where(item => item.remainingTokens > 0))
+                {
+                    DrawContactMarker(mapRect, cache.position.ToVector2(),
+                        new Color(0.86f, 0.64f, 0.18f), $"SALVAGE {cache.remainingTokens}", false);
+                }
+            }
             foreach (var contact in battlefield.VisibleContacts)
             {
                 DrawContact(mapRect, contact);
@@ -334,6 +360,26 @@ namespace UnderStatic.UI
             var y = rect.y + 12f;
             GUI.Label(new Rect(rect.x + 12f, y, rect.width - 24f, 24f), LabelFor(missions.Draft.sortieType));
             y += 28f;
+            if (workshopRisk != null)
+            {
+                GUI.Label(new Rect(rect.x + 12f, y, rect.width - 24f, 20f),
+                    workshopRisk.LastStatus.ToUpperInvariant());
+                y += 20f;
+            }
+            if (GUI.Button(new Rect(rect.x + 12f, y, (rect.width - 30f) * 0.5f, 26f),
+                    missions.Draft.launchSiteId == FieldOperationsSystem.WorkshopSiteId ? "> WORKSHOP" : "WORKSHOP"))
+                missions.SetDraftLaunchSite(FieldOperationsSystem.WorkshopSiteId);
+            if (GUI.Button(new Rect(rect.x + 18f + (rect.width - 30f) * 0.5f, y,
+                    (rect.width - 30f) * 0.5f, 26f),
+                    missions.Draft.launchSiteId == FieldOperationsSystem.RemoteSiteId ? "> REMOTE" : "REMOTE"))
+                missions.SetDraftLaunchSite(FieldOperationsSystem.RemoteSiteId);
+            y += 32f;
+            if (missions.Draft.launchSiteId == FieldOperationsSystem.RemoteSiteId && fieldOperations != null)
+            {
+                GUI.Label(new Rect(rect.x + 12f, y, rect.width - 24f, 22f),
+                    $"SITE FORECAST: {fieldOperations.ForecastAttentionState(FieldOperationsSystem.RemoteSiteId)}");
+                y += 22f;
+            }
             GUI.Label(new Rect(rect.x + 12f, y, rect.width - 24f, 88f), actor == null
                 ? "READY SHELF: EMPTY"
                 : $"READY: {actor.FrameDefinition.DisplayName}\n" +
@@ -344,11 +390,18 @@ namespace UnderStatic.UI
             y += 94f;
             if (plan != null)
             {
+                var maintenance = missions.PreviewMaintenance();
+                var routeRisk = workshopRisk?.AssessRoute(plan) ?? default;
                 GUI.Label(new Rect(rect.x + 12f, y, rect.width - 24f, 52f),
                     $"ROUTE {plan.routeDistanceKilometres:0.00} / {plan.availableRangeKilometres:0.00} KM\n" +
                     (plan.sortieType == SortieType.Recon
                         ? $"SENSOR HALF-WIDTH {plan.sensorHalfWidthKilometres:0.00} KM"
                         : $"TARGET {plan.targetContactId}"));
+                y += 50f;
+                GUI.Label(new Rect(rect.x + 12f, y, rect.width - 24f, 48f),
+                    $"RETURN COST · BAT {maintenance.BatteryUse:P0} · FRAME {maintenance.FrameWear:P0}\n" +
+                    $"{maintenance.Severity} WEAR · {maintenance.LikelySystems}\n" +
+                    $"ROUTE SIGNATURE · {routeRisk.Label.ToString().ToUpperInvariant()}");
             }
             y += 58f;
             if (missions.Draft.sortieType == SortieType.Recon)
@@ -367,13 +420,49 @@ namespace UnderStatic.UI
                 y += 56f;
             }
 
-            GUI.enabled = eligibility.Eligible;
-            if (GUI.Button(new Rect(rect.x + 12f, y, rect.width - 24f, 36f), "LAUNCH PLANNED SORTIE"))
+            var transmitterAllowsLaunch = workshopRisk?.IsTransmitterPowered != false
+                || !string.Equals(plan?.launchSiteId, "workshop", System.StringComparison.Ordinal);
+            var remoteAvailable = missions.Draft.launchSiteId != FieldOperationsSystem.RemoteSiteId
+                || fieldOperations?.CanUseRemoteSite == true;
+            GUI.enabled = eligibility.Eligible && transmitterAllowsLaunch && remoteAvailable;
+            var launchLabel = missions.Draft.launchSiteId == FieldOperationsSystem.RemoteSiteId
+                ? "STAGE REMOTE DEPLOYMENT"
+                : "LAUNCH PLANNED SORTIE";
+            if (GUI.Button(new Rect(rect.x + 12f, y, rect.width - 24f, 36f), launchLabel))
             {
                 LaunchDraft();
             }
             GUI.enabled = true;
+            if (!transmitterAllowsLaunch)
+            {
+                GUI.Label(new Rect(rect.x + 12f, y + 34f, rect.width - 24f, 24f),
+                    "POWER TRANSMITTER TO LAUNCH FROM WORKSHOP");
+            }
             y += 48f;
+            if (fieldOperations?.RemoteSite.cachedDroneId?.Length > 0)
+            {
+                if (GUI.Button(new Rect(rect.x + 12f, y, rect.width - 24f, 28f), "RECOVER REMOTE DRONE"))
+                {
+                    Close();
+                    fieldOperations.BeginRemoteDroneRecovery();
+                }
+                y += 34f;
+            }
+            var recoverable = fieldOperations?.SalvageCaches.FirstOrDefault(item => item.remainingTokens > 0);
+            if (recoverable != null)
+            {
+                GUI.Label(new Rect(rect.x + 12f, y, rect.width - 24f, 20f),
+                    $"SALVAGE SITE FORECAST: {fieldOperations.ForecastAttentionState(recoverable.cacheId)}");
+                y += 20f;
+                if (GUI.Button(new Rect(rect.x + 12f, y, rect.width - 24f, 28f),
+                        $"RECOVER SALVAGE · {recoverable.remainingTokens}"))
+                {
+                    var cacheId = recoverable.cacheId;
+                    Close();
+                    fieldOperations.BeginSalvageRecovery(cacheId);
+                }
+                y += 34f;
+            }
             DrawSortieLog(new Rect(rect.x + 10f, y, rect.width - 20f, rect.yMax - y - 54f));
 
             GUI.enabled = missions.ActiveMission == null;
@@ -413,9 +502,11 @@ namespace UnderStatic.UI
                 wordWrap = true,
                 clipping = TextClipping.Clip
             };
+            var maintenance = FormatMaintenance(selectedReport);
             var reportText = $"{selectedReport.outcome} · score {selectedReport.breakdown.finalScore:0.00}\n" +
-                $"REWARD +{selectedReport.fundsAwarded} funds · +{selectedReport.salvageAwarded} salvage\n" +
-                selectedReport.breakdown.summary;
+                $"REWARD +{selectedReport.fundsAwarded} funds · " +
+                $"{(fieldOperations != null ? $"CACHE {selectedReport.salvageAwarded} salvage" : $"+{selectedReport.salvageAwarded} salvage")}\n" +
+                selectedReport.breakdown.summary + maintenance;
             var reportY = y + 4f;
             var buttonY = rect.yMax - 34f;
             GUI.Box(new Rect(rect.x + 8f, reportY, rect.width - 16f,
@@ -432,6 +523,24 @@ namespace UnderStatic.UI
                 missions.TryAcknowledgeReport(selectedReport.missionInstanceId);
             }
             GUI.enabled = true;
+        }
+
+        private static string FormatMaintenance(MissionRuntimeData report)
+        {
+            if (report?.maintenanceRecords == null || report.maintenanceRecords.Length == 0)
+            {
+                return string.Empty;
+            }
+            var frame = report.maintenanceRecords.FirstOrDefault(item => item?.isFrame == true);
+            var battery = report.maintenanceRecords.FirstOrDefault(item =>
+                item?.category == UnderStatic.Core.PartCategory.Battery);
+            var localized = report.maintenanceRecords
+                .Where(item => item != null && !item.isFrame && item.conditionAfter < item.conditionBefore)
+                .Select(item => $"{item.category} -{item.conditionBefore - item.conditionAfter:P0}")
+                .Distinct().ToArray();
+            return $"\nRETURN · FRAME -{(frame == null ? 0f : frame.conditionBefore - frame.conditionAfter):P0}" +
+                $" · BAT -{(battery == null ? 0f : battery.chargeBefore - battery.chargeAfter):P0}" +
+                (localized.Length == 0 ? string.Empty : $"\nWEAR · {string.Join(" · ", localized)}");
         }
 
         private void HandleMapInput(Rect mapRect)
@@ -512,7 +621,14 @@ namespace UnderStatic.UI
             }
             GUI.Box(new Rect(Screen.width - 410f, Screen.height - 92f, 394f, 70f),
                 $"SORTIE · {active.plan.sortieType} · {active.state}\n" +
-                $"{active.pathProgress:P0} · workshop interaction remains available\n{missions.LastStatus}");
+                $"{active.telemetryPathProgress:P0} · " +
+                $"LINK {(workshopRisk?.IsTransmitterPowered == false ? $"LOST {active.linkLostSeconds:0.0}s" : "LIVE")}\n" +
+                missions.LastStatus);
+            if (missions.CanRecallActive()
+                && GUI.Button(new Rect(Screen.width - 116f, Screen.height - 116f, 100f, 24f), "RECALL"))
+            {
+                missions.TryRecallActive();
+            }
         }
 
         private Texture2D MapPreview()

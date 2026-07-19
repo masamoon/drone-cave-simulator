@@ -29,11 +29,14 @@ namespace UnderStatic.Fleet
         public DroneActor ServiceDrone { get; private set; }
         public DroneActor ReadyDrone { get; private set; }
         public DroneActor DeployedDrone { get; private set; }
+        public IReadOnlyList<DroneActor> FieldDrones => actors.Where(actor =>
+            actor?.Runtime.location.ToString().StartsWith("field.", StringComparison.Ordinal) == true).ToArray();
         public string LastStatus { get; private set; } = "Fleet ready";
 
         public event Action<DroneActor> ServiceDroneChanged;
 
         public bool HasFreeLockerSlot => FirstFreeLockerSlot() >= 0;
+        public bool HasWorkshopStorageForFieldRecovery => ServiceDrone == null || HasFreeLockerSlot;
 
         public bool ContainsActor(DroneActor actor) => actor != null && actors.Contains(actor);
 
@@ -94,6 +97,10 @@ namespace UnderStatic.Fleet
                 else if (location == StorageLocationId.MissionDeployed && DeployedDrone == null)
                 {
                     DeployedDrone = actor;
+                    actor.gameObject.SetActive(false);
+                }
+                else if (location.ToString().StartsWith("field.", StringComparison.Ordinal))
+                {
                     actor.gameObject.SetActive(false);
                 }
                 else
@@ -194,6 +201,66 @@ namespace UnderStatic.Fleet
             Place(actor, serviceBayAnchor, animate);
             ServiceDroneChanged?.Invoke(actor);
             LastStatus = $"Recovered {actor.FrameDefinition.DisplayName} to service";
+            return true;
+        }
+
+        public bool TryRecoverDeployedToField(DroneActor actor, string siteId)
+        {
+            if (actor == null || DeployedDrone != actor || string.IsNullOrWhiteSpace(siteId))
+            {
+                LastStatus = "Field recovery identity mismatch";
+                return false;
+            }
+            DeployedDrone = null;
+            actor.SetStorageLocation(new DroneStorageLocation(DroneStorageLocationKind.FieldSite, fieldSiteId: siteId));
+            actor.gameObject.SetActive(false);
+            LastStatus = $"{actor.FrameDefinition.DisplayName} cached at {siteId}";
+            return true;
+        }
+
+        public bool TryCacheReadyAtField(DroneActor actor, string siteId)
+        {
+            if (actor == null || ReadyDrone != actor || string.IsNullOrWhiteSpace(siteId))
+            {
+                LastStatus = "Only the staged ready drone can remain at a field site";
+                return false;
+            }
+            ReadyDrone = null;
+            actor.SetStorageLocation(new DroneStorageLocation(DroneStorageLocationKind.FieldSite,
+                fieldSiteId: siteId));
+            actor.gameObject.SetActive(false);
+            LastStatus = $"{actor.FrameDefinition.DisplayName} cached at {siteId}";
+            return true;
+        }
+
+        public bool TryRecoverFieldDroneToWorkshop(DroneActor actor, bool animate = true)
+        {
+            if (actor == null || !FieldDrones.Contains(actor))
+            {
+                LastStatus = "Field drone unavailable";
+                return false;
+            }
+            actor.gameObject.SetActive(true);
+            if (ServiceDrone == null)
+            {
+                ServiceDrone = actor;
+                actor.SetStorageLocation(new DroneStorageLocation(DroneStorageLocationKind.ServiceBay));
+                Place(actor, serviceBayAnchor, animate);
+                ServiceDroneChanged?.Invoke(actor);
+                LastStatus = $"Recovered {actor.FrameDefinition.DisplayName} to service";
+                return true;
+            }
+            var slot = FirstFreeLockerSlot();
+            if (slot < 0)
+            {
+                actor.gameObject.SetActive(false);
+                LastStatus = "No workshop space for recovered drone";
+                return false;
+            }
+            locker[slot] = actor;
+            actor.SetStorageLocation(new DroneStorageLocation(DroneStorageLocationKind.Locker, slot));
+            Place(actor, AnchorForLocker(slot), animate);
+            LastStatus = $"Recovered {actor.FrameDefinition.DisplayName} to locker {slot + 1}";
             return true;
         }
 
@@ -397,7 +464,12 @@ namespace UnderStatic.Fleet
                 serviceDroneId = ServiceDrone?.Runtime.droneInstanceId ?? string.Empty,
                 readyDroneId = ReadyDrone?.Runtime.droneInstanceId ?? string.Empty,
                 deployedDroneId = DeployedDrone?.Runtime.droneInstanceId ?? string.Empty,
-                lockerDroneIds = locker.Select(actor => actor?.Runtime.droneInstanceId ?? string.Empty).ToArray()
+                lockerDroneIds = locker.Select(actor => actor?.Runtime.droneInstanceId ?? string.Empty).ToArray(),
+                fieldDrones = FieldDrones.Select(actor => new FieldDroneSaveRecord
+                {
+                    droneInstanceId = actor.Runtime.droneInstanceId,
+                    siteId = actor.Runtime.location.ToString()["field.".Length..]
+                }).ToArray()
             };
         }
 
@@ -414,6 +486,7 @@ namespace UnderStatic.Fleet
                 StringComparer.Ordinal);
             var referenced = new[] { restored.serviceDroneId, restored.readyDroneId, restored.deployedDroneId }
                 .Concat(restored.lockerDroneIds ?? Array.Empty<string>())
+                .Concat(restored.fieldDrones?.Select(item => item?.droneInstanceId) ?? Array.Empty<string>())
                 .Where(id => !string.IsNullOrWhiteSpace(id))
                 .ToArray();
             if (referenced.Distinct(StringComparer.Ordinal).Count() != referenced.Length
@@ -421,6 +494,8 @@ namespace UnderStatic.Fleet
                 || restored.lockerDroneIds == null
                 || restored.lockerDroneIds.Length > LockerCapacity
                 || restored.drones == null
+                || restored.fieldDrones == null
+                || restored.fieldDrones.Any(item => item == null || string.IsNullOrWhiteSpace(item.siteId))
                 || restored.drones.Any(runtime => runtime == null
                     || !actorLookup.ContainsKey(runtime.droneInstanceId)))
             {
@@ -454,7 +529,17 @@ namespace UnderStatic.Fleet
                 locker[index] = string.IsNullOrEmpty(id) ? null : actorLookup[id];
             }
 
+            var fieldActors = restored.fieldDrones.Select(item => actorLookup[item.droneInstanceId]).ToArray();
+            foreach (var field in restored.fieldDrones)
+            {
+                var actor = actorLookup[field.droneInstanceId];
+                actor.SetStorageLocation(new DroneStorageLocation(DroneStorageLocationKind.FieldSite,
+                    fieldSiteId: field.siteId));
+                actor.gameObject.SetActive(false);
+            }
+
             foreach (var actor in actors.Except(new[] { ServiceDrone, ReadyDrone, DeployedDrone }.Concat(locker)
+                         .Concat(fieldActors)
                          .Where(item => item != null)))
             {
                 actor.SetStorageLocation(new DroneStorageLocation(DroneStorageLocationKind.External));

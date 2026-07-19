@@ -158,7 +158,7 @@ namespace UnderStatic.Tests.PlayMode
             var originalService = fleet.ServiceDrone.Runtime.droneInstanceId;
             var originalLocker = fleet.Locker[0].Runtime.droneInstanceId;
 
-            Assert.That(json, Does.Contain("\"version\": 9"));
+            Assert.That(json, Does.Contain("\"version\": 13"));
             Assert.That(sockets.Select(socket => socket.PersistenceSocketId).Distinct().Count(),
                 Is.EqualTo(sockets.Length));
             Assert.That(fleet.TrySwapLockerIntoService(0, false), Is.True);
@@ -171,27 +171,27 @@ namespace UnderStatic.Tests.PlayMode
 
         private static IEnumerator PressInteractKey()
         {
-            Assert.That(Keyboard.current, Is.Not.Null);
-            InputSystem.QueueStateEvent(Keyboard.current, new KeyboardState());
+            var keyboard = Keyboard.current ?? InputSystem.AddDevice<Keyboard>();
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState());
             yield return null;
             var pressed = new KeyboardState();
             pressed.Press(Key.E);
-            InputSystem.QueueStateEvent(Keyboard.current, pressed);
+            InputSystem.QueueStateEvent(keyboard, pressed);
             yield return null;
-            InputSystem.QueueStateEvent(Keyboard.current, new KeyboardState());
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState());
             yield return null;
         }
 
         private static IEnumerator PressKey(Key key)
         {
-            Assert.That(Keyboard.current, Is.Not.Null);
-            InputSystem.QueueStateEvent(Keyboard.current, new KeyboardState());
+            var keyboard = Keyboard.current ?? InputSystem.AddDevice<Keyboard>();
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState());
             yield return null;
             var pressed = new KeyboardState();
             pressed.Press(key);
-            InputSystem.QueueStateEvent(Keyboard.current, pressed);
+            InputSystem.QueueStateEvent(keyboard, pressed);
             yield return null;
-            InputSystem.QueueStateEvent(Keyboard.current, new KeyboardState());
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState());
             yield return null;
         }
     }

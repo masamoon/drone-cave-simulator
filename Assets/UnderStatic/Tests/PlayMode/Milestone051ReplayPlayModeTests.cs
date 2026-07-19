@@ -38,12 +38,15 @@ namespace UnderStatic.Tests.PlayMode
             var director = Object.FindAnyObjectByType<MissionReplayDirector>();
             var controller = Object.FindAnyObjectByType<FirstPersonController>();
             var interactions = Object.FindAnyObjectByType<InteractionSystem>();
+            var terminal = Object.FindAnyObjectByType<TacticalMapTerminal>();
             var workshopCamera = Camera.main;
             var runtime = Runtime(SortieType.Recon);
             runtime.discoveredContactIds = new[] { "contact.artillery.01" };
             runtime.discoveredPositions = new[] { new BattlefieldMapPoint(new Vector2(0.6f, 0.7f)) };
             runtime.discoveredTypes = new[] { BattlefieldContactType.Artillery };
 
+            terminal.Activate();
+            Assert.That(controller.enabled, Is.False);
             Assert.That(director.TryPlay(runtime), Is.True);
             Assert.That(controller.enabled, Is.False);
             Assert.That(workshopCamera.enabled, Is.False);
@@ -59,6 +62,29 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(controller.enabled, Is.True);
             Assert.That(workshopCamera.enabled, Is.True);
             Assert.That(interactions.enabled, Is.True);
+        }
+
+        [UnityTest]
+        public IEnumerator NoContactKamikazeReplayStillShowsSignalLoss()
+        {
+            SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+            var director = Object.FindAnyObjectByType<MissionReplayDirector>();
+            var runtime = Runtime(SortieType.KamikazeStrike, MissionOutcome.NoContact);
+            runtime.ordnanceConsumed = true;
+            runtime.aircraftExpended = true;
+            runtime.breakdown.positiveIdentification = false;
+
+            Assert.That(director.TryPlay(runtime), Is.True);
+            director.Tick(9f);
+            yield return null;
+
+            Assert.That(director.IsPlaying, Is.True);
+            Assert.That(director.CurrentPhase, Is.EqualTo(MissionReplayPhase.SignalLost));
+            Assert.That(director.StaticVisible, Is.True);
+            director.StopReplay();
+            yield return null;
         }
 
         [UnityTest]
@@ -120,13 +146,13 @@ namespace UnderStatic.Tests.PlayMode
             var workshopCamera = Camera.main;
 
             Assert.That(director.TryPlay(Runtime(SortieType.Recon)), Is.True);
-            Assert.That(Keyboard.current, Is.Not.Null);
-            InputSystem.QueueStateEvent(Keyboard.current, new KeyboardState());
+            var keyboard = Keyboard.current ?? InputSystem.AddDevice<Keyboard>();
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState());
             InputSystem.Update();
-            InputSystem.QueueStateEvent(Keyboard.current, new KeyboardState(Key.Escape));
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.Escape));
             InputSystem.Update();
             yield return null;
-            InputSystem.QueueStateEvent(Keyboard.current, new KeyboardState());
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState());
             InputSystem.Update();
 
             Assert.That(director.IsPlaying, Is.False);

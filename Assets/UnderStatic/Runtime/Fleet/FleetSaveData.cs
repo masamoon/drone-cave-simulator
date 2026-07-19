@@ -11,5 +11,13 @@ namespace UnderStatic.Fleet
         public string readyDroneId = string.Empty;
         public string deployedDroneId = string.Empty;
         public string[] lockerDroneIds = new string[3];
+        public FieldDroneSaveRecord[] fieldDrones = Array.Empty<FieldDroneSaveRecord>();
+    }
+
+    [Serializable]
+    public sealed class FieldDroneSaveRecord
+    {
+        public string droneInstanceId = string.Empty;
+        public string siteId = string.Empty;
     }
 }

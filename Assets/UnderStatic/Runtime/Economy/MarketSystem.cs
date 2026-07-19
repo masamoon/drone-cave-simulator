@@ -139,6 +139,14 @@ namespace UnderStatic.Economy
                     return Reject(MarketTransactionFailure.IdentityConflict, "Market drone identity is unavailable");
                 }
 
+                if (listing.category == MarketListingCategory.StrikeDrone && !HasArmedStrikePayload(drone))
+                {
+                    listing.isAvailable = false;
+                    SyncRuntimeListings();
+                    return Reject(MarketTransactionFailure.ListingUnavailable,
+                        "Strike airframe has already been expended");
+                }
+
                 if (!fleet.HasFreeLockerSlot)
                 {
                     return Reject(MarketTransactionFailure.StorageFull, "Drone locker is full");
@@ -346,6 +354,7 @@ namespace UnderStatic.Economy
                 listings.Add(authored.Copy());
             }
             ApplyMarketOwnership();
+            RepairOwnedMarketStrikeDrones();
             SyncRuntimeListings();
             LastStatus = "Market restored";
             StateChanged?.Invoke();
@@ -456,7 +465,38 @@ namespace UnderStatic.Economy
             }
 
             var drone = ResolveDrone(listing);
-            return drone != null && (fleet == null || !fleet.ContainsActor(drone));
+            return drone != null
+                && (listing.category != MarketListingCategory.StrikeDrone || HasArmedStrikePayload(drone))
+                && (fleet == null || !fleet.ContainsActor(drone));
+        }
+
+        private void RepairOwnedMarketStrikeDrones()
+        {
+            foreach (var listing in listings.Where(item => item.category == MarketListingCategory.StrikeDrone
+                         && !item.originatedFromPlayer && !item.isAvailable))
+            {
+                var drone = ResolveDrone(listing);
+                if (drone == null || fleet?.ContainsActor(drone) != true
+                    || drone.Runtime.location == StorageLocationId.MissionDeployed)
+                {
+                    continue;
+                }
+
+                var rack = drone.InstalledParts.FirstOrDefault(part =>
+                    part?.Definition?.Category == PartCategory.StrikeRack);
+                if (rack != null && rack.Runtime.consumableCharges <= 0)
+                {
+                    // Schema 13 saves could contain market stock that was expended, rotated back into
+                    // stock, and purchased again. A purchased one-way airframe must always be armed.
+                    rack.Runtime.consumableCharges = 1;
+                }
+            }
+        }
+
+        private static bool HasArmedStrikePayload(DroneActor drone)
+        {
+            return drone?.InstalledParts.Any(part => part?.Definition?.Category == PartCategory.StrikeRack
+                && part.IsServiceable && part.Runtime.consumableCharges > 0) == true;
         }
 
         private void SyncRuntimeListings()

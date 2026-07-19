@@ -89,6 +89,7 @@ namespace UnderStatic.Lab
             var saveObject = new GameObject("SaveSystem");
             saveObject.transform.SetParent(systems.transform);
             var saveSystem = saveObject.AddComponent<SaveSystem>();
+            saveObject.AddComponent<SaveStatusIndicator>().Configure(saveSystem);
             saveSystem.SetFileName(createSafeHouse
                 ? "under-static-safe-house.json"
                 : startDisassembled
@@ -140,7 +141,7 @@ namespace UnderStatic.Lab
                 25f,
                 0.04f,
                 0.65f,
-                fasteners: 2,
+                fasteners: 4,
                 rotations: 2.25f);
             var propellerProfile = Resources.Load<InstallationProfile>("InstallationProfiles/Propeller")
                 ?? InstallationProfile.CreateTransient(
@@ -154,10 +155,10 @@ namespace UnderStatic.Lab
 
             var arms = new[]
             {
-                new ArmLayout("front-left", new Vector3(-0.53f, 1.24f, 0.65f), false),
-                new ArmLayout("front-right", new Vector3(0.53f, 1.24f, 0.65f), false),
-                new ArmLayout("rear-left", new Vector3(-0.53f, 1.24f, 1.08f), true),
-                new ArmLayout("rear-right", new Vector3(0.53f, 1.24f, 1.08f), false)
+                new ArmLayout("front-left", new Vector3(-0.48f, 1.24f, 0.48f), false),
+                new ArmLayout("front-right", new Vector3(0.48f, 1.24f, 0.48f), false),
+                new ArmLayout("rear-left", new Vector3(-0.48f, 1.24f, 1.24f), true),
+                new ArmLayout("rear-right", new Vector3(0.48f, 1.24f, 1.24f), false)
             };
             var motorStagingPositions = new[]
             {
@@ -188,7 +189,8 @@ namespace UnderStatic.Lab
                     audioFeedback,
                     darkMaterial,
                     serviceableMaterial,
-                    drone.transform);
+                    drone.transform,
+                    -0.011f);
                 allSockets.Add(motorSocket);
 
                 var propellerSocketObject = InteractionLabFactory.CreatePrimitive(
@@ -474,8 +476,10 @@ namespace UnderStatic.Lab
                     fleet,
                     saveSystem,
                     playerController,
+                    interactions,
                     market,
                     inventory,
+                    diagnostic,
                     psxVisualKit);
             }
             else
@@ -496,10 +500,10 @@ namespace UnderStatic.Lab
                 frame);
             var endpoints = new[]
             {
-                new Vector3(-0.53f, 1.18f, 0.65f),
-                new Vector3(0.53f, 1.18f, 0.65f),
-                new Vector3(-0.53f, 1.18f, 1.08f),
-                new Vector3(0.53f, 1.18f, 1.08f)
+                new Vector3(-0.48f, 1.18f, 0.48f),
+                new Vector3(0.48f, 1.18f, 0.48f),
+                new Vector3(-0.48f, 1.18f, 1.24f),
+                new Vector3(0.48f, 1.18f, 1.24f)
             };
             var center = new Vector3(0f, 1.18f, 0.86f);
             foreach (var endpoint in endpoints)
@@ -659,7 +663,8 @@ namespace UnderStatic.Lab
             AudioFeedbackSystem audio,
             Material socketMaterial,
             Material fastenerMaterial,
-            Transform parent)
+            Transform parent,
+            float fastenerHeightOffset = 0.022f)
         {
             var socketObject = InteractionLabFactory.CreatePrimitive(
                 name,
@@ -668,20 +673,35 @@ namespace UnderStatic.Lab
                 position,
                 new Vector3(0.19f, 0.025f, 0.19f),
                 socketMaterial);
-            var targets = new Transform[2];
-            var fastenerVisuals = new Transform[2];
+            var fastenerCount = Mathf.Max(1, profile.FastenerCount);
+            var targets = new Transform[fastenerCount];
+            var fastenerVisuals = new Transform[fastenerCount];
+            var fastenerOffsets = new[]
+            {
+                new Vector3(-0.06f, 0f, -0.06f),
+                new Vector3(0.06f, 0f, -0.06f),
+                new Vector3(-0.06f, 0f, 0.06f),
+                new Vector3(0.06f, 0f, 0.06f)
+            };
             for (var index = 0; index < targets.Length; index++)
             {
-                var offset = index == 0 ? -0.06f : 0.06f;
-                var fastenerPosition = position + new Vector3(offset, 0.022f, -0.06f);
+                var fastenerPosition = position + fastenerOffsets[index] + Vector3.up * fastenerHeightOffset;
                 var head = InteractionLabFactory.CreatePrimitive(
                     $"{name}_Fastener_{index + 1}",
                     PrimitiveType.Cylinder,
                     parent,
                     fastenerPosition,
-                    new Vector3(0.022f, 0.008f, 0.022f),
+                    new Vector3(0.028f, 0.004f, 0.028f),
                     fastenerMaterial);
                 InteractionLabFactory.DisableCollider(head);
+                var driveSlot = InteractionLabFactory.CreatePrimitive(
+                    $"{name}_FastenerSlot_{index + 1}",
+                    PrimitiveType.Cube,
+                    head.transform,
+                    fastenerPosition + Vector3.up * 0.0045f,
+                    new Vector3(0.016f, 0.0015f, 0.004f),
+                    socketMaterial);
+                InteractionLabFactory.DisableCollider(driveSlot);
                 fastenerVisuals[index] = head.transform;
                 var target = new GameObject($"{name}_FastenerTarget_{index + 1}");
                 target.transform.SetParent(parent);

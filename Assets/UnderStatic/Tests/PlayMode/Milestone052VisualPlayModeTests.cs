@@ -24,6 +24,13 @@ namespace UnderStatic.Tests.PlayMode
             var motorDetail = GameObject.Find("MotorBell");
             var batteryLabel = GameObject.Find("BatteryLabel");
             var cameraGlass = GameObject.Find("CameraGlass");
+            var propellerBlade = GameObject.Find("PropellerBlade.2");
+            var frontLeftMotor = GameObject.Find("Motor_front-left");
+            var frontRightMotor = GameObject.Find("Motor_front-right");
+            var rearLeftMotor = GameObject.Find("Motor_rear-left");
+            var frontLeftFastener = GameObject.Find("MotorSocket_front-left_Fastener_1");
+            var fourthFrontLeftFastener = GameObject.Find("MotorSocket_front-left_Fastener_4");
+            var frontLeftFastenerSlot = GameObject.Find("MotorSocket_front-left_FastenerSlot_1");
 
             Assert.That(kit, Is.Not.Null);
             Assert.That(kit.IsConfigured, Is.True);
@@ -31,9 +38,35 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(scout, Is.Not.Null);
             Assert.That(scout.transform.Find("PSX_AccessPanel"), Is.Not.Null);
             Assert.That(scout.transform.Find("PSX_ArmBrace.0"), Is.Not.Null);
+            Assert.That(scout.transform.Find("PSX_ESCBoard"), Is.Not.Null);
+            Assert.That(scout.transform.Find("PSX_FlightController"), Is.Not.Null);
+            Assert.That(scout.transform.Find("PSX_CameraCage.Left"), Is.Not.Null);
+            Assert.That(scout.transform.Find("PSX_MotorWire.0.0"), Is.Not.Null);
+            Assert.That(scout.transform.Find("PSX_CompositeGrain.2"), Is.Not.Null);
+            Assert.That(scout.transform.Find("PSX_CompositeWeave.Reverse.0"), Is.Null);
+            Assert.That(scout.transform.Find("PSX_ServiceStencil"), Is.Not.Null);
+            Assert.That(GameObject.Find("MotorSocket_front-left").GetComponent<Renderer>().enabled, Is.False);
+            Assert.That(frontLeftFastener, Is.Not.Null);
+            Assert.That(frontLeftFastener.GetComponent<Renderer>().enabled, Is.True);
+            Assert.That(fourthFrontLeftFastener, Is.Not.Null);
+            Assert.That(frontLeftFastenerSlot, Is.Not.Null);
+            var motorShaft = frontLeftMotor.transform.Find("PSX_PartDetail/MotorShaft").GetComponent<Renderer>();
+            var propellerCollet = GameObject.Find("Propeller_front-left").transform
+                .Find("PSX_PartDetail/PropellerCollet").GetComponent<Renderer>();
+            Assert.That(propellerCollet.bounds.min.y,
+                Is.LessThanOrEqualTo(motorShaft.bounds.max.y + 0.003f));
             Assert.That(motorDetail, Is.Not.Null);
             Assert.That(batteryLabel, Is.Not.Null);
             Assert.That(cameraGlass, Is.Not.Null);
+            Assert.That(propellerBlade, Is.Not.Null);
+            Assert.That(frontLeftMotor, Is.Not.Null);
+            Assert.That(frontLeftMotor.transform.Find("PSX_PartDetail/MotorMarkingBand"), Is.Not.Null);
+            Assert.That(frontRightMotor, Is.Not.Null);
+            Assert.That(rearLeftMotor, Is.Not.Null);
+            Assert.That(Mathf.Abs(frontRightMotor.transform.position.x - frontLeftMotor.transform.position.x),
+                Is.GreaterThan(0.9f));
+            Assert.That(Mathf.Abs(rearLeftMotor.transform.position.z - frontLeftMotor.transform.position.z),
+                Is.GreaterThan(0.7f));
             Assert.That(terminal, Is.Not.Null);
             Assert.That(terminal.transform.Find("TerminalScreen"), Is.Not.Null);
             Assert.That(terminal.transform.Find("TerminalButton.2"), Is.Not.Null);

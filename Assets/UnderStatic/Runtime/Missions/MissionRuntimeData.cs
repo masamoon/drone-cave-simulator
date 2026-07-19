@@ -7,6 +7,7 @@ namespace UnderStatic.Missions
     {
         Active,
         Returning,
+        AwaitingConfirmation,
         Resolved
     }
 
@@ -27,12 +28,14 @@ namespace UnderStatic.Missions
         public SortieType sortieType;
         public BattlefieldMapPoint[] waypoints = Array.Empty<BattlefieldMapPoint>();
         public string targetContactId = string.Empty;
+        public string launchSiteId = "workshop";
 
         public SortieDraftData Copy() => new()
         {
             sortieType = sortieType,
             waypoints = waypoints?.ToArray() ?? Array.Empty<BattlefieldMapPoint>(),
-            targetContactId = targetContactId
+            targetContactId = targetContactId,
+            launchSiteId = launchSiteId
         };
     }
 
@@ -46,6 +49,9 @@ namespace UnderStatic.Missions
         public float routeDistanceKilometres;
         public float availableRangeKilometres;
         public float sensorHalfWidthKilometres;
+        public string launchSiteId = "workshop";
+        public BattlefieldMapPoint launchPosition;
+        public string returnSiteId = "workshop";
 
         public SortiePlanData Copy() => new()
         {
@@ -55,8 +61,28 @@ namespace UnderStatic.Missions
             aimedPosition = aimedPosition,
             routeDistanceKilometres = routeDistanceKilometres,
             availableRangeKilometres = availableRangeKilometres,
-            sensorHalfWidthKilometres = sensorHalfWidthKilometres
+            sensorHalfWidthKilometres = sensorHalfWidthKilometres,
+            launchSiteId = launchSiteId,
+            launchPosition = launchPosition,
+            returnSiteId = returnSiteId
         };
+    }
+
+    [Serializable]
+    public sealed class SortieMaintenanceRecord
+    {
+        public string droneInstanceId = string.Empty;
+        public string partInstanceId = string.Empty;
+        public string partDefinitionId = string.Empty;
+        public string socketId = string.Empty;
+        public Core.PartCategory category;
+        public bool isFrame;
+        public float conditionBefore;
+        public float conditionAfter;
+        public float chargeBefore;
+        public float chargeAfter;
+
+        public SortieMaintenanceRecord Copy() => (SortieMaintenanceRecord)MemberwiseClone();
     }
 
     [Serializable]
@@ -98,6 +124,18 @@ namespace UnderStatic.Missions
         public int fundsAwarded;
         public int salvageAwarded;
         public float exposureContribution;
+        public SortieMaintenanceRecord[] maintenanceRecords = Array.Empty<SortieMaintenanceRecord>();
+        public bool maintenanceApplied;
+        public float telemetryPathProgress;
+        public float linkLostSeconds;
+        public bool lostLinkTriggered;
+        public bool recallRequested;
+        public bool payloadReleased;
+        public bool ordnanceRefunded;
+        public bool confirmationPending;
+        public float executedDistanceKilometres;
+        public float revealProgressLimit = 1f;
+        public BattlefieldMapPoint[] actualRoute = Array.Empty<BattlefieldMapPoint>();
         public int radioUpdateIndex = -1;
         public string lastRadioMessage = string.Empty;
         public SortiePlanData plan = new();
@@ -130,6 +168,19 @@ namespace UnderStatic.Missions
                 fundsAwarded = fundsAwarded,
                 salvageAwarded = salvageAwarded,
                 exposureContribution = exposureContribution,
+                maintenanceRecords = maintenanceRecords?.Where(item => item != null).Select(item => item.Copy()).ToArray()
+                    ?? Array.Empty<SortieMaintenanceRecord>(),
+                maintenanceApplied = maintenanceApplied,
+                telemetryPathProgress = telemetryPathProgress,
+                linkLostSeconds = linkLostSeconds,
+                lostLinkTriggered = lostLinkTriggered,
+                recallRequested = recallRequested,
+                payloadReleased = payloadReleased,
+                ordnanceRefunded = ordnanceRefunded,
+                confirmationPending = confirmationPending,
+                executedDistanceKilometres = executedDistanceKilometres,
+                revealProgressLimit = revealProgressLimit,
+                actualRoute = actualRoute?.ToArray() ?? Array.Empty<BattlefieldMapPoint>(),
                 radioUpdateIndex = radioUpdateIndex,
                 lastRadioMessage = lastRadioMessage,
                 plan = plan?.Copy() ?? new SortiePlanData(),

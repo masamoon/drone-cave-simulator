@@ -6,6 +6,7 @@ using UnderStatic.Economy;
 using UnderStatic.Fleet;
 using UnderStatic.Inventory;
 using UnderStatic.Parts;
+using UnderStatic.Workshop;
 using UnityEngine;
 
 namespace UnderStatic.Missions
@@ -37,6 +38,10 @@ namespace UnderStatic.Missions
         [SerializeField] private MarketSystem market;
         [SerializeField] private InventorySystem inventory;
         [SerializeField] private SortieDraftData draft = new();
+        private IWorkshopTransmissionState transmission;
+        private FieldOperationsSystem fieldOperations;
+        private bool remoteLaunchAuthorized;
+        private const float LostLinkGraceSeconds = 5f;
 
         private readonly List<MissionRuntimeData> missions = new();
 
@@ -50,7 +55,34 @@ namespace UnderStatic.Missions
         public string LastStatus { get; private set; } = "Sortie planner ready";
 
         public event Action<MissionRuntimeData> MissionResolved;
+        public event Action<MissionRuntimeData> MissionLaunched;
         public event Action StateChanged;
+
+        public bool IsTransmitterPowered => transmission?.IsTransmitterPowered ?? true;
+
+        public void ConfigureTransmission(IWorkshopTransmissionState transmissionState)
+        {
+            transmission = transmissionState;
+        }
+
+        public void ConfigureFieldOperations(FieldOperationsSystem operations)
+        {
+            fieldOperations = operations;
+        }
+
+        public bool SetDraftLaunchSite(string siteId)
+        {
+            if (ActiveMission != null || fieldOperations?.TryGetLaunchPosition(siteId, out _) != true)
+            {
+                return false;
+            }
+            draft.launchSiteId = siteId;
+            LastStatus = string.Equals(siteId, FieldOperationsSystem.RemoteSiteId, StringComparison.Ordinal)
+                ? "Remote cache selected · field setup required"
+                : "Workshop launch selected";
+            StateChanged?.Invoke();
+            return true;
+        }
 
         public void Configure(
             IEnumerable<SortieProfileDefinition> sortieProfiles,
@@ -220,6 +252,17 @@ namespace UnderStatic.Missions
 
         public SortiePlanData PreviewPlan() => BuildPlan(fleet?.ReadyDrone);
 
+        public SortieMaintenanceForecast PreviewMaintenance()
+        {
+            var actor = fleet?.ReadyDrone;
+            var plan = BuildPlan(actor);
+            var profile = ProfileFor(draft.sortieType);
+            var utilization = plan == null || plan.availableRangeKilometres <= 0f
+                ? 0f
+                : Mathf.Clamp01(plan.routeDistanceKilometres / plan.availableRangeKilometres);
+            return SortieMaintenanceResolver.Forecast(actor, profile, utilization);
+        }
+
         public static float ReconRangeKilometres(DroneActor actor) =>
             Mathf.Max(0f, (actor?.Stats.Endurance ?? 0f) * ReconRangeKilometresPerEndurance);
 
@@ -231,6 +274,18 @@ namespace UnderStatic.Missions
         public bool TryLaunchDraft()
         {
             var actor = fleet?.ReadyDrone;
+            var remoteLaunch = string.Equals(draft.launchSiteId, FieldOperationsSystem.RemoteSiteId,
+                StringComparison.Ordinal);
+            if (remoteLaunch && !remoteLaunchAuthorized)
+            {
+                LastStatus = "Complete the remote field setup before launch";
+                return false;
+            }
+            if (!IsTransmitterPowered && string.Equals(draft.launchSiteId, "workshop", StringComparison.Ordinal))
+            {
+                LastStatus = "Power the workshop transmitter before launch";
+                return false;
+            }
             var eligibility = EvaluateDraft(actor);
             if (!eligibility.Eligible)
             {
@@ -271,17 +326,49 @@ namespace UnderStatic.Missions
                 ordnanceConsumed = draft.sortieType != SortieType.Recon,
                 aircraftExpended = draft.sortieType == SortieType.KamikazeStrike,
                 plan = plan,
+                actualRoute = plan.route?.ToArray() ?? Array.Empty<BattlefieldMapPoint>(),
+                telemetryPathProgress = 0f,
+                executedDistanceKilometres = plan.routeDistanceKilometres,
+                revealProgressLimit = 1f,
                 targetType = battlefield.FindVisible(plan.targetContactId)?.Type ?? BattlefieldContactType.Infantry
             };
             missions.Add(runtime);
             draft = new SortieDraftData { sortieType = runtime.plan.sortieType };
             LastStatus = $"{profile.DisplayName} active · workshop remains available";
+            MissionLaunched?.Invoke(runtime);
             StateChanged?.Invoke();
             return true;
         }
 
+        public bool AuthorizeAndLaunchRemoteDraft()
+        {
+            remoteLaunchAuthorized = true;
+            try
+            {
+                return TryLaunchDraft();
+            }
+            finally
+            {
+                remoteLaunchAuthorized = false;
+            }
+        }
+
+        public void ForceLostLink()
+        {
+            var active = missions.FirstOrDefault(item => item.state == MissionRuntimeState.Active);
+            if (active != null && !active.lostLinkTriggered)
+            {
+                active.linkLostSeconds = LostLinkGraceSeconds;
+                TriggerLostLink(active);
+            }
+        }
+
         public void Tick(float deltaSeconds)
         {
+            if (IsTransmitterPowered)
+            {
+                ConfirmPendingStrikes();
+            }
             var active = missions.FirstOrDefault(item => item.state == MissionRuntimeState.Active);
             if (active != null)
             {
@@ -291,13 +378,34 @@ namespace UnderStatic.Missions
                 active.pathProgress = active.resolvedDurationSeconds <= 0f
                     ? 1f
                     : Mathf.Clamp01(active.elapsedSeconds / active.resolvedDurationSeconds);
-                if (active.plan.sortieType == SortieType.Recon)
+                UpdatePayloadRelease(active);
+                if (IsTransmitterPowered)
                 {
-                    RevealReconContacts(active);
+                    if (!active.lostLinkTriggered)
+                    {
+                        active.linkLostSeconds = 0f;
+                    }
+                    active.telemetryPathProgress = active.pathProgress;
+                    if (active.plan.sortieType == SortieType.Recon)
+                    {
+                        RevealReconContacts(active, active.pathProgress);
+                    }
+                    UpdateRadio(active);
                 }
-                UpdateRadio(active);
+                else if (!active.lostLinkTriggered)
+                {
+                    active.linkLostSeconds += Mathf.Max(0f, deltaSeconds);
+                    if (active.linkLostSeconds >= LostLinkGraceSeconds)
+                    {
+                        TriggerLostLink(active);
+                    }
+                }
                 if (active.elapsedSeconds >= active.resolvedDurationSeconds)
                 {
+                    if (active.plan.sortieType == SortieType.Recon)
+                    {
+                        RevealReconContacts(active, active.revealProgressLimit);
+                    }
                     Resolve(active);
                 }
             }
@@ -307,6 +415,26 @@ namespace UnderStatic.Missions
             {
                 TryCompleteReturn(returning);
             }
+        }
+
+        public bool CanRecallActive()
+        {
+            var active = missions.FirstOrDefault(item => item.state == MissionRuntimeState.Active);
+            return active != null && IsTransmitterPowered && !active.recallRequested
+                && active.plan.sortieType != SortieType.KamikazeStrike
+                && (active.plan.sortieType != SortieType.GrenadeDrop || !active.payloadReleased);
+        }
+
+        public bool TryRecallActive()
+        {
+            var active = missions.FirstOrDefault(item => item.state == MissionRuntimeState.Active);
+            if (!CanRecallActive() || active == null)
+            {
+                LastStatus = "Recall unavailable";
+                return false;
+            }
+            BeginRecall(active, false);
+            return true;
         }
 
         public bool TryAcknowledgeReport(string missionInstanceId)
@@ -332,7 +460,17 @@ namespace UnderStatic.Missions
         {
             if (restored?.missions == null || restored.draft == null
                 || restored.missions.Any(item => item?.plan == null
-                    || ProfileFor(item.plan.sortieType) == null)
+                    || ProfileFor(item.plan.sortieType) == null
+                    || item.plan.route == null || item.actualRoute == null
+                    || item.maintenanceRecords == null || item.discoveredContactIds == null
+                    || item.telemetryPathProgress is < 0f or > 1f
+                    || item.pathProgress is < 0f or > 1f
+                    || item.linkLostSeconds < 0f
+                    || item.state == MissionRuntimeState.Active && item.maintenanceApplied
+                    || item.state is MissionRuntimeState.Returning or MissionRuntimeState.Resolved
+                        && item.plan.sortieType != SortieType.KamikazeStrike && !item.maintenanceApplied
+                    || item.state == MissionRuntimeState.AwaitingConfirmation
+                        && (item.plan.sortieType != SortieType.KamikazeStrike || !item.confirmationPending))
                 || restored.missions.Count(item => item.state is MissionRuntimeState.Active
                     or MissionRuntimeState.Returning) > 1
                 || restored.missions.Select(item => item.missionInstanceId)
@@ -368,7 +506,14 @@ namespace UnderStatic.Missions
             }
             var range = ReconRangeKilometres(actor);
             var sensor = ReconSensorHalfWidthKilometres(actor);
-            var route = new List<Vector2> { BattlefieldSystem.WorkshopPosition };
+            var launchSiteId = string.IsNullOrWhiteSpace(draft.launchSiteId)
+                ? FieldOperationsSystem.WorkshopSiteId
+                : draft.launchSiteId;
+            var fieldPosition = BattlefieldSystem.WorkshopPosition;
+            var launchPosition = fieldOperations?.TryGetLaunchPosition(launchSiteId, out fieldPosition) == true
+                ? fieldPosition
+                : BattlefieldSystem.WorkshopPosition;
+            var route = new List<Vector2> { launchPosition };
             var targetId = string.Empty;
             var aimed = BattlefieldSystem.WorkshopPosition;
             if (draft.sortieType == SortieType.Recon)
@@ -378,7 +523,7 @@ namespace UnderStatic.Missions
                     return null;
                 }
                 route.AddRange(draft.waypoints.Select(item => item.ToVector2()));
-                route.Add(BattlefieldSystem.WorkshopPosition);
+                route.Add(launchPosition);
             }
             else
             {
@@ -392,7 +537,7 @@ namespace UnderStatic.Missions
                 route.Add(aimed);
                 if (draft.sortieType == SortieType.GrenadeDrop)
                 {
-                    route.Add(BattlefieldSystem.WorkshopPosition);
+                    route.Add(launchPosition);
                 }
             }
             return new SortiePlanData
@@ -403,16 +548,19 @@ namespace UnderStatic.Missions
                 aimedPosition = new BattlefieldMapPoint(aimed),
                 routeDistanceKilometres = BattlefieldSystem.RouteDistanceKilometres(route),
                 availableRangeKilometres = range,
-                sensorHalfWidthKilometres = sensor
+                sensorHalfWidthKilometres = sensor,
+                launchSiteId = launchSiteId,
+                launchPosition = new BattlefieldMapPoint(launchPosition),
+                returnSiteId = launchSiteId
             };
         }
 
-        private void RevealReconContacts(MissionRuntimeData runtime)
+        private void RevealReconContacts(MissionRuntimeData runtime, float progress)
         {
             var route = runtime.plan.route.Select(item => item.ToVector2()).ToArray();
             var discoveries = battlefield.RevealAlongRoute(
                 route,
-                runtime.pathProgress,
+                Mathf.Clamp01(progress),
                 runtime.plan.sensorHalfWidthKilometres,
                 battlefield.Runtime.currentDay);
             if (discoveries.Count == 0)
@@ -488,7 +636,50 @@ namespace UnderStatic.Missions
                 : Mathf.Clamp01(InstalledBatteryCharge(actor) * utilization);
             runtime.frameWear = Mathf.Clamp(profile.BaseWear + utilization * 0.03f, 0f, 0.2f);
 
-            if (runtime.plan.sortieType == SortieType.Recon)
+            if (runtime.recallRequested && runtime.plan.sortieType != SortieType.KamikazeStrike)
+            {
+                runtime.outcome = runtime.plan.sortieType == SortieType.Recon
+                    && runtime.discoveredContactIds.Length > 0
+                        ? MissionOutcome.ObservationOnly
+                        : MissionOutcome.Aborted;
+                runtime.breakdown.summary = runtime.plan.sortieType == SortieType.Recon
+                    ? runtime.discoveredContactIds.Length > 0
+                        ? "Lost-link return recovered partial reconnaissance data."
+                        : "The aircraft returned before collecting useful reconnaissance."
+                    : "The aircraft recalled before payload release.";
+                if (runtime.plan.sortieType == SortieType.GrenadeDrop && runtime.ordnanceConsumed)
+                {
+                    var rack = FindStrikeRack(actor);
+                    if (rack != null)
+                    {
+                        rack.Runtime.consumableCharges++;
+                        runtime.ordnanceRefunded = true;
+                        runtime.ordnanceConsumed = false;
+                    }
+                }
+            }
+            else if (runtime.plan.sortieType == SortieType.KamikazeStrike && !IsTransmitterPowered)
+            {
+                if (!fleet.TryConsumeDeployed(actor))
+                {
+                    runtime.state = MissionRuntimeState.Returning;
+                    LastStatus = fleet.LastStatus;
+                    StateChanged?.Invoke();
+                    return;
+                }
+                runtime.confirmationPending = true;
+                runtime.state = MissionRuntimeState.AwaitingConfirmation;
+                runtime.lastRadioMessage = "Signal lost before impact confirmation";
+                LastStatus = "Kamikaze result awaiting transmitter confirmation";
+                StateChanged?.Invoke();
+                return;
+            }
+
+            if (runtime.recallRequested)
+            {
+                // Recall outcome was authored above; no battlefield effect is applied.
+            }
+            else if (runtime.plan.sortieType == SortieType.Recon)
             {
                 runtime.outcome = score >= 0.88f ? MissionOutcome.ExceptionalSuccess
                     : score >= 0.68f ? MissionOutcome.Success
@@ -527,7 +718,10 @@ namespace UnderStatic.Missions
                         ? $"{strike.Type} contact destroyed."
                         : $"{strike.Type} contact damaged ({strike.DamageApplied} effect).";
                     runtime.fundsAwarded += market?.AwardFunds(strike.Funds, $"{strike.Type} strike") ?? 0;
-                    runtime.salvageAwarded += inventory?.AwardScrap(strike.Salvage, $"{strike.Type} strike") ?? 0;
+                    runtime.salvageAwarded += fieldOperations != null
+                        ? fieldOperations.CreateSalvageCache(runtime.missionInstanceId,
+                            runtime.plan.aimedPosition.ToVector2(), strike.Salvage)?.remainingTokens ?? 0
+                        : inventory?.AwardScrap(strike.Salvage, $"{strike.Type} strike") ?? 0;
                 }
             }
 
@@ -555,7 +749,12 @@ namespace UnderStatic.Missions
         private void TryCompleteReturn(MissionRuntimeData runtime)
         {
             var actor = fleet?.FindActor(runtime.assignedDroneId);
-            if (actor == null || !fleet.TryRecoverDeployedToService(actor))
+            var remote = string.Equals(runtime.plan.returnSiteId, FieldOperationsSystem.RemoteSiteId,
+                StringComparison.Ordinal);
+            var recovered = remote
+                ? fieldOperations?.CacheReturnedDrone(actor, runtime.plan.returnSiteId) == true
+                : fleet?.TryRecoverDeployedToService(actor) == true;
+            if (actor == null || !recovered)
             {
                 LastStatus = fleet?.LastStatus ?? "Recovery waiting";
                 return;
@@ -590,25 +789,242 @@ namespace UnderStatic.Missions
             StateChanged?.Invoke();
         }
 
-        private static void ApplyReturnWear(DroneActor actor, MissionRuntimeData runtime)
+        private void UpdatePayloadRelease(MissionRuntimeData runtime)
         {
-            actor.Runtime.frameCondition = Mathf.Clamp01(actor.Runtime.frameCondition - runtime.frameWear);
-            actor.Runtime.hasDiagnosticResult = false;
-            actor.Runtime.latestDiagnosticPassed = false;
-            foreach (var part in actor.InstalledParts)
+            if (runtime.plan.sortieType == SortieType.GrenadeDrop && runtime.pathProgress >= 0.5f)
             {
-                if (part.Definition.Category == PartCategory.Battery)
+                runtime.payloadReleased = true;
+            }
+        }
+
+        private void TriggerLostLink(MissionRuntimeData runtime)
+        {
+            runtime.lostLinkTriggered = true;
+            if (string.Equals(runtime.plan.launchSiteId, FieldOperationsSystem.RemoteSiteId,
+                    StringComparison.Ordinal))
+            {
+                runtime.lastRadioMessage = "LINK LOST · remote relay continuing planned route";
+                LastStatus = runtime.lastRadioMessage;
+                StateChanged?.Invoke();
+                return;
+            }
+            if (runtime.plan.sortieType == SortieType.KamikazeStrike || runtime.payloadReleased)
+            {
+                runtime.lastRadioMessage = "LINK LOST · aircraft continuing committed route";
+                LastStatus = runtime.lastRadioMessage;
+                StateChanged?.Invoke();
+                return;
+            }
+            BeginRecall(runtime, true);
+        }
+
+        private void BeginRecall(MissionRuntimeData runtime, bool lostLink)
+        {
+            var current = PositionAlongRoute(runtime.plan.route, runtime.pathProgress);
+            var origin = runtime.plan.launchPosition.ToVector2();
+            if (origin == Vector2.zero)
+            {
+                origin = runtime.plan.route[0].ToVector2();
+            }
+            var flown = Mathf.Clamp01(runtime.pathProgress) * runtime.plan.routeDistanceKilometres;
+            var turnPoint = current;
+            var routeProgressAtTurn = runtime.pathProgress;
+            var distanceToTurn = 0f;
+            if (runtime.plan.sortieType == SortieType.Recon)
+            {
+                FindCurrentLegEnd(runtime.plan.route, runtime.pathProgress, out turnPoint,
+                    out routeProgressAtTurn, out distanceToTurn);
+            }
+            var returnDistance = BattlefieldSystem.MapDistanceKilometres(turnPoint, origin);
+            runtime.executedDistanceKilometres = flown + distanceToTurn + returnDistance;
+            runtime.revealProgressLimit = routeProgressAtTurn;
+            runtime.actualRoute = BuildTruncatedRoute(runtime.plan.route, routeProgressAtTurn, turnPoint, origin);
+            runtime.recallRequested = true;
+            runtime.lostLinkTriggered |= lostLink;
+            var originalDuration = Mathf.Max(0.01f, runtime.resolvedDurationSeconds);
+            var returnDuration = originalDuration * (distanceToTurn + returnDistance)
+                / Mathf.Max(0.01f, runtime.plan.routeDistanceKilometres);
+            runtime.resolvedDurationSeconds = runtime.elapsedSeconds + returnDuration;
+            runtime.lastRadioMessage = lostLink ? "LINK LOST · automatic return" : "RECALL · aircraft returning";
+            LastStatus = runtime.lastRadioMessage;
+            StateChanged?.Invoke();
+        }
+
+        private static void FindCurrentLegEnd(
+            IReadOnlyList<BattlefieldMapPoint> route,
+            float progress,
+            out Vector2 legEnd,
+            out float progressAtLegEnd,
+            out float remainingLegDistance)
+        {
+            legEnd = route.Count > 0 ? route[^1].ToVector2() : Vector2.zero;
+            progressAtLegEnd = 1f;
+            remainingLegDistance = 0f;
+            if (route.Count < 2)
+            {
+                return;
+            }
+
+            var total = RouteDistance(route);
+            var travelled = Mathf.Clamp01(progress) * total;
+            var accumulated = 0f;
+            for (var index = 1; index < route.Count; index++)
+            {
+                var start = route[index - 1].ToVector2();
+                var end = route[index].ToVector2();
+                var legDistance = BattlefieldSystem.MapDistanceKilometres(start, end);
+                if (travelled <= accumulated + legDistance || index == route.Count - 1)
                 {
-                    part.Runtime.chargeLevel = Mathf.Clamp01(part.Runtime.chargeLevel - runtime.batteryConsumed);
+                    legEnd = end;
+                    remainingLegDistance = Mathf.Max(0f, accumulated + legDistance - travelled);
+                    progressAtLegEnd = total <= 0f ? 1f : Mathf.Clamp01((accumulated + legDistance) / total);
+                    return;
                 }
-                part.Runtime.condition = Mathf.Clamp01(part.Runtime.condition - runtime.frameWear * 0.35f);
-                part.Runtime.tested = false;
-                if (part.Runtime.currentState == InteractionState.Tested)
+                accumulated += legDistance;
+            }
+        }
+
+        private static BattlefieldMapPoint[] BuildTruncatedRoute(
+            IReadOnlyList<BattlefieldMapPoint> route,
+            float progressAtTurn,
+            Vector2 turnPoint,
+            Vector2 origin)
+        {
+            if (route.Count == 0)
+            {
+                return new[] { new BattlefieldMapPoint(turnPoint), new BattlefieldMapPoint(origin) };
+            }
+            var total = RouteDistance(route);
+            var limit = progressAtTurn * total;
+            var accumulated = 0f;
+            var result = new List<BattlefieldMapPoint> { route[0] };
+            for (var index = 1; index < route.Count; index++)
+            {
+                accumulated += BattlefieldSystem.MapDistanceKilometres(
+                    route[index - 1].ToVector2(), route[index].ToVector2());
+                if (accumulated <= limit + 0.0001f)
                 {
-                    part.Runtime.currentState = InteractionState.Installed;
-                    part.Runtime.lastStableState = InteractionState.Installed;
+                    result.Add(route[index]);
+                }
+                else
+                {
+                    break;
                 }
             }
+            if (result.Count == 1 || result[^1].ToVector2() != turnPoint)
+            {
+                result.Add(new BattlefieldMapPoint(turnPoint));
+            }
+            if (result[^1].ToVector2() != origin)
+            {
+                result.Add(new BattlefieldMapPoint(origin));
+            }
+            return result.ToArray();
+        }
+
+        private static float RouteDistance(IReadOnlyList<BattlefieldMapPoint> route)
+        {
+            var distance = 0f;
+            for (var index = 1; index < route.Count; index++)
+            {
+                distance += BattlefieldSystem.MapDistanceKilometres(
+                    route[index - 1].ToVector2(), route[index].ToVector2());
+            }
+            return distance;
+        }
+
+        private void ConfirmPendingStrikes()
+        {
+            foreach (var runtime in missions.Where(item =>
+                         item.state == MissionRuntimeState.AwaitingConfirmation && item.confirmationPending).ToArray())
+            {
+                ApplyConfirmedStrike(runtime);
+                runtime.confirmationPending = false;
+                runtime.rewardsGranted = true;
+                CompleteResolution(runtime);
+            }
+        }
+
+        private void ApplyConfirmedStrike(MissionRuntimeData runtime)
+        {
+            var effective = runtime.breakdown.finalScore >= 0.48f;
+            var strike = battlefield.ApplyStrike(
+                runtime.plan.targetContactId,
+                runtime.plan.aimedPosition.ToVector2(),
+                effective ? 2 : 0,
+                battlefield.Runtime.currentDay);
+            runtime.breakdown.positiveIdentification = strike.ContactFound;
+            runtime.damageApplied = strike.DamageApplied;
+            if (!strike.ContactFound)
+            {
+                runtime.outcome = MissionOutcome.NoContact;
+                runtime.breakdown.summary = "Delayed confirmation found no target at the last known position.";
+            }
+            else if (!effective)
+            {
+                runtime.outcome = MissionOutcome.Aborted;
+                runtime.breakdown.summary = "Delayed confirmation reported no effective strike.";
+            }
+            else
+            {
+                runtime.outcome = runtime.breakdown.finalScore >= 0.88f
+                    ? MissionOutcome.ExceptionalSuccess
+                    : runtime.breakdown.finalScore >= 0.68f ? MissionOutcome.Success : MissionOutcome.LimitedSuccess;
+                runtime.breakdown.summary = strike.Destroyed
+                    ? $"Delayed confirmation: {strike.Type} contact destroyed."
+                    : $"Delayed confirmation: {strike.Type} damaged ({strike.DamageApplied} effect).";
+                runtime.fundsAwarded += market?.AwardFunds(strike.Funds, $"{strike.Type} strike") ?? 0;
+                runtime.salvageAwarded += fieldOperations != null
+                    ? fieldOperations.CreateSalvageCache(runtime.missionInstanceId,
+                        runtime.plan.aimedPosition.ToVector2(), strike.Salvage)?.remainingTokens ?? 0
+                    : inventory?.AwardScrap(strike.Salvage, $"{strike.Type} strike") ?? 0;
+            }
+        }
+
+        private static Vector2 PositionAlongRoute(IReadOnlyList<BattlefieldMapPoint> route, float progress)
+        {
+            if (route == null || route.Count == 0) return BattlefieldSystem.WorkshopPosition;
+            if (route.Count == 1) return route[0].ToVector2();
+            var points = route.Select(item => item.ToVector2()).ToArray();
+            var lengths = new float[points.Length - 1];
+            var total = 0f;
+            for (var index = 0; index < lengths.Length; index++)
+            {
+                lengths[index] = Vector2.Distance(points[index], points[index + 1]);
+                total += lengths[index];
+            }
+            var remaining = Mathf.Clamp01(progress) * total;
+            for (var index = 0; index < lengths.Length; index++)
+            {
+                if (remaining <= lengths[index])
+                {
+                    return Vector2.Lerp(points[index], points[index + 1],
+                        lengths[index] <= 0f ? 0f : remaining / lengths[index]);
+                }
+                remaining -= lengths[index];
+            }
+            return points[^1];
+        }
+
+        private void ApplyReturnWear(DroneActor actor, MissionRuntimeData runtime)
+        {
+            if (runtime.maintenanceApplied)
+            {
+                return;
+            }
+
+            var distance = runtime.executedDistanceKilometres > 0f
+                ? runtime.executedDistanceKilometres
+                : runtime.plan.routeDistanceKilometres;
+            var utilization = runtime.plan.availableRangeKilometres <= 0f
+                ? 1f
+                : Mathf.Clamp01(distance / runtime.plan.availableRangeKilometres);
+            runtime.maintenanceRecords = SortieMaintenanceResolver.Apply(
+                actor,
+                ProfileFor(runtime.plan.sortieType),
+                utilization,
+                runtime.resolutionSeed);
+            runtime.maintenanceApplied = true;
         }
 
         private static float InstalledBatteryCharge(DroneActor actor) => actor?.InstalledParts.FirstOrDefault(part =>

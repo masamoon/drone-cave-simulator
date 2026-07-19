@@ -1,6 +1,7 @@
 using UnderStatic.Economy;
 using UnderStatic.Fleet;
 using UnityEngine;
+using System;
 
 namespace UnderStatic.Missions
 {
@@ -15,6 +16,7 @@ namespace UnderStatic.Missions
 
         public OperationalDayRuntimeData Runtime => runtime;
         public string LastStatus { get; private set; } = "Operations available";
+        public event Action<int> DayBegan;
 
         public void Configure(
             MissionSystem missions,
@@ -71,6 +73,7 @@ namespace UnderStatic.Missions
             fleetSystem?.PrepareForNextOperationalDay();
             marketSystem?.AdvanceMarketCycle(seed);
             battlefieldSystem?.AdvanceDay(runtime.dayIndex, seed);
+            DayBegan?.Invoke(runtime.dayIndex);
             LastStatus = $"Day {runtime.dayIndex} operations available";
             return true;
         }

@@ -4,6 +4,7 @@ using UnderStatic.Fleet;
 using UnderStatic.Parts;
 using UnderStatic.Economy;
 using UnderStatic.Missions;
+using UnderStatic.Workshop;
 
 namespace UnderStatic.Persistence
 {
@@ -19,6 +20,8 @@ namespace UnderStatic.Persistence
         public MissionSaveData missions;
         public OperationalDayRuntimeData operationalDay;
         public BattlefieldRuntimeData battlefield;
+        public WorkshopRiskRuntimeData workshopRisk;
+        public FieldOperationsRuntimeData fieldOperations;
 
         // Version 1 fields remain readable for Milestone 1 saves.
         public PartRuntimeData part;

@@ -112,6 +112,7 @@ namespace UnderStatic.Replays
             ActiveMap = TopographyFor(runtime);
             activePlan = MissionReplayPlan.Create(runtime);
             BuildReconstruction();
+            SuspendWorkshopPresentation();
             workshopCamera = Camera.main;
             workshopCameraWasEnabled = workshopCamera != null && workshopCamera.enabled;
             if (workshopCamera != null)
@@ -123,7 +124,6 @@ namespace UnderStatic.Replays
             {
                 controller.enabled = false;
             }
-            SuspendWorkshopPresentation();
             previousCursorLock = Cursor.lockState;
             previousCursorVisible = Cursor.visible;
             Cursor.lockState = CursorLockMode.Confined;
@@ -150,8 +150,7 @@ namespace UnderStatic.Replays
             elapsed = advancedElapsed;
             var normalized = Mathf.Clamp01(elapsed / definition.ReplayDuration);
             ApplyPose(normalized);
-            StaticVisible = activePlan.ShowEngagement
-                && activePlan.StrikeType == MissionReplayStrikeType.Kamikaze
+            StaticVisible = activePlan.StrikeType == MissionReplayStrikeType.Kamikaze
                 && normalized >= 0.72f;
             UpdateBombDrop(normalized);
             if (StaticVisible)

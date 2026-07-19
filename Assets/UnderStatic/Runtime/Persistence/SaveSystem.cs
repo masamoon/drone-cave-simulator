@@ -9,6 +9,7 @@ using UnderStatic.Missions;
 using UnderStatic.Inventory;
 using UnderStatic.Parts;
 using UnityEngine;
+using UnderStatic.Workshop;
 
 namespace UnderStatic.Persistence
 {
@@ -24,9 +25,12 @@ namespace UnderStatic.Persistence
         [SerializeField] private MissionSystem missionSystem;
         [SerializeField] private OperationalDaySystem operationalDaySystem;
         [SerializeField] private BattlefieldSystem battlefieldSystem;
+        [SerializeField] private WorkshopRiskSystem workshopRiskSystem;
+        [SerializeField] private FieldOperationsSystem fieldOperationsSystem;
 
         public string SavePath => Path.Combine(Application.persistentDataPath, fileName);
         public string LastStatus { get; private set; } = "Not saved";
+        public event Action<string> StatusChanged;
 
         public void Configure(
             IEnumerable<InstallablePart> targetParts,
@@ -71,6 +75,16 @@ namespace UnderStatic.Persistence
             battlefieldSystem = battlefield;
         }
 
+        public void ConfigureWorkshopRisk(WorkshopRiskSystem risk)
+        {
+            workshopRiskSystem = risk;
+        }
+
+        public void ConfigureFieldOperations(FieldOperationsSystem operations)
+        {
+            fieldOperationsSystem = operations;
+        }
+
         public void RegisterParts(IEnumerable<InstallablePart> additionalParts)
         {
             parts = parts.Concat(additionalParts ?? Enumerable.Empty<InstallablePart>())
@@ -111,7 +125,7 @@ namespace UnderStatic.Persistence
 
             return JsonUtility.ToJson(new MilestoneSaveData
             {
-                version = missionSystem != null ? 10 : marketSystem != null ? 9 : fleetSystem == null ? 4 : 5,
+                version = fieldOperationsSystem != null ? 13 : workshopRiskSystem != null ? 12 : missionSystem != null ? 11 : marketSystem != null ? 9 : fleetSystem == null ? 4 : 5,
                 parts = records,
                 sockets = socketRecords,
                 inventory = inventorySystem?.CaptureState(),
@@ -119,7 +133,9 @@ namespace UnderStatic.Persistence
                 economy = marketSystem?.CaptureState(),
                 missions = missionSystem?.CaptureState(),
                 operationalDay = operationalDaySystem?.CaptureState(),
-                battlefield = battlefieldSystem?.CaptureState()
+                battlefield = battlefieldSystem?.CaptureState(),
+                workshopRisk = workshopRiskSystem?.CaptureState(),
+                fieldOperations = fieldOperationsSystem?.CaptureState()
             }, true);
         }
 
@@ -141,10 +157,39 @@ namespace UnderStatic.Persistence
                 return false;
             }
 
-            if (missionSystem != null && data.version < 10)
+            var requiredSchema = fieldOperationsSystem != null ? 13 : workshopRiskSystem != null ? 12 : missionSystem != null ? 11 : 0;
+            if (requiredSchema > 0 && data.version < requiredSchema)
             {
-                LastStatus = "Load failed: mission saves before schema 10 are incompatible with persistent sorties";
+                LastStatus = $"Load failed: schema {requiredSchema} required";
                 return false;
+            }
+
+            if (workshopRiskSystem != null && !workshopRiskSystem.CanRestore(data.workshopRisk))
+            {
+                LastStatus = "Load failed: workshop risk state invalid";
+                return false;
+            }
+            if (fieldOperationsSystem != null && !fieldOperationsSystem.CanRestore(data.fieldOperations))
+            {
+                LastStatus = "Load failed: field operations state invalid";
+                return false;
+            }
+            if (fieldOperationsSystem != null)
+            {
+                var cachedDroneId = data.fieldOperations.remoteSite.cachedDroneId;
+                var savedFieldDrones = data.fleet?.fieldDrones ?? Array.Empty<FieldDroneSaveRecord>();
+                var fieldIdentityValid = string.IsNullOrWhiteSpace(cachedDroneId)
+                    ? savedFieldDrones.Length == 0
+                    : savedFieldDrones.Length == 1
+                        && string.Equals(savedFieldDrones[0]?.droneInstanceId, cachedDroneId,
+                            StringComparison.Ordinal)
+                        && string.Equals(savedFieldDrones[0]?.siteId, FieldOperationsSystem.RemoteSiteId,
+                            StringComparison.Ordinal);
+                if (!fieldIdentityValid)
+                {
+                    LastStatus = "Load failed: field drone identity mismatch";
+                    return false;
+                }
             }
 
             if (data.version <= 1
@@ -278,10 +323,12 @@ namespace UnderStatic.Persistence
             var dayValid = data.version < 7
                 || operationalDaySystem == null
                 || operationalDaySystem.RestoreState(data.operationalDay);
-            LastStatus = battlefieldValid && missionsValid && dayValid
+            var riskValid = workshopRiskSystem == null || workshopRiskSystem.RestoreState(data.workshopRisk);
+            var fieldValid = fieldOperationsSystem == null || fieldOperationsSystem.RestoreState(data.fieldOperations);
+            LastStatus = battlefieldValid && missionsValid && dayValid && riskValid && fieldValid
                 ? $"Loaded {targetParts.Count} components"
-                : $"Load failed: {(!battlefieldValid ? "battlefield state invalid" : missionsValid ? operationalDaySystem?.LastStatus : missionSystem?.LastStatus)}";
-            return battlefieldValid && missionsValid && dayValid;
+                : $"Load failed: {(!battlefieldValid ? "battlefield state invalid" : !missionsValid ? missionSystem?.LastStatus : !dayValid ? operationalDaySystem?.LastStatus : workshopRiskSystem?.LastStatus)}";
+            return battlefieldValid && missionsValid && dayValid && riskValid && fieldValid;
         }
 
         public string CaptureToJson(MotorPart targetMotor, MotorSocket targetSocket)
@@ -310,26 +357,55 @@ namespace UnderStatic.Persistence
         {
             if (parts.Length == 0 || sockets.Length == 0)
             {
-                LastStatus = "Save failed: missing references";
+                SetStatus("Save failed: missing references");
                 return false;
             }
 
-            File.WriteAllText(SavePath, CaptureAllToJson(parts, sockets));
-            LastStatus = $"Saved {parts.Length} components";
-            return true;
+            try
+            {
+                Directory.CreateDirectory(Application.persistentDataPath);
+                File.WriteAllText(SavePath, CaptureAllToJson(parts, sockets));
+                SetStatus($"Game saved · {parts.Length} components");
+                return true;
+            }
+            catch (Exception exception) when (exception is IOException
+                                               or UnauthorizedAccessException
+                                               or NotSupportedException)
+            {
+                SetStatus($"Save failed: {exception.Message}");
+                Debug.LogException(exception, this);
+                return false;
+            }
         }
 
         public bool Load()
         {
             if (parts.Length == 0 || sockets.Length == 0 || !File.Exists(SavePath))
             {
-                LastStatus = "Load failed: no save file";
+                SetStatus("Load failed: no save file");
                 return false;
             }
 
-            var restored = RestoreAllFromJson(File.ReadAllText(SavePath), parts, sockets);
-            LastStatus = restored ? $"Loaded {parts.Length} components" : "Load failed: invalid data";
-            return restored;
+            try
+            {
+                var restored = RestoreAllFromJson(File.ReadAllText(SavePath), parts, sockets);
+                SetStatus(restored ? $"Game loaded · {parts.Length} components" : LastStatus);
+                return restored;
+            }
+            catch (Exception exception) when (exception is IOException
+                                               or UnauthorizedAccessException
+                                               or NotSupportedException)
+            {
+                SetStatus($"Load failed: {exception.Message}");
+                Debug.LogException(exception, this);
+                return false;
+            }
+        }
+
+        private void SetStatus(string status)
+        {
+            LastStatus = status;
+            StatusChanged?.Invoke(status);
         }
 
         private static PartSaveRecord CapturePart(InstallablePart target)

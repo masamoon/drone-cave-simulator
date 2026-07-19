@@ -485,7 +485,7 @@ namespace UnderStatic.Tests.PlayMode
 
             var motorSocket = GameObject.Find("MotorSocket_rear-left").GetComponent<PartSocket>();
             var propellerSocket = GameObject.Find("PropellerSocket_rear-left").GetComponent<PartSocket>();
-            Assert.That(motorSocket.Fasteners.Count, Is.EqualTo(2));
+            Assert.That(motorSocket.Fasteners.Count, Is.EqualTo(4));
             foreach (var fastener in motorSocket.Fasteners)
             {
                 Assert.That(fastener, Is.Not.Null);
@@ -711,14 +711,14 @@ namespace UnderStatic.Tests.PlayMode
 
         private static IEnumerator PressInteractKey()
         {
-            Assert.That(Keyboard.current, Is.Not.Null, "Play Mode requires a keyboard device.");
-            InputSystem.QueueStateEvent(Keyboard.current, new KeyboardState());
+            var keyboard = Keyboard.current ?? InputSystem.AddDevice<Keyboard>();
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState());
             yield return null;
             var pressed = new KeyboardState();
             pressed.Press(Key.E);
-            InputSystem.QueueStateEvent(Keyboard.current, pressed);
+            InputSystem.QueueStateEvent(keyboard, pressed);
             yield return null;
-            InputSystem.QueueStateEvent(Keyboard.current, new KeyboardState());
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState());
             yield return null;
         }
 

@@ -8,6 +8,7 @@ using UnderStatic.Missions;
 using UnderStatic.Parts;
 using UnderStatic.Persistence;
 using UnderStatic.Replays;
+using UnderStatic.Workshop;
 using UnityEngine;
 
 namespace UnderStatic.Tests
@@ -184,9 +185,14 @@ namespace UnderStatic.Tests
 
             setup.actor.Runtime.isExpendableStrikeDrone = true;
             Assert.That(setup.missions.EvaluateDraft().Eligible, Is.False);
-            Assert.That(setup.missions.SetDraftType(SortieType.KamikazeStrike), Is.True);
-            Assert.That(setup.missions.SelectTarget(contact.contactId), Is.True);
-            Assert.That(setup.missions.EvaluateDraft().Eligible, Is.True, setup.missions.EvaluateDraft().Reason);
+
+            var kamikaze = CreateSetup(SortieType.KamikazeStrike, includeRack: true, expendable: true);
+            var kamikazeTarget = kamikaze.battlefield.CaptureState().contacts.First(item =>
+                item.type == BattlefieldContactType.Artillery);
+            Reveal(kamikaze.battlefield, kamikazeTarget, 1);
+            Assert.That(kamikaze.missions.SelectTarget(kamikazeTarget.contactId), Is.True);
+            Assert.That(kamikaze.missions.EvaluateDraft().Eligible, Is.True,
+                kamikaze.missions.EvaluateDraft().Reason);
         }
 
         [Test]
@@ -254,6 +260,145 @@ namespace UnderStatic.Tests
         }
 
         [Test]
+        public void TransmitterReconnectInsideGrace_CatchesUpWithoutChangingMission()
+        {
+            var setup = CreateSetup(SortieType.Recon);
+            setup.missions.AddWaypoint(new Vector2(0.55f, 0.45f));
+            var risk = CreateRisk(setup.missions);
+            Assert.That(setup.missions.TryLaunchDraft(), Is.True, setup.missions.LastStatus);
+
+            risk.SetTransmitterPowered(false);
+            setup.missions.Tick(2f);
+            var active = setup.missions.ActiveMission;
+            Assert.That(active.linkLostSeconds, Is.EqualTo(2f).Within(0.001f));
+            Assert.That(active.telemetryPathProgress, Is.Zero);
+
+            risk.SetTransmitterPowered(true);
+            setup.missions.Tick(0f);
+            Assert.That(active.lostLinkTriggered, Is.False);
+            Assert.That(active.recallRequested, Is.False);
+            Assert.That(active.linkLostSeconds, Is.Zero);
+            Assert.That(active.telemetryPathProgress, Is.EqualTo(active.pathProgress).Within(0.001f));
+        }
+
+        [Test]
+        public void ReconLostLink_FinishesCurrentLegThenReturnsAndAppliesMaintenanceOnce()
+        {
+            var setup = CreateSetup(SortieType.Recon);
+            var waypoint = new Vector2(0.6f, 0.55f);
+            setup.missions.AddWaypoint(waypoint);
+            var risk = CreateRisk(setup.missions);
+            Assert.That(setup.missions.TryLaunchDraft(), Is.True, setup.missions.LastStatus);
+
+            risk.SetTransmitterPowered(false);
+            setup.missions.Tick(5f);
+            var active = setup.missions.ActiveMission;
+            Assert.That(active.lostLinkTriggered, Is.True);
+            Assert.That(active.recallRequested, Is.True);
+            Assert.That(active.actualRoute.Any(point => point.ToVector2() == waypoint), Is.True,
+                "Recon should complete the current authored leg before turning home.");
+
+            setup.missions.Tick(100f);
+            var report = setup.missions.LatestReport;
+            Assert.That(report.state, Is.EqualTo(MissionRuntimeState.Resolved));
+            Assert.That(report.maintenanceApplied, Is.True);
+            Assert.That(report.maintenanceRecords, Is.Not.Empty);
+            var afterFirstResolution = report.maintenanceRecords.Select(item => item.conditionAfter).ToArray();
+            setup.missions.Tick(100f);
+            Assert.That(report.maintenanceRecords.Select(item => item.conditionAfter), Is.EqualTo(afterFirstResolution));
+        }
+
+        [Test]
+        public void PreReleaseGrenadeLostLink_RefundsPayloadExactlyOnce()
+        {
+            var setup = CreateSetup(SortieType.GrenadeDrop, includeRack: true);
+            var target = setup.battlefield.CaptureState().contacts.First(item =>
+                item.type == BattlefieldContactType.Artillery);
+            Reveal(setup.battlefield, target, 1);
+            setup.missions.SelectTarget(target.contactId);
+            var rack = setup.actor.InstalledParts.Single(item =>
+                item.Definition.Category == PartCategory.StrikeRack);
+            CreateRisk(setup.missions);
+            Assert.That(setup.missions.TryLaunchDraft(), Is.True, setup.missions.LastStatus);
+            Assert.That(rack.Runtime.consumableCharges, Is.Zero);
+
+            setup.missions.ForceLostLink();
+            setup.missions.Tick(100f);
+            Assert.That(setup.missions.LatestReport.outcome, Is.EqualTo(MissionOutcome.Aborted));
+            Assert.That(setup.missions.LatestReport.ordnanceRefunded, Is.True);
+            Assert.That(rack.Runtime.consumableCharges, Is.EqualTo(1));
+            setup.missions.Tick(100f);
+            Assert.That(rack.Runtime.consumableCharges, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void KamikazeLostLink_HoldsBattlefieldMutationUntilConfirmation()
+        {
+            var setup = CreateSetup(SortieType.KamikazeStrike, includeRack: true, expendable: true);
+            var target = setup.battlefield.CaptureState().contacts.First(item =>
+                item.type == BattlefieldContactType.Artillery);
+            Reveal(setup.battlefield, target, 1);
+            setup.missions.SelectTarget(target.contactId);
+            var risk = CreateRisk(setup.missions);
+            var healthBefore = setup.battlefield.CaptureState().contacts
+                .Single(item => item.contactId == target.contactId).currentStrength;
+            Assert.That(setup.missions.TryLaunchDraft(), Is.True, setup.missions.LastStatus);
+
+            risk.SetTransmitterPowered(false);
+            setup.missions.Tick(100f);
+            var pending = setup.missions.Missions.Last();
+            Assert.That(pending.state, Is.EqualTo(MissionRuntimeState.AwaitingConfirmation));
+            Assert.That(pending.confirmationPending, Is.True);
+            Assert.That(setup.battlefield.CaptureState().contacts
+                .Single(item => item.contactId == target.contactId).currentStrength, Is.EqualTo(healthBefore));
+
+            risk.SetTransmitterPowered(true);
+            setup.missions.Tick(0f);
+            Assert.That(pending.state, Is.EqualTo(MissionRuntimeState.Resolved));
+            Assert.That(pending.confirmationPending, Is.False);
+            Assert.That(setup.battlefield.CaptureState().contacts
+                .Single(item => item.contactId == target.contactId).currentStrength, Is.LessThan(healthBefore));
+        }
+
+        [Test]
+        public void RemoteSortie_UsesRemoteOriginAndPreservesActorIdentityUntilRecovered()
+        {
+            var setup = CreateSetup(SortieType.Recon);
+            var day = Track(new GameObject("Field.Day")).AddComponent<OperationalDaySystem>();
+            day.Configure(setup.missions, battlefield: setup.battlefield);
+            var risk = CreateRisk(setup.missions);
+            var field = Track(new GameObject("Field.Operations")).AddComponent<FieldOperationsSystem>();
+            field.Configure(setup.battlefield, setup.missions, setup.fleet, null, risk, day);
+            setup.missions.ConfigureFieldOperations(field);
+            var actorId = setup.actor.Runtime.droneInstanceId;
+
+            Assert.That(setup.missions.SetDraftLaunchSite(FieldOperationsSystem.RemoteSiteId), Is.True);
+            setup.missions.AddWaypoint(new Vector2(0.55f, 0.4f));
+            var plan = setup.missions.PreviewPlan();
+            Assert.That(plan.launchPosition.ToVector2(), Is.EqualTo(new Vector2(0.30f, 0.18f)));
+            Assert.That(plan.route[^1].ToVector2(), Is.EqualTo(plan.launchPosition.ToVector2()));
+            Assert.That(field.StageRemoteDeployment(), Is.True, field.LastStatus);
+            Assert.That(field.Runtime.remoteDeploymentPlanned, Is.True);
+            Assert.That(setup.missions.TryLaunchDraft(), Is.False,
+                "Remote plans must wait for the physical setup procedure.");
+            Assert.That(setup.missions.AuthorizeAndLaunchRemoteDraft(), Is.True, setup.missions.LastStatus);
+            field.CompleteRemoteLaunch(setup.missions.ActiveMission);
+            Assert.That(field.Runtime.remoteDeploymentPlanned, Is.False);
+
+            setup.missions.Tick(100f);
+            Assert.That(setup.missions.LatestReport.state, Is.EqualTo(MissionRuntimeState.Resolved));
+            Assert.That(setup.fleet.FindActor(actorId), Is.SameAs(setup.actor));
+            Assert.That(setup.fleet.FieldDrones.Contains(setup.actor), Is.True);
+            Assert.That(setup.fleet.ReadyDrone, Is.Null);
+            Assert.That(field.RemoteSite.cachedDroneId, Is.EqualTo(actorId));
+
+            Assert.That(field.RecoverDrone(setup.actor), Is.True, field.LastStatus);
+            Assert.That(setup.fleet.FindActor(actorId), Is.SameAs(setup.actor));
+            Assert.That(setup.fleet.FieldDrones.Contains(setup.actor), Is.False);
+            Assert.That(field.RemoteSite.cachedDroneId, Is.Empty);
+        }
+
+        [Test]
         public void BattlefieldDraftAndActiveSortie_RoundTripWithoutLeakingOrDuplicating()
         {
             var setup = CreateSetup(SortieType.Recon);
@@ -278,7 +423,7 @@ namespace UnderStatic.Tests
         }
 
         [Test]
-        public void SchemaTenCapture_RejectsOlderMissionSavesBeforeMutation()
+        public void SchemaElevenCapture_RejectsOlderMissionSavesBeforeMutation()
         {
             var setup = CreateSetup(SortieType.Recon);
             var day = Track(new GameObject("Day")).AddComponent<OperationalDaySystem>();
@@ -289,10 +434,10 @@ namespace UnderStatic.Tests
 
             var json = save.CaptureAllToJson(Array.Empty<InstallablePart>(), Array.Empty<PartSocket>());
 
-            Assert.That(json, Does.Contain("\"version\": 10"));
+            Assert.That(json, Does.Contain("\"version\": 11"));
             Assert.That(save.RestoreAllFromJson(
-                "{\"version\":9}", Array.Empty<InstallablePart>(), Array.Empty<PartSocket>()), Is.False);
-            Assert.That(save.LastStatus, Does.Contain("schema 10"));
+                "{\"version\":10}", Array.Empty<InstallablePart>(), Array.Empty<PartSocket>()), Is.False);
+            Assert.That(save.LastStatus, Does.Contain("schema 11"));
         }
 
         private (MissionSystem missions, BattlefieldSystem battlefield, FleetSystem fleet, DroneActor actor) CreateSetup(
@@ -316,6 +461,14 @@ namespace UnderStatic.Tests
             var battlefield = Track(new GameObject($"Battlefield.{created.Count}")).AddComponent<BattlefieldSystem>();
             battlefield.Configure(definition, seed);
             return battlefield;
+        }
+
+        private WorkshopRiskSystem CreateRisk(MissionSystem missions)
+        {
+            var risk = Track(new GameObject($"Risk.{created.Count}")).AddComponent<WorkshopRiskSystem>();
+            risk.Configure(Track(WorkshopRiskProfile.CreateTransient()), missions);
+            missions.ConfigureTransmission(risk);
+            return risk;
         }
 
         private SortieProfileDefinition[] CreateProfiles() => new[]

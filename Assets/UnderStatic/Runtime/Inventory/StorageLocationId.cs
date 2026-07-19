@@ -42,6 +42,9 @@ namespace UnderStatic.Inventory
         public static StorageLocationId AssemblySocket(string socketId) =>
             new($"assembly.{socketId ?? "unknown"}");
 
+        public static StorageLocationId FieldSite(string siteId) =>
+            new($"field.{(string.IsNullOrWhiteSpace(siteId) ? "unknown" : siteId)}");
+
         public static StorageLocationId FromLegacyOwner(string owner, string socketId)
         {
             if (!string.IsNullOrWhiteSpace(socketId))

@@ -650,7 +650,7 @@ One deterministic 4 km × 4 km map persists for an entire run. The workshop is v
 
 Reconnaissance routes reveal contacts inside a sensor corridor as the aircraft reaches them. Artillery and the enemy base remain stationary. Infantry relocates between days, leaving a selectable stale last-known position that may produce a no-contact strike. Reconnaissance can reacquire it. Destroyed contacts remain crossed out, and rewards are granted once from contact state.
 
-Changing workshop or launch location is a future mechanic. Until implemented, every sortie originates at the workshop marker.
+Sorties may originate at the workshop or at one authored remote cache. Remote deployment and recovery are short first-person procedures, not a second explorable world, and reusable aircraft remain unavailable while cached in the field.
 
 ---
 
@@ -663,7 +663,6 @@ Inputs include:
 - transmission duration;
 - transmitter power;
 - number of launches;
-- repeated flight paths;
 - repeated flight paths;
 - active jammer use;
 - nighttime light leakage;
@@ -679,6 +678,10 @@ The system produces escalating states:
 4. **Active search**
 5. **Likely located**
 6. **Discovery event**
+
+Exposure does not passively decay. Silencing the workshop transmitter stops its active-sortie contribution but invokes an authored lost-link procedure: reconnaissance coverage is truncated, an unreleased grenade payload is recalled and refunded after recovery, and a kamikaze result remains unconfirmed until the link returns.
+
+Remote sites own a separate persistent attention value. Entering, repeating visits, operating a relay, launching, recovering equipment, and securing salvage increase site attention. A forced retreat can make a site Hot and create traceable workshop exposure without becoming an infantry-combat or player-injury system.
 
 The player receives diegetic warning signs before severe escalation.
 
@@ -956,7 +959,7 @@ Implement the persistent battlefield, player-planned reconnaissance and strike s
 
 ### Milestone 6
 
-Implement workshop exposure and warning states.
+Implement workshop exposure, transmitter tradeoffs, warning states, and one compact remote deployment/salvage excursion loop.
 
 ### Milestone 7
 
