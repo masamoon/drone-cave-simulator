@@ -68,8 +68,9 @@ namespace UnderStatic.Parts
         public Vector3 WorldInsertionAxis => transform.TransformDirection(localInsertionAxis.normalized);
         public Vector3 SeatedPosition => transform.position + transform.rotation * localSeatedOffset;
         public string RequiredTool => Profile.RequiredToolId;
-        public bool RemovalBlocked => removalBlockers != null
-            && removalBlockers.Any(blocker => blocker != null && blocker.OccupiedPart != null);
+        public bool RemovalBlocked => (removalBlockers != null
+                && removalBlockers.Any(blocker => blocker != null && blocker.OccupiedPart != null))
+            || ActiveRemovalGate?.BlocksRemoval == true;
         public bool InstallationPrerequisiteMet => installationPrerequisite == null
             || installationPrerequisite.OccupiedPart?.Runtime.currentState
                 is InteractionState.Installed or InteractionState.Tested;
@@ -102,7 +103,7 @@ namespace UnderStatic.Parts
                         ? "Drag a spent battery onto the charging connector"
                     : "Empty component socket"
             : RemovalBlocked && OccupiedPart.Runtime.currentState is InteractionState.Installed or InteractionState.Tested
-                ? "Remove the attached outer component first"
+                ? ActiveRemovalGate?.RemovalBlockPrompt ?? "Remove the attached outer component first"
             : ProcedureType switch
             {
                 InstallationProcedureType.TwistLock => OccupiedPart.Runtime.currentState
@@ -121,6 +122,12 @@ namespace UnderStatic.Parts
                     : "Use screwdriver to secure"
             };
         public Transform InteractionTransform => transform;
+
+        private IInstallationRemovalGate ActiveRemovalGate => OccupiedPart == null
+            ? null
+            : OccupiedPart.GetComponents<MonoBehaviour>()
+                .OfType<IInstallationRemovalGate>()
+                .FirstOrDefault(gate => gate.BlocksRemoval);
 
         private InstallationProfile Profile => installationProfile != null
             ? installationProfile
@@ -280,6 +287,7 @@ namespace UnderStatic.Parts
             }
 
             OccupiedPart = part;
+            part.GetComponent<StrikePayloadMountProcedure>()?.RebindSocket(this);
             part.SetAssemblyLocation(PersistenceSocketId, "Guided by socket");
             audioFeedback?.PlayGuidanceEnter();
             return true;
@@ -402,7 +410,7 @@ namespace UnderStatic.Parts
 
             if (loosening && RemovalBlocked)
             {
-                audioFeedback?.PlayReject();
+                audioFeedback?.PlayReject(transform.position);
                 return false;
             }
 
@@ -514,7 +522,7 @@ namespace UnderStatic.Parts
             if (detent != lastLockDetent)
             {
                 lastLockDetent = detent;
-                audioFeedback?.PlayTwistDetent();
+                audioFeedback?.PlayTwistDetent(transform.position);
             }
 
             if (!lockGestureUnlocking && LockRotationProgress >= 0.999f)
@@ -550,7 +558,7 @@ namespace UnderStatic.Parts
                 or InteractionState.Removing;
             if (lockGestureUnlocking && RemovalBlocked)
             {
-                audioFeedback?.PlayReject();
+                audioFeedback?.PlayReject(transform.position);
                 return false;
             }
 
@@ -583,14 +591,14 @@ namespace UnderStatic.Parts
                     LatchOpenedForExtraction = false;
                     procedureOpenedForExtraction = false;
                     UpdateLatchVisual();
-                    audioFeedback?.PlayReject();
+                    audioFeedback?.PlayReject(transform.position);
                     return false;
                 }
                 LatchClosed = !LatchClosed;
                 LatchOpenedForExtraction = false;
                 procedureOpenedForExtraction = false;
                 UpdateLatchVisual();
-                audioFeedback?.PlayLatch(LatchClosed);
+                audioFeedback?.PlayLatch(LatchClosed, transform.position);
                 return true;
             }
 
@@ -609,7 +617,7 @@ namespace UnderStatic.Parts
             {
                 if (RemovalBlocked)
                 {
-                    audioFeedback?.PlayReject();
+                    audioFeedback?.PlayReject(transform.position);
                     return false;
                 }
 
@@ -617,7 +625,7 @@ namespace UnderStatic.Parts
                 LatchClosed = false;
                 LatchOpenedForExtraction = true;
                 UpdateLatchVisual();
-                audioFeedback?.PlayLatch(false);
+                PlayRetentionSound(false);
                 ReturnToSeated();
                 return true;
             }
@@ -674,7 +682,7 @@ namespace UnderStatic.Parts
             OccupiedPart = null;
             part.SetAssemblyLocation(string.Empty, "Workshop");
             ResetProcedureProgress();
-            audioFeedback?.PlayRemoval();
+            audioFeedback?.PlayRemoval(part.transform.position);
             return true;
         }
 
@@ -701,6 +709,7 @@ namespace UnderStatic.Parts
             }
 
             OccupiedPart = part;
+            part?.GetComponent<StrikePayloadMountProcedure>()?.RebindSocket(this);
             EnsureProcedureState();
             InsertionProgress = restored?.insertionProgress ?? 0f;
             LockRotationProgress = restored?.lockRotationProgress ?? 0f;
@@ -822,7 +831,7 @@ namespace UnderStatic.Parts
             LatchOpenedForExtraction = false;
             procedureOpenedForExtraction = false;
             UpdateFastenerVisuals();
-            audioFeedback?.PlayContact();
+            audioFeedback?.PlayComponentSeat(transform.position);
             if (ProcedureType == InstallationProcedureType.ChargingDock
                 && part.TryTransition(InteractionState.Securing))
             {
@@ -841,14 +850,7 @@ namespace UnderStatic.Parts
             procedureOpenedForExtraction = false;
             assembly?.TryRecordInstalled(PersistenceSocketId, OccupiedPart);
             UpdateFastenerVisuals();
-            if (ProcedureType == InstallationProcedureType.Latch)
-            {
-                audioFeedback?.PlayLatch(true);
-            }
-            else
-            {
-                audioFeedback?.PlayTorqueClick();
-            }
+            PlayInstalledSound();
         }
 
         private void ReturnToSeated()
@@ -859,7 +861,55 @@ namespace UnderStatic.Parts
             OccupiedPart.SetAssemblyLocation(PersistenceSocketId, "Fixture (unsecured)");
             procedureOpenedForExtraction = wasRemoving;
             UpdateFastenerVisuals();
-            audioFeedback?.PlayContact();
+            PlayReleasedSound();
+        }
+
+        private void PlayInstalledSound()
+        {
+            switch (ProcedureType)
+            {
+                case InstallationProcedureType.Latch:
+                    PlayRetentionSound(true);
+                    break;
+                case InstallationProcedureType.ChargingDock:
+                    audioFeedback?.PlayConnector(true, transform.position);
+                    break;
+                default:
+                    audioFeedback?.PlayTorqueClick(false, transform.position);
+                    break;
+            }
+        }
+
+        private void PlayReleasedSound()
+        {
+            switch (ProcedureType)
+            {
+                case InstallationProcedureType.Latch:
+                    // ToggleLatch owns the strap or connector release cue.
+                    break;
+                case InstallationProcedureType.ChargingDock:
+                    audioFeedback?.PlayConnector(false, transform.position);
+                    break;
+                default:
+                    audioFeedback?.PlayTorqueClick(true, transform.position);
+                    break;
+            }
+        }
+
+        private void PlayRetentionSound(bool secured)
+        {
+            if (AcceptedPrimaryCategory == PartCategory.Battery)
+            {
+                audioFeedback?.PlayStrap(secured, transform.position);
+            }
+            else if (IsFlightControllerConnector)
+            {
+                audioFeedback?.PlayConnector(secured, transform.position);
+            }
+            else
+            {
+                audioFeedback?.PlayLatch(secured, transform.position);
+            }
         }
 
         private bool ProcedureIsUnlocked()

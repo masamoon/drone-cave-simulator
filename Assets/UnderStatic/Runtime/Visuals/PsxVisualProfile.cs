@@ -15,7 +15,8 @@ namespace UnderStatic.Visuals
         Road,
         Vegetation,
         Bark,
-        Warning
+        Warning,
+        LightPlastic
     }
 
     [CreateAssetMenu(menuName = "Under Static/PSX Visual Profile", fileName = "PsxVisualProfile")]

@@ -19,6 +19,7 @@ namespace UnderStatic.Parts
         public bool tested;
         public bool isSalvaged;
         public int consumableCharges;
+        public int auxiliaryProcedureMask;
 
         public PartRuntimeData Copy()
         {
@@ -35,7 +36,8 @@ namespace UnderStatic.Parts
                 installedSocketId = installedSocketId,
                 tested = tested,
                 isSalvaged = isSalvaged,
-                consumableCharges = consumableCharges
+                consumableCharges = consumableCharges,
+                auxiliaryProcedureMask = auxiliaryProcedureMask
             };
         }
     }

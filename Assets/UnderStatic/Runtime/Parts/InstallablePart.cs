@@ -55,6 +55,7 @@ namespace UnderStatic.Parts
         public bool IsServiceable => runtime.condition >= 0.45f;
         public bool IsBatteryDepleted => definition?.Category == PartCategory.Battery
             && runtime.chargeLevel <= 0.05f;
+        public int AuxiliaryProcedureMask => runtime.auxiliaryProcedureMask;
 
         protected virtual void Awake()
         {
@@ -154,6 +155,21 @@ namespace UnderStatic.Parts
         public void SetChargeLevel(float normalizedCharge)
         {
             runtime.chargeLevel = Mathf.Clamp01(normalizedCharge);
+        }
+
+        public bool HasAuxiliaryProcedureSteps(int requiredMask) =>
+            requiredMask == 0 || (runtime.auxiliaryProcedureMask & requiredMask) == requiredMask;
+
+        public void SetAuxiliaryProcedureStep(int stepMask, bool completed)
+        {
+            if (stepMask <= 0)
+            {
+                return;
+            }
+
+            runtime.auxiliaryProcedureMask = completed
+                ? runtime.auxiliaryProcedureMask | stepMask
+                : runtime.auxiliaryProcedureMask & ~stepMask;
         }
 
         public void RestoreRuntime(PartRuntimeData restored)

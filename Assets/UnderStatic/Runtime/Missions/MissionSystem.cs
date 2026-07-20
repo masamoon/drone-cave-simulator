@@ -296,9 +296,13 @@ namespace UnderStatic.Missions
             var plan = BuildPlan(actor);
             var rack = FindStrikeRack(actor);
             if (draft.sortieType != SortieType.Recon
-                && (rack == null || rack.Runtime.consumableCharges <= 0))
+                && (rack == null
+                    || rack.Runtime.consumableCharges <= 0
+                    || !(rack.GetComponent<StrikePayloadMountProcedure>()?.IsComplete ?? true)))
             {
-                LastStatus = "Strike payload has no charge";
+                LastStatus = rack != null && rack.Runtime.consumableCharges > 0
+                    ? "Complete the payload mount straps and control harness"
+                    : "Strike payload has no charge";
                 return false;
             }
             if (!fleet.TryDeployReady(actor))
@@ -1044,7 +1048,8 @@ namespace UnderStatic.Missions
                     continue;
                 }
                 if (part.Definition.Category == PartCategory.StrikeRack
-                    && part.Runtime.consumableCharges <= 0)
+                    && (part.Runtime.consumableCharges <= 0
+                        || !(part.GetComponent<StrikePayloadMountProcedure>()?.IsComplete ?? true)))
                 {
                     continue;
                 }

@@ -586,6 +586,15 @@ hinged cover or latch. Removing the ESC requires unplugging and removing the fli
 mounting rings, fasteners, motor pads, solder pads, ports, and wiring remain readable at the grounded low-poly
 target.
 
+The first scratch-built strike configuration adds one authored underslung payload mount. The mount is a
+single inventory-owned component, while its captive fasteners, two retention straps, and short control harness
+belong to the mount and are not separate inventory entries. Installation is complete only after the player
+seats the mount, tightens all four fasteners, secures both straps, and connects the harness in that order. The
+aircraft cannot pass diagnostics, be staged, or launch a strike while any of those steps is incomplete. Removal
+reverses the dependent steps: disconnect the harness, release the straps, then loosen the mount fasteners.
+Payload contents and release or initiation mechanisms remain abstract; the workshop interaction is limited to
+the externally visible cradle, retention, wiring, balance, and readiness check.
+
 ---
 
 ### 8.6 Inventory and storage
@@ -631,11 +640,22 @@ Core actions:
 - read basic status.
 
 Compact FPV batteries are soft rectangular LiPo bricks rather than proprietary slide cartridges. They rest on
-anti-slip pads on the structural carbon top plate and visibly carry thick red/black main leads with an XT-style
-connector plus a thinner balance-wire bundle and white balance plug. Two separate hook-and-loop straps pass
+anti-slip pads on the structural carbon top plate and visibly carry thick red/black main leads with a keyed
+XT-style connector. Its battery and airframe halves meet face-to-face and remain visibly tethered to their
+respective pigtails when unplugged; they must not overlap as generic blocks. A thinner balance-wire bundle ends
+in a compact white balance plug. Two separate hook-and-loop straps pass
 around both the battery and top plate. Their side wraps must visibly connect the tightened top bands to the
 frame; when loosened, their tails lie flat against the plate instead of floating or hinging open. No battery
 hatch, proprietary rail, or hard-plastic latch is used.
+
+The scratch-build inventory contains three charged packs that share the same electrical and physical fit:
+
+- compact: shortest endurance, lowest mass, and the greatest payload and control margin;
+- balanced: moderate endurance and mass with no pronounced handling penalty;
+- long-range: greatest endurance, highest mass, and reduced payload, control, and reliability margin.
+
+The focused-part status readout exposes pack mass and signed endurance, payload, and control modifiers before
+installation. Battery choice is therefore a legible build decision rather than a hidden optimal upgrade.
 
 For the vertical slice, battery interaction follows after the motor framework is proven.
 
@@ -824,6 +844,8 @@ Interaction layers include:
 - charger fan;
 - switch detents.
 
+Assembly sounds must describe the mechanism rather than reuse a generic confirmation click. Battery retention uses a short hook-and-loop pull and buckle contact, board harnesses use a plastic connector insertion or release snap, and fasteners distinguish rotation ticks, final torque, and loosening breakaway. Short cues should originate at the manipulated component and use a small pool of variations to avoid obvious repetition. The MVP uses clearly labeled CC0 field recordings for these physical layers, with a data-authored profile selecting, trimming, varying, and combining the source material; procedural synthesis remains a fallback rather than the primary assembly sound.
+
 Workshop ambience includes:
 
 - rain;
@@ -859,8 +881,9 @@ The smallest meaningful MVP contains:
 - four motor sockets;
 - motors;
 - propellers;
-- one battery;
+- one battery socket with three compatible battery sizes;
 - one camera;
+- one underslung strike payload mount with captive straps, fasteners, and control harness interactions;
 - floating screwdriver;
 - installation, removal, and testing;
 - persistent assembly state.

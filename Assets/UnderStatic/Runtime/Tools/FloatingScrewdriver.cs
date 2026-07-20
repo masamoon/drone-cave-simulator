@@ -150,18 +150,23 @@ namespace UnderStatic.Tools
                 rotatingShaft.Rotate(0f, direction * 420f * deltaTime, 0f, Space.Self);
             }
 
-            ratchetTimer += deltaTime;
-            if (ratchetTimer >= 0.12f)
-            {
-                ratchetTimer = 0f;
-                audioFeedback?.PlayRatchet();
-            }
-
             var progress = activeSocket.FastenerProgress[activeFastener];
-            if ((driveDirection == FastenerDriveDirection.Tighten && progress >= 0.999f)
-                || (driveDirection == FastenerDriveDirection.Loosen && progress <= 0.001f))
+            var fastenerComplete =
+                (driveDirection == FastenerDriveDirection.Tighten && progress >= 0.999f)
+                || (driveDirection == FastenerDriveDirection.Loosen && progress <= 0.001f);
+            if (!fastenerComplete)
             {
-                audioFeedback?.PlayTorqueClick();
+                ratchetTimer += deltaTime;
+                if (ratchetTimer >= 0.12f)
+                {
+                    ratchetTimer = 0f;
+                    audioFeedback?.PlayRatchet(
+                        driveDirection == FastenerDriveDirection.Loosen,
+                        target.position);
+                }
+            }
+            else
+            {
                 activeFastener = FindNextFastener();
                 if (activeFastener < 0)
                 {

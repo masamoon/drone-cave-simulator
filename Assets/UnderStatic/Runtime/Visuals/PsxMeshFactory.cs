@@ -51,6 +51,60 @@ namespace UnderStatic.Visuals
             return Build("PSX Chamfered Box", vertices, triangles, uvs);
         }
 
+        public static Mesh Xt60Housing(Vector3 size)
+        {
+            var halfLength = Mathf.Max(0.002f, size.x * 0.5f);
+            var halfHeight = Mathf.Max(0.002f, size.y * 0.5f);
+            var halfWidth = Mathf.Max(0.002f, size.z * 0.5f);
+            var profile = new[]
+            {
+                new Vector2(-halfHeight * 0.48f, -halfWidth),
+                new Vector2(halfHeight * 0.48f, -halfWidth),
+                new Vector2(halfHeight, -halfWidth * 0.55f),
+                new Vector2(halfHeight, halfWidth * 0.55f),
+                new Vector2(halfHeight * 0.48f, halfWidth),
+                new Vector2(-halfHeight * 0.48f, halfWidth),
+                new Vector2(-halfHeight, halfWidth * 0.55f),
+                new Vector2(-halfHeight, -halfWidth * 0.55f)
+            };
+            var vertices = new Vector3[18];
+            var uvs = new Vector2[vertices.Length];
+            for (var index = 0; index < profile.Length; index++)
+            {
+                var normalized = new Vector2(
+                    profile[index].x / (halfHeight * 2f) + 0.5f,
+                    profile[index].y / (halfWidth * 2f) + 0.5f);
+                vertices[index] = new Vector3(-halfLength, profile[index].x, profile[index].y);
+                vertices[index + 8] = new Vector3(halfLength, profile[index].x, profile[index].y);
+                uvs[index] = normalized;
+                uvs[index + 8] = normalized;
+            }
+
+            vertices[16] = new Vector3(-halfLength, 0f, 0f);
+            vertices[17] = new Vector3(halfLength, 0f, 0f);
+            uvs[16] = uvs[17] = Vector2.one * 0.5f;
+            var triangles = new int[8 * 12];
+            var triangleIndex = 0;
+            for (var index = 0; index < 8; index++)
+            {
+                var next = (index + 1) % 8;
+                triangles[triangleIndex++] = index;
+                triangles[triangleIndex++] = index + 8;
+                triangles[triangleIndex++] = next;
+                triangles[triangleIndex++] = next;
+                triangles[triangleIndex++] = index + 8;
+                triangles[triangleIndex++] = next + 8;
+                triangles[triangleIndex++] = 16;
+                triangles[triangleIndex++] = next;
+                triangles[triangleIndex++] = index;
+                triangles[triangleIndex++] = 17;
+                triangles[triangleIndex++] = index + 8;
+                triangles[triangleIndex++] = next + 8;
+            }
+
+            return Build("PSX XT60 Housing", vertices, triangles, uvs);
+        }
+
         public static Mesh ChamferedFramePlate(
             Vector2 size,
             Vector2 opening,

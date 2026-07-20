@@ -31,7 +31,7 @@ namespace UnderStatic.Lab
                 StorageLocationId.SafeHouseParts,
                 "Serviceable Parts",
                 StorageLocationKind.Parts,
-                6,
+                20,
                 categories);
             var returnsDefinition = LoadDefinition(
                 "SafeHouseReturns",
@@ -105,6 +105,12 @@ namespace UnderStatic.Lab
                 {
                     inventory.TryStoreInitial(spare, StorageLocationId.SafeHouseParts);
                 }
+            }
+
+            foreach (var scratchPart in parts.Where(part =>
+                         part != null && part.name.StartsWith("ScratchStrike", StringComparison.Ordinal)))
+            {
+                inventory.TryStoreInitial(scratchPart, StorageLocationId.SafeHouseParts);
             }
 
             return inventory;

@@ -51,9 +51,11 @@ namespace UnderStatic.Tests
             var frame = kit.Atlas.GetPixel(cell / 2, cell / 2);
             var label = kit.Atlas.GetPixel(cell / 2, cell + cell / 2);
             var vegetation = kit.Atlas.GetPixel(cell * 2 + cell / 2, cell * 2 + cell / 2);
+            var lightPlastic = kit.Atlas.GetPixel(cell / 2, cell * 3 + cell / 2);
 
             Assert.That(Vector3.Distance(ToVector(frame), ToVector(label)), Is.GreaterThan(0.2f));
             Assert.That(Vector3.Distance(ToVector(frame), ToVector(vegetation)), Is.GreaterThan(0.08f));
+            Assert.That(Vector3.Distance(ToVector(label), ToVector(lightPlastic)), Is.GreaterThan(0.18f));
         }
 
         [Test]
@@ -109,6 +111,7 @@ namespace UnderStatic.Tests
             var taperedBeam = Track(PsxMeshFactory.TaperedBeam(2.4f, 0.4f, 0.2f, 0.12f));
             var propellerBlade = Track(PsxMeshFactory.SweptPropellerBlade(
                 0.5f, 3f, 0.65f, 0.4f, 0.42f, 0.12f));
+            var xt60 = Track(PsxMeshFactory.Xt60Housing(new Vector3(0.4f, 0.25f, 0.45f)));
 
             Assert.That(box.bounds.size.x, Is.EqualTo(2f).Within(0.001f));
             Assert.That(box.bounds.size.y, Is.EqualTo(1f).Within(0.001f));
@@ -122,6 +125,10 @@ namespace UnderStatic.Tests
             Assert.That(taperedBeam.triangles.Length / 3, Is.EqualTo(12));
             Assert.That(propellerBlade.bounds.size.x, Is.EqualTo(2.5f).Within(0.001f));
             Assert.That(propellerBlade.triangles.Length / 3, Is.EqualTo(12));
+            Assert.That(xt60.bounds.size.x, Is.EqualTo(0.4f).Within(0.001f));
+            Assert.That(xt60.bounds.size.y, Is.EqualTo(0.25f).Within(0.001f));
+            Assert.That(xt60.bounds.size.z, Is.EqualTo(0.45f).Within(0.001f));
+            Assert.That(xt60.triangles.Length / 3, Is.LessThan(40));
         }
 
         [Test]
@@ -171,34 +178,36 @@ namespace UnderStatic.Tests
         }
 
         [Test]
-        public void StrikeRackEnhancement_SelectsReadablePayloadForMissionCapability()
+        public void StrikeRackEnhancement_UsesAbstractCradleAndChargeState()
         {
             var kit = CreateKit();
-            var dropDefinition = Track(PartDefinition.CreateTransient(
-                "rack.visual-drop", "Drop Rack", PartCategory.StrikeRack, new[] { "strike-rack.rail" },
-                capabilities: PartMissionCapability.GrenadeDrop));
-            var tubeDefinition = Track(PartDefinition.CreateTransient(
-                "rack.visual-tube", "One-way Payload", PartCategory.StrikeRack, new[] { "strike-rack.rail" },
+            var definition = Track(PartDefinition.CreateTransient(
+                "rack.visual", "Payload Mount", PartCategory.StrikeRack, new[] { "strike-rack.rail" },
                 capabilities: PartMissionCapability.KamikazeWarhead));
             var root = Track(GameObject.CreatePrimitive(PrimitiveType.Cube));
             var part = root.AddComponent<InstallablePart>();
-            part.Initialize(dropDefinition, "rack.visual.instance");
+            part.Initialize(definition, "rack.visual.instance");
+            part.Runtime.consumableCharges = 1;
 
             Assert.That(PsxVisualFactory.EnhancePart(part, kit), Is.True);
             var detail = root.transform.Find("PSX_PartDetail");
-            var drop = detail.Find("DropCanisterPayload");
-            var tube = detail.Find("ImprovisedTubePayload");
-            Assert.That(drop.gameObject.activeSelf, Is.True);
-            Assert.That(tube.gameObject.activeSelf, Is.False);
-            Assert.That(drop.Find("DropBody"), Is.Not.Null);
-            Assert.That(tube.Find("TubeBody"), Is.Not.Null);
+            var payload = detail.Find("InertPayloadEnvelope");
+            var spent = detail.Find("SpentPayloadMarker");
+            Assert.That(payload.gameObject.activeSelf, Is.True);
+            Assert.That(spent.gameObject.activeSelf, Is.False);
+            Assert.That(payload.Find("PayloadBody"), Is.Not.Null);
+            Assert.That(payload.Find("PayloadFlatEnd.-1"), Is.Not.Null);
+            Assert.That(payload.Find("PayloadIdentificationBand"), Is.Not.Null);
+            Assert.That(payload.GetComponentsInChildren<Transform>(true)
+                .Any(item => item.name.Contains("Nose") || item.name.Contains("Fin")), Is.False);
             Assert.That(detail.Find("RackRail.-1"), Is.Not.Null);
+            Assert.That(detail.Find("RackSaddle.-1"), Is.Not.Null);
             Assert.That(detail.GetComponentsInChildren<Collider>(true), Is.Empty);
 
-            part.Initialize(tubeDefinition, "rack.visual.instance");
+            part.Runtime.consumableCharges = 0;
             PsxVisualFactory.UpdateStrikePayloadVisual(part);
-            Assert.That(drop.gameObject.activeSelf, Is.False);
-            Assert.That(tube.gameObject.activeSelf, Is.True);
+            Assert.That(payload.gameObject.activeSelf, Is.False);
+            Assert.That(spent.gameObject.activeSelf, Is.True);
         }
 
         [Test]
@@ -220,8 +229,18 @@ namespace UnderStatic.Tests
             Assert.That(controller.transform.Find("PSX_PartDetail/FlightControllerGyro"), Is.Not.Null);
             Assert.That(controller.transform.Find("PSX_PartDetail/FlightControllerUsbPort"), Is.Not.Null);
             Assert.That(battery.transform.Find("PSX_PartDetail/BatteryShrinkWrap"), Is.Not.Null);
-            Assert.That(battery.transform.Find("PSX_PartDetail/BatteryMainConnector"), Is.Not.Null);
-            Assert.That(battery.transform.Find("PSX_PartDetail/BatteryBalancePlug"), Is.Not.Null);
+            var xt60Housing = battery.transform.Find(
+                "PSX_PartDetail/BatteryXT60Connector/XT60Housing.Battery");
+            var balanceHousing = battery.transform.Find(
+                "PSX_PartDetail/BatteryBalanceConnector/BalanceHousing");
+            Assert.That(xt60Housing, Is.Not.Null);
+            Assert.That(xt60Housing.GetComponent<MeshFilter>().sharedMesh.bounds.size.x,
+                Is.LessThanOrEqualTo(0.2f));
+            Assert.That(balanceHousing, Is.Not.Null);
+            Assert.That(balanceHousing.GetComponent<MeshFilter>().sharedMesh.bounds.size.x,
+                Is.LessThanOrEqualTo(0.155f));
+            Assert.That(battery.transform.Find("PSX_PartDetail/BatteryMainConnector"), Is.Null);
+            Assert.That(battery.transform.Find("PSX_PartDetail/BatteryBalancePlug"), Is.Null);
             Assert.That(battery.transform.Find("PSX_PartDetail/BatteryBalanceLead.4"), Is.Not.Null);
             Assert.That(battery.transform.Find("PSX_PartDetail/BatteryStrap"), Is.Null,
                 "The retention strap belongs to the frame, not to the removable LiPo.");
@@ -254,8 +273,10 @@ namespace UnderStatic.Tests
             Assert.That(marker.Find("PSX_ArmTape.3"), Is.Null);
             Assert.That(marker.Find("PSX_MotorAdapter.3"), Is.Null);
             Assert.That(marker.Find("PSX_CameraPivot.Left"), Is.Not.Null);
-            Assert.That(marker.Find("PSX_XTConnector"), Is.Not.Null);
-            Assert.That(marker.Find("PSX_PowerLead.Red"), Is.Not.Null);
+            Assert.That(marker.Find("PSX_XT60Connector/XT60Housing.Frame"), Is.Not.Null);
+            Assert.That(marker.Find("PSX_XT60Connector/XT60Contact.Frame.1"), Is.Not.Null);
+            Assert.That(marker.Find("PSX_PowerLead.Red.B"), Is.Not.Null);
+            Assert.That(marker.Find("PSX_XTConnector"), Is.Null);
             Assert.That(marker.Find("PSX_VtxBoard"), Is.Not.Null);
             Assert.That(marker.Find("PSX_Receiver"), Is.Not.Null);
             Assert.That(marker.GetComponentsInChildren<Collider>(true), Is.Empty);

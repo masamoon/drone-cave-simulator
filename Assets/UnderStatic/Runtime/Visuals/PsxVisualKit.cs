@@ -150,6 +150,7 @@ namespace UnderStatic.Visuals
             PsxSurface.Road => new Color(0.34f, 0.29f, 0.2f),
             PsxSurface.Vegetation => new Color(0.12f, 0.27f, 0.13f),
             PsxSurface.Bark => new Color(0.24f, 0.16f, 0.09f),
+            PsxSurface.LightPlastic => new Color(0.66f, 0.68f, 0.61f),
             _ => new Color(0.72f, 0.24f, 0.07f)
         };
 
@@ -192,6 +193,11 @@ namespace UnderStatic.Visuals
                 if (border) return -0.28f;
                 if (y > cell / 2 - 2 && y < cell / 2 + 2) return -0.32f;
                 if (x % 7 == 0 && y < cell / 2) return 0.15f;
+            }
+            if (surface == PsxSurface.LightPlastic)
+            {
+                if (border) return -0.09f;
+                if ((x * 7 + y * 5) % 41 == 0) return -0.08f * wear;
             }
             if (surface == PsxSurface.Lens)
             {

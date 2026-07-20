@@ -4,6 +4,7 @@ using NUnit.Framework;
 using UnderStatic.Core;
 using UnderStatic.Fleet;
 using UnderStatic.Interaction;
+using UnderStatic.Inventory;
 using UnderStatic.Lab;
 using UnderStatic.Parts;
 using UnderStatic.Persistence;
@@ -112,7 +113,7 @@ namespace UnderStatic.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator ScratchBuildLabStartsWithAnEmptyFrameAndThirteenLooseParts()
+        public IEnumerator ScratchBuildLabStartsWithAnEmptyStrikeFrameAndBatteryChoices()
         {
             SceneManager.LoadScene("DroneBuildLab", LoadSceneMode.Single);
             yield return null;
@@ -123,15 +124,40 @@ namespace UnderStatic.Tests.PlayMode
             var sockets = Object.FindObjectsByType<PartSocket>();
 
             Assert.That(assembly, Is.Not.Null);
-            Assert.That(parts.Length, Is.EqualTo(13));
-            Assert.That(sockets.Length, Is.EqualTo(13));
+            Assert.That(parts.Length, Is.EqualTo(16));
+            Assert.That(sockets.Length, Is.EqualTo(14));
             Assert.That(assembly.InstalledPartCount, Is.Zero);
             Assert.That(parts.All(part => part.Runtime.currentState == InteractionState.Loose), Is.True);
             Assert.That(sockets.All(socket => socket.OccupiedPart == null), Is.True);
             Assert.That(GameObject.Find("MotorKitTray"), Is.Not.Null);
             Assert.That(GameObject.Find("PropellerKitTray"), Is.Not.Null);
             Assert.That(GameObject.Find("ElectronicsKitTray"), Is.Not.Null);
+            Assert.That(parts.Count(part => part.Definition.Category == PartCategory.Battery), Is.EqualTo(3));
+            Assert.That(parts.Count(part => part.Definition.Category == PartCategory.StrikeRack), Is.EqualTo(1));
             Assert.That(assembly.Readiness.IsMissionReady, Is.False);
+        }
+
+        [UnityTest]
+        public IEnumerator ScratchBatteryChoicesShareFitButExposeOrderedTradeoffs()
+        {
+            SceneManager.LoadScene("DroneBuildLab", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var batteries = Object.FindObjectsByType<InstallablePart>()
+                .Where(part => part.Definition.Category == PartCategory.Battery)
+                .OrderBy(part => part.Definition.Mass)
+                .ToArray();
+            var socket = GameObject.Find("BatteryTraySocket").GetComponent<PartSocket>();
+
+            Assert.That(batteries.Length, Is.EqualTo(3));
+            Assert.That(batteries.All(socket.CanAccept), Is.True);
+            Assert.That(batteries.Select(part => part.Definition.Mass), Is.Ordered.Ascending);
+            Assert.That(batteries[0].Definition.StatModifiers.payload, Is.GreaterThan(0f));
+            Assert.That(batteries[0].Definition.StatModifiers.endurance, Is.LessThan(0f));
+            Assert.That(batteries[2].Definition.StatModifiers.endurance, Is.GreaterThan(0f));
+            Assert.That(batteries[2].Definition.StatModifiers.payload, Is.LessThan(0f));
+            Assert.That(batteries[0].transform.lossyScale.z, Is.LessThan(batteries[2].transform.lossyScale.z));
         }
 
         [UnityTest]
@@ -168,6 +194,7 @@ namespace UnderStatic.Tests.PlayMode
             var controller = GameObject.Find("LooseFlightController").GetComponent<InstallablePart>();
             var controllerSocket = GameObject.Find("FlightControllerSocket").GetComponent<PartSocket>();
             var harness = GameObject.Find("FlightControllerStackHarness").transform;
+            var audioFeedback = Object.FindAnyObjectByType<AudioFeedbackSystem>();
             var connectedPlug = harness.Find("StackHarnessPlugConnected").GetComponent<Renderer>();
             var loosePlug = harness.Find("StackHarnessPlugLoose").GetComponent<Renderer>();
 
@@ -191,6 +218,9 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(loosePlug.enabled, Is.True);
             Assert.That(controllerSocket.ToggleLatch(), Is.True);
             Assert.That(controller.Runtime.currentState, Is.EqualTo(InteractionState.Installed));
+            Assert.That(audioFeedback.LastPlayedCue, Is.EqualTo(ComponentSoundCue.ConnectorInsert));
+            Assert.That(audioFeedback.LastCueUsedRecordedAudio, Is.True);
+            Assert.That(audioFeedback.ActiveLibraryLabel, Does.Contain("BIGSOUNDBANK"));
             Assert.That(controllerSocket.LatchClosed, Is.True);
             Assert.That(connectedPlug.enabled, Is.True);
             Assert.That(loosePlug.enabled, Is.False);
@@ -220,9 +250,22 @@ namespace UnderStatic.Tests.PlayMode
                 MountForCollectionTest(part, socket);
             }
 
-            Assert.That(assembly.InstalledPartCount, Is.EqualTo(13));
+            Assert.That(assembly.InstalledPartCount, Is.EqualTo(14));
+            Assert.That(assembly.Readiness.IsMissionReady, Is.False,
+                "Fasteners alone must not complete the strike payload build.");
+            var payloadProcedure = Object.FindAnyObjectByType<StrikePayloadMountProcedure>();
+            Assert.That(payloadProcedure.TryToggle(StrikePayloadMountStep.ControlHarness), Is.False);
+            Assert.That(payloadProcedure.TryToggle(StrikePayloadMountStep.ForwardStrap), Is.True);
+            Assert.That(payloadProcedure.TryToggle(StrikePayloadMountStep.RearStrap), Is.True);
+            Assert.That(payloadProcedure.TryToggle(StrikePayloadMountStep.ControlHarness), Is.True);
+            Assert.That(payloadProcedure.IsComplete, Is.True);
             Assert.That(assembly.Readiness.IsMissionReady, Is.True);
-            Assert.That(assembly.Readiness.Endurance, Is.EqualTo(0.96f).Within(0.001f));
+            var installedBattery = sockets.Single(socket =>
+                socket.AcceptedPrimaryCategory == PartCategory.Battery).OccupiedPart;
+            var expectedEndurance = Mathf.Clamp01(
+                installedBattery.Runtime.chargeLevel * installedBattery.Runtime.condition
+                + installedBattery.Definition.StatModifiers.endurance);
+            Assert.That(assembly.Readiness.Endurance, Is.EqualTo(expectedEndurance).Within(0.001f));
 
             foreach (var socket in sockets.OrderByDescending(socket => SocketBuildOrder(socket.name)))
             {
@@ -241,6 +284,39 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(sockets.All(socket => socket.OccupiedPart == null), Is.True);
             Assert.That(Object.FindObjectsByType<InstallablePart>()
                 .All(part => part.Runtime.currentState == InteractionState.Loose), Is.True);
+        }
+
+        [UnityTest]
+        public IEnumerator PayloadMountProcedurePersistsAndBlocksFastenerRemovalUntilReleased()
+        {
+            SceneManager.LoadScene("DroneBuildLab", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var persistence = Object.FindAnyObjectByType<SaveSystem>();
+            var parts = Object.FindObjectsByType<InstallablePart>();
+            var sockets = Object.FindObjectsByType<PartSocket>();
+            var rack = parts.Single(part => part.Definition.Category == PartCategory.StrikeRack);
+            var socket = sockets.Single(candidate => candidate.AcceptedPrimaryCategory == PartCategory.StrikeRack);
+            var procedure = rack.GetComponent<StrikePayloadMountProcedure>();
+            MountForCollectionTest(rack, socket);
+
+            Assert.That(procedure.TryToggle(StrikePayloadMountStep.ForwardStrap), Is.True);
+            Assert.That(procedure.TryToggle(StrikePayloadMountStep.RearStrap), Is.True);
+            Assert.That(procedure.TryToggle(StrikePayloadMountStep.ControlHarness), Is.True);
+            Assert.That(socket.RemovalBlocked, Is.True);
+            var json = persistence.CaptureAllToJson(parts, sockets);
+
+            rack.Runtime.auxiliaryProcedureMask = 0;
+            Assert.That(persistence.RestoreAllFromJson(json, parts, sockets), Is.True);
+            Assert.That(procedure.IsComplete, Is.True);
+            Assert.That(socket.RemovalBlocked, Is.True);
+            Assert.That(procedure.TryToggle(StrikePayloadMountStep.ForwardStrap), Is.False,
+                "The harness must be disconnected before either strap can be released.");
+            Assert.That(procedure.TryToggle(StrikePayloadMountStep.ControlHarness), Is.True);
+            Assert.That(procedure.TryToggle(StrikePayloadMountStep.ForwardStrap), Is.True);
+            Assert.That(procedure.TryToggle(StrikePayloadMountStep.RearStrap), Is.True);
+            Assert.That(socket.RemovalBlocked, Is.False);
         }
 
         [UnityTest]
@@ -304,8 +380,18 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(ambience.IsRunning, Is.True);
             Assert.That(assembly, Is.Not.Null);
             Assert.That(assembly.InstalledPartCount, Is.EqualTo(13));
-            Assert.That(Object.FindObjectsByType<InstallablePart>().Length, Is.EqualTo(44));
+            Assert.That(Object.FindObjectsByType<InstallablePart>().Length, Is.EqualTo(60));
             Assert.That(Object.FindObjectsByType<PartSocket>().Length, Is.EqualTo(43));
+            var inventory = Object.FindAnyObjectByType<InventorySystem>();
+            var scratchParts = inventory.Parts.Where(part =>
+                part.name.StartsWith("ScratchStrike", System.StringComparison.Ordinal)).ToArray();
+            Assert.That(fleet.Actors.Count(actor => actor.IsExpendableStrikeDrone), Is.EqualTo(2));
+            Assert.That(fleet.Actors.Where(actor => actor.IsExpendableStrikeDrone)
+                .All(actor => actor.Readiness.IsMissionReady), Is.True);
+            Assert.That(scratchParts.Length, Is.EqualTo(16));
+            Assert.That(scratchParts.Count(part => part.Definition.Category == PartCategory.Battery), Is.EqualTo(3));
+            Assert.That(scratchParts.All(part =>
+                part.Runtime.storageLocation == StorageLocationId.SafeHouseParts), Is.True);
             Assert.That(assembly.Readiness.IsMissionReady, Is.False);
         }
 
@@ -350,6 +436,7 @@ namespace UnderStatic.Tests.PlayMode
             var battery = GameObject.Find("BatteryPack").GetComponent<InstallablePart>();
             var socket = GameObject.Find("BatteryTraySocket").GetComponent<PartSocket>();
             var strap = GameObject.Find("BatteryRetentionStrap").transform;
+            var audioFeedback = Object.FindAnyObjectByType<AudioFeedbackSystem>();
             var retentionBand = strap.Find("BatteryStrapSecuredFrontTop").GetComponent<Renderer>();
             var retentionSide = strap.Find("BatteryStrapSecuredFrontSideLeft").GetComponent<Renderer>();
             var looseTail = strap.Find("BatteryStrapLooseFrontLeft").GetComponent<Renderer>();
@@ -390,6 +477,8 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(interactions.HeldPart, Is.Null);
             Assert.That(socket.OccupiedPart, Is.SameAs(battery));
             Assert.That(socket.LatchClosed, Is.False);
+            Assert.That(audioFeedback.LastPlayedCue, Is.EqualTo(ComponentSoundCue.ComponentSeat));
+            Assert.That(audioFeedback.LastCueUsedRecordedAudio, Is.True);
             Assert.That(retentionBand.enabled, Is.False);
             Assert.That(looseTail.enabled, Is.True);
 
@@ -408,6 +497,8 @@ namespace UnderStatic.Tests.PlayMode
             yield return null;
             Assert.That(battery.Runtime.currentState, Is.EqualTo(InteractionState.Installed));
             Assert.That(socket.LatchClosed, Is.True);
+            Assert.That(audioFeedback.LastPlayedCue, Is.EqualTo(ComponentSoundCue.StrapTighten));
+            Assert.That(audioFeedback.LastCueUsedRecordedAudio, Is.True);
             Assert.That(retentionBand.enabled, Is.True);
             Assert.That(retentionSide.enabled, Is.True);
             Assert.That(looseTail.enabled, Is.False);
@@ -423,6 +514,8 @@ namespace UnderStatic.Tests.PlayMode
             yield return null;
             Assert.That(battery.Runtime.currentState, Is.EqualTo(InteractionState.Seated));
             Assert.That(socket.LatchClosed, Is.False);
+            Assert.That(audioFeedback.LastPlayedCue, Is.EqualTo(ComponentSoundCue.StrapRelease));
+            Assert.That(audioFeedback.LastCueUsedRecordedAudio, Is.True);
             Assert.That(socket.LatchOpenedForExtraction, Is.True);
             Assert.That(retentionBand.enabled, Is.False);
             Assert.That(looseTail.enabled, Is.True);
@@ -547,6 +640,11 @@ namespace UnderStatic.Tests.PlayMode
             if (socketName.StartsWith("FlightControllerSocket"))
             {
                 return PartCategory.FlightController;
+            }
+
+            if (socketName.StartsWith("StrikeRackSocket"))
+            {
+                return PartCategory.StrikeRack;
             }
 
             return PartCategory.Antenna;

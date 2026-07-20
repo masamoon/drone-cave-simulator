@@ -9,6 +9,7 @@ using UnderStatic.Inventory;
 using UnderStatic.Parts;
 using UnderStatic.Persistence;
 using UnderStatic.UI;
+using UnderStatic.Visuals;
 using UnityEngine;
 
 namespace UnderStatic.Lab
@@ -512,6 +513,9 @@ namespace UnderStatic.Lab
                 runtime.condition = Mathf.Clamp01(0.93f + ((sequence + categoryIndex) % 4) * 0.01f);
                 runtime.chargeLevel = 1f;
                 runtime.consumableCharges = category == PartCategory.StrikeRack ? 1 : runtime.consumableCharges;
+                runtime.auxiliaryProcedureMask = category == PartCategory.StrikeRack
+                    ? StrikePayloadMountProcedure.CompleteMask
+                    : runtime.auxiliaryProcedureMask;
                 runtime.currentState = InteractionState.Tested;
                 runtime.lastStableState = InteractionState.Tested;
                 runtime.tested = true;
@@ -525,6 +529,10 @@ namespace UnderStatic.Lab
                     latchClosed = true,
                     fastenerProgress = Enumerable.Repeat(1f, socket.FastenerProgress.Count).ToArray()
                 });
+                if (category == PartCategory.StrikeRack)
+                {
+                    PsxVisualFactory.UpdateStrikePayloadVisual(part);
+                }
                 kept.Add(part);
             }
 

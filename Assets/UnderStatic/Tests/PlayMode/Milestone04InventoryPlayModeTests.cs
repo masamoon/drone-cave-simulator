@@ -39,7 +39,7 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(partsStorage, Is.Not.Null);
             Assert.That(returns, Is.Not.Null);
             Assert.That(salvage, Is.Not.Null);
-            Assert.That(partsStorage.OccupiedCount, Is.EqualTo(3));
+            Assert.That(partsStorage.OccupiedCount, Is.EqualTo(19));
             Assert.That(partsStorage.Contains(spareMotor), Is.True);
             Assert.That(partsStorage.Contains(spareBattery), Is.True);
             Assert.That(spareMotor.Body.isKinematic, Is.True);
@@ -756,7 +756,7 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(persistence.RestoreAllFromJson(json, parts, sockets), Is.True);
             Assert.That(storage.Contains(spareMotor), Is.True);
             Assert.That(spareMotor.Runtime.storageLocation, Is.EqualTo(StorageLocationId.SafeHouseParts));
-            Assert.That(locations.Sum(location => location.OccupiedCount), Is.EqualTo(3));
+            Assert.That(locations.Sum(location => location.OccupiedCount), Is.EqualTo(19));
         }
     }
 }

@@ -1,0 +1,474 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3d93dd9319e34fbe96f56d3dc97ee6c0, type: 3}
+  m_Name: AssemblyAudioProfile
+  m_EditorClassIdentifier: UnderStatic.Core::UnderStatic.Core.AssemblyAudioProfile
+  libraryLabel: MVP AUDIO · CC0 FIELD RECORDINGS · BIGSOUNDBANK / JOSEPH SARDIN
+  cues:
+  - cue: 2
+    variants:
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: 398782c9571dc36408eeec1c3a05a90e, type: 3}
+        startSeconds: 0.18
+        durationSeconds: 0.42
+        gain: 0.55
+        delaySeconds: 0
+        playbackRate: 1.1
+        reverse: 0
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: 398782c9571dc36408eeec1c3a05a90e, type: 3}
+        startSeconds: 2
+        durationSeconds: 0.4
+        gain: 0.52
+        delaySeconds: 0
+        playbackRate: 1.13
+        reverse: 0
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: 398782c9571dc36408eeec1c3a05a90e, type: 3}
+        startSeconds: 3.72
+        durationSeconds: 0.4
+        gain: 0.5
+        delaySeconds: 0
+        playbackRate: 1.16
+        reverse: 0
+  - cue: 3
+    variants:
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: 398782c9571dc36408eeec1c3a05a90e, type: 3}
+        startSeconds: 0.18
+        durationSeconds: 0.42
+        gain: 0.44
+        delaySeconds: 0
+        playbackRate: 1.05
+        reverse: 1
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: 398782c9571dc36408eeec1c3a05a90e, type: 3}
+        startSeconds: 2
+        durationSeconds: 0.4
+        gain: 0.42
+        delaySeconds: 0
+        playbackRate: 1.08
+        reverse: 1
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: 398782c9571dc36408eeec1c3a05a90e, type: 3}
+        startSeconds: 3.72
+        durationSeconds: 0.4
+        gain: 0.4
+        delaySeconds: 0
+        playbackRate: 1.1
+        reverse: 1
+  - cue: 4
+    variants:
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: 9010fd0aa6e8f4d469445616b6d2e1ac, type: 3}
+        startSeconds: 1.78
+        durationSeconds: 0.68
+        gain: 0.7
+        delaySeconds: 0
+        playbackRate: 1.15
+        reverse: 0
+      - sourceClip: {fileID: 8300000, guid: 6e8518dc13aacce45a94bd190d8cf5c1, type: 3}
+        startSeconds: 0.19
+        durationSeconds: 0.18
+        gain: 0.25
+        delaySeconds: 0.34
+        playbackRate: 1.08
+        reverse: 0
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: 9010fd0aa6e8f4d469445616b6d2e1ac, type: 3}
+        startSeconds: 1.78
+        durationSeconds: 0.68
+        gain: 0.68
+        delaySeconds: 0
+        playbackRate: 1.18
+        reverse: 0
+      - sourceClip: {fileID: 8300000, guid: 6e8518dc13aacce45a94bd190d8cf5c1, type: 3}
+        startSeconds: 0.71
+        durationSeconds: 0.18
+        gain: 0.24
+        delaySeconds: 0.33
+        playbackRate: 1.12
+        reverse: 0
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: 9010fd0aa6e8f4d469445616b6d2e1ac, type: 3}
+        startSeconds: 1.78
+        durationSeconds: 0.68
+        gain: 0.66
+        delaySeconds: 0
+        playbackRate: 1.21
+        reverse: 0
+      - sourceClip: {fileID: 8300000, guid: 6e8518dc13aacce45a94bd190d8cf5c1, type: 3}
+        startSeconds: 1.18
+        durationSeconds: 0.18
+        gain: 0.23
+        delaySeconds: 0.32
+        playbackRate: 1.15
+        reverse: 0
+  - cue: 5
+    variants:
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: e0d8349047a84c649996b46a76a34242, type: 3}
+        startSeconds: 17.02
+        durationSeconds: 0.28
+        gain: 0.72
+        delaySeconds: 0
+        playbackRate: 1.35
+        reverse: 0
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: e0d8349047a84c649996b46a76a34242, type: 3}
+        startSeconds: 17.63
+        durationSeconds: 0.32
+        gain: 0.7
+        delaySeconds: 0
+        playbackRate: 1.38
+        reverse: 0
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: e0d8349047a84c649996b46a76a34242, type: 3}
+        startSeconds: 18.27
+        durationSeconds: 0.32
+        gain: 0.68
+        delaySeconds: 0
+        playbackRate: 1.42
+        reverse: 0
+  - cue: 6
+    variants:
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: e0d8349047a84c649996b46a76a34242, type: 3}
+        startSeconds: 19.55
+        durationSeconds: 0.32
+        gain: 0.68
+        delaySeconds: 0
+        playbackRate: 1.28
+        reverse: 0
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: e0d8349047a84c649996b46a76a34242, type: 3}
+        startSeconds: 20.25
+        durationSeconds: 0.32
+        gain: 0.66
+        delaySeconds: 0
+        playbackRate: 1.31
+        reverse: 0
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: e0d8349047a84c649996b46a76a34242, type: 3}
+        startSeconds: 20.92
+        durationSeconds: 0.32
+        gain: 0.64
+        delaySeconds: 0
+        playbackRate: 1.34
+        reverse: 0
+  - cue: 7
+    variants:
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: 6e8518dc13aacce45a94bd190d8cf5c1, type: 3}
+        startSeconds: 0.19
+        durationSeconds: 0.18
+        gain: 0.62
+        delaySeconds: 0
+        playbackRate: 1.12
+        reverse: 0
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: 6e8518dc13aacce45a94bd190d8cf5c1, type: 3}
+        startSeconds: 0.71
+        durationSeconds: 0.18
+        gain: 0.6
+        delaySeconds: 0
+        playbackRate: 1.15
+        reverse: 0
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: 6e8518dc13aacce45a94bd190d8cf5c1, type: 3}
+        startSeconds: 1.18
+        durationSeconds: 0.18
+        gain: 0.58
+        delaySeconds: 0
+        playbackRate: 1.18
+        reverse: 0
+  - cue: 8
+    variants:
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: 6e8518dc13aacce45a94bd190d8cf5c1, type: 3}
+        startSeconds: 1.68
+        durationSeconds: 0.2
+        gain: 0.96
+        delaySeconds: 0
+        playbackRate: 0.92
+        reverse: 0
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: 6e8518dc13aacce45a94bd190d8cf5c1, type: 3}
+        startSeconds: 2.27
+        durationSeconds: 0.2
+        gain: 0.92
+        delaySeconds: 0
+        playbackRate: 0.95
+        reverse: 0
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: 6e8518dc13aacce45a94bd190d8cf5c1, type: 3}
+        startSeconds: 1.18
+        durationSeconds: 0.2
+        gain: 0.9
+        delaySeconds: 0
+        playbackRate: 0.9
+        reverse: 0
+  - cue: 9
+    variants:
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: 9010fd0aa6e8f4d469445616b6d2e1ac, type: 3}
+        startSeconds: 0.1
+        durationSeconds: 0.25
+        gain: 0.82
+        delaySeconds: 0
+        playbackRate: 0.95
+        reverse: 0
+      - sourceClip: {fileID: 8300000, guid: 6e8518dc13aacce45a94bd190d8cf5c1, type: 3}
+        startSeconds: 0.19
+        durationSeconds: 0.18
+        gain: 0.32
+        delaySeconds: 0.08
+        playbackRate: 0.96
+        reverse: 0
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: 9010fd0aa6e8f4d469445616b6d2e1ac, type: 3}
+        startSeconds: 0.1
+        durationSeconds: 0.25
+        gain: 0.8
+        delaySeconds: 0
+        playbackRate: 1
+        reverse: 0
+      - sourceClip: {fileID: 8300000, guid: 6e8518dc13aacce45a94bd190d8cf5c1, type: 3}
+        startSeconds: 0.71
+        durationSeconds: 0.18
+        gain: 0.3
+        delaySeconds: 0.08
+        playbackRate: 1
+        reverse: 0
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: 9010fd0aa6e8f4d469445616b6d2e1ac, type: 3}
+        startSeconds: 0.1
+        durationSeconds: 0.25
+        gain: 0.78
+        delaySeconds: 0
+        playbackRate: 1.04
+        reverse: 0
+      - sourceClip: {fileID: 8300000, guid: 6e8518dc13aacce45a94bd190d8cf5c1, type: 3}
+        startSeconds: 1.18
+        durationSeconds: 0.18
+        gain: 0.28
+        delaySeconds: 0.08
+        playbackRate: 1.03
+        reverse: 0
+  - cue: 10
+    variants:
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: 9010fd0aa6e8f4d469445616b6d2e1ac, type: 3}
+        startSeconds: 1.75
+        durationSeconds: 0.75
+        gain: 0.82
+        delaySeconds: 0
+        playbackRate: 1.08
+        reverse: 0
+      - sourceClip: {fileID: 8300000, guid: 6e8518dc13aacce45a94bd190d8cf5c1, type: 3}
+        startSeconds: 0.19
+        durationSeconds: 0.18
+        gain: 0.34
+        delaySeconds: 0.36
+        playbackRate: 1
+        reverse: 0
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: 9010fd0aa6e8f4d469445616b6d2e1ac, type: 3}
+        startSeconds: 1.75
+        durationSeconds: 0.75
+        gain: 0.8
+        delaySeconds: 0
+        playbackRate: 1.12
+        reverse: 0
+      - sourceClip: {fileID: 8300000, guid: 6e8518dc13aacce45a94bd190d8cf5c1, type: 3}
+        startSeconds: 0.71
+        durationSeconds: 0.18
+        gain: 0.32
+        delaySeconds: 0.35
+        playbackRate: 1.04
+        reverse: 0
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: 9010fd0aa6e8f4d469445616b6d2e1ac, type: 3}
+        startSeconds: 1.75
+        durationSeconds: 0.75
+        gain: 0.78
+        delaySeconds: 0
+        playbackRate: 1.16
+        reverse: 0
+      - sourceClip: {fileID: 8300000, guid: 6e8518dc13aacce45a94bd190d8cf5c1, type: 3}
+        startSeconds: 1.18
+        durationSeconds: 0.18
+        gain: 0.3
+        delaySeconds: 0.34
+        playbackRate: 1.08
+        reverse: 0
+  - cue: 11
+    variants:
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: 9010fd0aa6e8f4d469445616b6d2e1ac, type: 3}
+        startSeconds: 0.1
+        durationSeconds: 0.28
+        gain: 0.78
+        delaySeconds: 0
+        playbackRate: 1
+        reverse: 0
+      - sourceClip: {fileID: 8300000, guid: 6e8518dc13aacce45a94bd190d8cf5c1, type: 3}
+        startSeconds: 0.19
+        durationSeconds: 0.18
+        gain: 0.24
+        delaySeconds: 0.06
+        playbackRate: 0.96
+        reverse: 1
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: 9010fd0aa6e8f4d469445616b6d2e1ac, type: 3}
+        startSeconds: 0.1
+        durationSeconds: 0.28
+        gain: 0.76
+        delaySeconds: 0
+        playbackRate: 1.04
+        reverse: 0
+      - sourceClip: {fileID: 8300000, guid: 6e8518dc13aacce45a94bd190d8cf5c1, type: 3}
+        startSeconds: 0.71
+        durationSeconds: 0.18
+        gain: 0.22
+        delaySeconds: 0.06
+        playbackRate: 1
+        reverse: 1
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: 9010fd0aa6e8f4d469445616b6d2e1ac, type: 3}
+        startSeconds: 0.1
+        durationSeconds: 0.28
+        gain: 0.74
+        delaySeconds: 0
+        playbackRate: 1.08
+        reverse: 0
+      - sourceClip: {fileID: 8300000, guid: 6e8518dc13aacce45a94bd190d8cf5c1, type: 3}
+        startSeconds: 1.18
+        durationSeconds: 0.18
+        gain: 0.2
+        delaySeconds: 0.06
+        playbackRate: 1.04
+        reverse: 1
+  - cue: 12
+    variants:
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: 87261906df32cc6478ad33a88384c777, type: 3}
+        startSeconds: 10.86
+        durationSeconds: 0.46
+        gain: 0.62
+        delaySeconds: 0
+        playbackRate: 1.05
+        reverse: 0
+      - sourceClip: {fileID: 8300000, guid: 37ff9c466ae63d64a8dd2bb6153115a8, type: 3}
+        startSeconds: 0.05
+        durationSeconds: 0.56
+        gain: 0.1
+        delaySeconds: 0
+        playbackRate: 1.2
+        reverse: 0
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: 87261906df32cc6478ad33a88384c777, type: 3}
+        startSeconds: 12.86
+        durationSeconds: 0.34
+        gain: 0.64
+        delaySeconds: 0
+        playbackRate: 1
+        reverse: 0
+      - sourceClip: {fileID: 8300000, guid: 0d7a96c605e538745be7922149f89db1, type: 3}
+        startSeconds: 0.04
+        durationSeconds: 0.5
+        gain: 0.1
+        delaySeconds: 0
+        playbackRate: 1.18
+        reverse: 0
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: 87261906df32cc6478ad33a88384c777, type: 3}
+        startSeconds: 15.1
+        durationSeconds: 0.36
+        gain: 0.6
+        delaySeconds: 0
+        playbackRate: 1.04
+        reverse: 0
+      - sourceClip: {fileID: 8300000, guid: 9a856f4faaff0764bb5003f9cc760521, type: 3}
+        startSeconds: 0.06
+        durationSeconds: 0.56
+        gain: 0.09
+        delaySeconds: 0
+        playbackRate: 1.2
+        reverse: 0
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: 87261906df32cc6478ad33a88384c777, type: 3}
+        startSeconds: 16.94
+        durationSeconds: 0.38
+        gain: 0.58
+        delaySeconds: 0
+        playbackRate: 1.02
+        reverse: 0
+      - sourceClip: {fileID: 8300000, guid: 2a3ad571fa1966244b90ba84cca71938, type: 3}
+        startSeconds: 0.04
+        durationSeconds: 0.54
+        gain: 0.09
+        delaySeconds: 0
+        playbackRate: 1.16
+        reverse: 0
+  - cue: 13
+    variants:
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: 87261906df32cc6478ad33a88384c777, type: 3}
+        startSeconds: 0.15
+        durationSeconds: 0.78
+        gain: 0.72
+        delaySeconds: 0
+        playbackRate: 1.05
+        reverse: 0
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: 87261906df32cc6478ad33a88384c777, type: 3}
+        startSeconds: 2.94
+        durationSeconds: 0.68
+        gain: 0.7
+        delaySeconds: 0
+        playbackRate: 1.02
+        reverse: 0
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: 87261906df32cc6478ad33a88384c777, type: 3}
+        startSeconds: 5.44
+        durationSeconds: 0.9
+        gain: 0.68
+        delaySeconds: 0
+        playbackRate: 1.08
+        reverse: 0
+  - cue: 14
+    variants:
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: 9010fd0aa6e8f4d469445616b6d2e1ac, type: 3}
+        startSeconds: 0.1
+        durationSeconds: 0.28
+        gain: 0.62
+        delaySeconds: 0
+        playbackRate: 1.04
+        reverse: 0
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: 9010fd0aa6e8f4d469445616b6d2e1ac, type: 3}
+        startSeconds: 0.1
+        durationSeconds: 0.28
+        gain: 0.6
+        delaySeconds: 0
+        playbackRate: 1.1
+        reverse: 0
+    - layers:
+      - sourceClip: {fileID: 8300000, guid: 9010fd0aa6e8f4d469445616b6d2e1ac, type: 3}
+        startSeconds: 0.1
+        durationSeconds: 0.28
+        gain: 0.58
+        delaySeconds: 0
+        playbackRate: 1.16
+        reverse: 0

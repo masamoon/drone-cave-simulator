@@ -105,7 +105,7 @@ namespace UnderStatic.Lab
 
             var drone = new GameObject("WorkshopDrone");
             var assembly = drone.AddComponent<DroneAssemblyState>();
-            assembly.ConfigureRequirements(4, 4, 1, 1, 1, 1, 1);
+            assembly.ConfigureRequirements(4, 4, 1, 1, 1, 1, 1, startDisassembled ? 1 : 0);
             CreateFrame(drone.transform, frameMaterial, darkMaterial);
             if (startDisassembled)
             {
@@ -309,7 +309,7 @@ namespace UnderStatic.Lab
                 allParts,
                 allSockets);
 
-            if (createSafeHouse)
+            if (createSafeHouse || startDisassembled)
             {
                 CreateStrikeRackStation(
                     drone.transform,
@@ -317,6 +317,7 @@ namespace UnderStatic.Lab
                     audioFeedback,
                     darkMaterial,
                     toolMaterial,
+                    startDisassembled,
                     allParts,
                     allSockets);
             }
@@ -381,6 +382,10 @@ namespace UnderStatic.Lab
                     allParts.AddRange(expendableParts);
                     allSockets.AddRange(expendableSockets);
                     fleetActors.Add(expendableActor);
+                    if (index == 1)
+                    {
+                        allParts.AddRange(PrepareScratchStrikeInventory(expendableParts));
+                    }
                 }
 
                 legacySurveyActor = CreateSurveyProfessionalActor(
@@ -1015,17 +1020,43 @@ namespace UnderStatic.Lab
 
             if (startDisassembled)
             {
-                var battery = InteractionLabFactory.CreateComponentPart(
-                    "BatteryPack",
-                    null,
-                    new Vector3(0f, 1.1f, 0.25f),
-                    PartCategory.Battery,
-                    definition,
-                    chargedMaterial,
-                    "battery-scratch-build");
-                battery.SetCondition(0.96f);
-                battery.SetChargeLevel(1f);
-                parts.Add(battery);
+                var choices = new[]
+                {
+                    (
+                        Name: "CompactBatteryPack",
+                        InstanceId: "battery-scratch-compact",
+                        Definition: CreateBatteryChoiceDefinition(BatteryChoiceSize.Compact),
+                        Position: new Vector3(-0.36f, 1.1f, 0.23f),
+                        Scale: new Vector3(0.15f, 0.085f, 0.24f)),
+                    (
+                        Name: "BatteryPack",
+                        InstanceId: "battery-scratch-balanced",
+                        Definition: CreateBatteryChoiceDefinition(BatteryChoiceSize.Balanced),
+                        Position: new Vector3(0f, 1.1f, 0.23f),
+                        Scale: new Vector3(0.18f, 0.105f, 0.31f)),
+                    (
+                        Name: "LongRangeBatteryPack",
+                        InstanceId: "battery-scratch-long-range",
+                        Definition: CreateBatteryChoiceDefinition(BatteryChoiceSize.LongRange),
+                        Position: new Vector3(0.4f, 1.1f, 0.23f),
+                        Scale: new Vector3(0.205f, 0.125f, 0.37f))
+                };
+                foreach (var choice in choices)
+                {
+                    var battery = InteractionLabFactory.CreateComponentPart(
+                        choice.Name,
+                        null,
+                        choice.Position,
+                        PartCategory.Battery,
+                        choice.Definition,
+                        chargedMaterial,
+                        choice.InstanceId);
+                    battery.transform.localScale = choice.Scale;
+                    battery.SetCondition(0.96f);
+                    battery.SetChargeLevel(1f);
+                    battery.RememberRecoveryPose();
+                    parts.Add(battery);
+                }
                 return;
             }
 
@@ -1392,11 +1423,14 @@ namespace UnderStatic.Lab
                 rackTemplateDefinition.MonetaryValue,
                 PartMissionCapability.KamikazeWarhead);
             rack.Initialize(warheadDefinition, $"expendable-{sequence:00}-strike-rack-01");
+            rack.GetComponent<StrikePayloadMountProcedure>()?.RebindSocket(strikeSocket);
             PsxVisualFactory.UpdateStrikePayloadVisual(rack);
             var rackRuntime = rack.Runtime.Copy();
             rackRuntime.consumableCharges = 1;
+            rackRuntime.auxiliaryProcedureMask = StrikePayloadMountProcedure.CompleteMask;
             rack.RestoreRuntime(rackRuntime);
             InstallInitially(rack, strikeSocket, 0.96f, 1f);
+            PsxVisualFactory.UpdateStrikePayloadVisual(rack);
             kept.Add(rack);
 
             actor.Runtime.frameCondition = 0.96f;
@@ -1406,6 +1440,70 @@ namespace UnderStatic.Lab
             createdParts = kept;
             createdSockets = sockets;
             return actor;
+        }
+
+        private static IReadOnlyList<InstallablePart> PrepareScratchStrikeInventory(
+            IReadOnlyList<InstallablePart> installedParts)
+        {
+            var looseParts = new List<InstallablePart>();
+            var counters = new Dictionary<PartCategory, int>();
+            foreach (var installedPart in installedParts.Where(part => part != null))
+            {
+                var cloneObject = UnityEngine.Object.Instantiate(installedPart.gameObject);
+                cloneObject.transform.SetParent(null, true);
+                var part = cloneObject.GetComponent<InstallablePart>();
+                counters.TryGetValue(installedPart.Definition.Category, out var categoryIndex);
+                categoryIndex++;
+                counters[installedPart.Definition.Category] = categoryIndex;
+                var definition = installedPart.Definition.Category == PartCategory.Battery
+                    ? CreateBatteryChoiceDefinition(BatteryChoiceSize.Balanced)
+                    : installedPart.Definition;
+                var categoryName = installedPart.Definition.Category.ToString();
+                part.name = installedPart.Definition.Category == PartCategory.Battery
+                    ? "ScratchStrikeBalancedBattery"
+                    : $"ScratchStrike{categoryName}{categoryIndex:00}";
+                part.Initialize(
+                    definition,
+                    $"scratch-strike-{categoryName.ToLowerInvariant()}-{categoryIndex:00}");
+                part.SetCondition(0.94f);
+                part.SetChargeLevel(1f);
+                if (part.Definition.Category == PartCategory.Battery)
+                {
+                    part.transform.localScale = new Vector3(0.18f, 0.105f, 0.31f);
+                }
+                if (part.Definition.Category == PartCategory.StrikeRack)
+                {
+                    part.Runtime.consumableCharges = 1;
+                    part.Runtime.auxiliaryProcedureMask = 0;
+                    part.GetComponent<StrikePayloadMountProcedure>()?.RebindSocket(null);
+                }
+                part.SetLoosePhysics();
+                part.RememberRecoveryPose();
+                looseParts.Add(part);
+            }
+
+            var balanced = looseParts.Single(part => part.Definition.Category == PartCategory.Battery);
+            foreach (var choice in new[]
+                     {
+                         (Size: BatteryChoiceSize.Compact, Name: "ScratchStrikeCompactBattery",
+                             Id: "scratch-strike-battery-compact", Scale: new Vector3(0.15f, 0.085f, 0.24f)),
+                         (Size: BatteryChoiceSize.LongRange, Name: "ScratchStrikeLongRangeBattery",
+                             Id: "scratch-strike-battery-long-range", Scale: new Vector3(0.205f, 0.125f, 0.37f))
+                     })
+            {
+                var cloneObject = UnityEngine.Object.Instantiate(balanced.gameObject);
+                cloneObject.name = choice.Name;
+                var battery = cloneObject.GetComponent<InstallablePart>();
+                battery.Initialize(CreateBatteryChoiceDefinition(choice.Size), choice.Id);
+                battery.transform.localScale = choice.Scale;
+                battery.SetCondition(0.94f);
+                battery.SetChargeLevel(1f);
+                battery.SetLoosePhysics();
+                battery.RememberRecoveryPose();
+                looseParts.Add(battery);
+            }
+
+            return looseParts;
         }
 
         private static DroneActor CreateSurveyProfessionalActor(
@@ -1739,44 +1837,103 @@ namespace UnderStatic.Lab
                 ?? PartDefinition.CreateTransient(id, displayName, category, new[] { tag }, reliability, mass);
         }
 
+        private static PartDefinition CreateBatteryChoiceDefinition(BatteryChoiceSize size)
+        {
+            var (id, displayName, mass, modifiers, value) = size switch
+            {
+                BatteryChoiceSize.Compact => (
+                    "battery.4s.compact",
+                    "Compact 4S Pack · short reach / high payload margin",
+                    0.28f,
+                    new PartStatModifiers
+                    {
+                        endurance = -0.08f,
+                        payload = 0.1f,
+                        control = 0.04f,
+                        reliability = 0.03f
+                    },
+                    90),
+                BatteryChoiceSize.LongRange => (
+                    "battery.4s.long-range",
+                    "Large 4S Pack · long reach / reduced payload margin",
+                    0.62f,
+                    new PartStatModifiers
+                    {
+                        endurance = 0.18f,
+                        payload = -0.13f,
+                        control = -0.06f,
+                        reliability = -0.03f
+                    },
+                    150),
+                _ => (
+                    "battery.4s.balanced",
+                    "Medium 4S Pack · balanced reach and payload",
+                    0.42f,
+                    new PartStatModifiers { endurance = 0.04f },
+                    120)
+            };
+
+            return PartDefinition.CreateTransient(
+                id,
+                displayName,
+                PartCategory.Battery,
+                new[] { "battery.slide-4s" },
+                reliability: 0.92f,
+                partMass: mass,
+                partPowerDraw: 0f,
+                partCapability: 0.9f,
+                partSalvageYield: 1,
+                standards: new[] { CompatibilityStandardId.CompactBattery },
+                equipmentGrade: EquipmentGrade.Field,
+                modifiers: modifiers,
+                value: value);
+        }
+
         private static void CreateStrikeRackStation(
             Transform drone,
             DroneAssemblyState assembly,
             AudioFeedbackSystem audioFeedback,
             Material socketMaterial,
             Material rackMaterial,
+            bool requiredForScratchBuild,
             ICollection<InstallablePart> allParts,
             ICollection<PartSocket> allSockets)
         {
             var profile = InstallationProfile.CreateTransient(
-                InstallationProcedureType.Latch,
+                InstallationProcedureType.Fasteners,
                 0.2f,
                 22f,
                 0.04f,
                 0.72f,
+                fasteners: 4,
+                rotations: 2.4f,
                 resistanceZone: 0.2f);
-            var socketObject = InteractionLabFactory.CreatePrimitive(
+            var socket = CreateFastenerSocket(
                 "StrikeRackSocket",
-                PrimitiveType.Cube,
-                drone,
-                new Vector3(0f, 1.14f, 0.86f),
-                new Vector3(0.24f, 0.045f, 0.28f),
-                socketMaterial,
-                true);
-            var socket = socketObject.AddComponent<PartSocket>();
-            socket.Configure(
                 "drone.strike-rack.center",
-                new[] { PartCategory.StrikeRack },
-                new[] { "strike-rack.rail" },
+                new Vector3(0f, 1.14f, 0.86f),
+                PartCategory.StrikeRack,
+                "strike-rack.rail",
                 profile,
                 assembly,
-                feedback: audioFeedback);
+                audioFeedback,
+                socketMaterial,
+                rackMaterial,
+                drone,
+                -0.045f);
             socket.SetCompatibilityStandards(CompatibilityStandardId.SharedStrikeRack);
+            socket.SetInsertionAxis(Vector3.down);
+            socket.SetSeatedOffset(Vector3.down * 0.075f);
+            foreach (var target in socket.FastenerTargets)
+            {
+                target.position += Vector3.down * 0.28f;
+                target.rotation = Quaternion.Euler(180f, 0f, 0f);
+            }
             allSockets.Add(socket);
 
             var definition = PartDefinition.CreateTransient(
                 "strike-rack.field.single",
-                "Field Single-charge Strike Rack",
+                "Field Underslung Strike Payload Mount",
                 PartCategory.StrikeRack,
                 new[] { "strike-rack.rail" },
                 reliability: 0.9f,
@@ -1788,20 +1945,178 @@ namespace UnderStatic.Lab
                 equipmentGrade: EquipmentGrade.Field,
                 modifiers: new PartStatModifiers { payload = -0.035f, control = -0.015f, noise = 0.02f },
                 value: 220,
-                capabilities: PartMissionCapability.GrenadeDrop);
+                capabilities: PartMissionCapability.KamikazeWarhead | PartMissionCapability.GrenadeDrop);
             var rack = InteractionLabFactory.CreateComponentPart(
-                "FieldStrikeRack",
+                requiredForScratchBuild ? "ScratchStrikePayloadMount" : "FieldStrikeRack",
                 null,
                 new Vector3(-0.72f, 1.12f, 0.16f),
                 PartCategory.StrikeRack,
                 definition,
                 rackMaterial,
-                "strike-rack-field-01");
+                requiredForScratchBuild ? "strike-rack-scratch-build" : "strike-rack-field-01");
+            CreateStrikePayloadMountProcedureVisuals(
+                rack,
+                socket,
+                audioFeedback,
+                socketMaterial,
+                rackMaterial);
             var runtime = rack.Runtime.Copy();
             runtime.condition = 0.94f;
             runtime.consumableCharges = 1;
+            runtime.auxiliaryProcedureMask = 0;
             rack.RestoreRuntime(runtime);
             allParts.Add(rack);
+        }
+
+        private static void CreateStrikePayloadMountProcedureVisuals(
+            InstallablePart rack,
+            PartSocket socket,
+            AudioFeedbackSystem audioFeedback,
+            Material structureMaterial,
+            Material retentionMaterial)
+        {
+            var root = new GameObject("PayloadMountFunctional");
+            root.transform.SetParent(rack.transform, false);
+            foreach (var side in new[] { -1f, 1f })
+            {
+                var rail = InteractionLabFactory.CreatePrimitive(
+                    $"PayloadCradleRail.{side}",
+                    PrimitiveType.Cube,
+                    root.transform,
+                    new Vector3(side * 0.42f, 0f, 0f),
+                    new Vector3(0.18f, 0.18f, 1.85f),
+                    structureMaterial,
+                    true);
+                InteractionLabFactory.DisableCollider(rail);
+            }
+            foreach (var end in new[] { -1f, 1f })
+            {
+                var crossbar = InteractionLabFactory.CreatePrimitive(
+                    $"PayloadCradleCrossbar.{end}",
+                    PrimitiveType.Cube,
+                    root.transform,
+                    new Vector3(0f, -0.12f, end * 0.62f),
+                    new Vector3(1.08f, 0.16f, 0.16f),
+                    structureMaterial,
+                    true);
+                InteractionLabFactory.DisableCollider(crossbar);
+            }
+
+            var inertPayload = InteractionLabFactory.CreatePrimitive(
+                "InertPayloadMass",
+                PrimitiveType.Cylinder,
+                root.transform,
+                new Vector3(0f, -0.58f, 0f),
+                new Vector3(0.7f, 1.5f, 0.7f),
+                structureMaterial,
+                true);
+            inertPayload.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            InteractionLabFactory.DisableCollider(inertPayload);
+
+            var targets = new List<StrikePayloadMountStepTarget>();
+            var forwardSecured = new List<Renderer>();
+            var forwardLoose = new List<Renderer>();
+            var rearSecured = new List<Renderer>();
+            var rearLoose = new List<Renderer>();
+            foreach (var strap in new[]
+                     {
+                         (Name: "Forward", Z: -0.58f, Step: StrikePayloadMountStep.ForwardStrap),
+                         (Name: "Rear", Z: 0.58f, Step: StrikePayloadMountStep.RearStrap)
+                     })
+            {
+                var secured = InteractionLabFactory.CreatePrimitive(
+                    $"Payload{strap.Name}StrapSecured",
+                    PrimitiveType.Cube,
+                    root.transform,
+                    new Vector3(0f, -0.3f, strap.Z),
+                    new Vector3(1.08f, 0.11f, 0.18f),
+                    retentionMaterial,
+                    true);
+                var loose = InteractionLabFactory.CreatePrimitive(
+                    $"Payload{strap.Name}StrapLoose",
+                    PrimitiveType.Cube,
+                    root.transform,
+                    new Vector3(0.7f, -0.05f, strap.Z),
+                    new Vector3(0.55f, 0.08f, 0.18f),
+                    retentionMaterial,
+                    true);
+                InteractionLabFactory.DisableCollider(secured);
+                InteractionLabFactory.DisableCollider(loose);
+                var targetObject = new GameObject($"Payload{strap.Name}StrapTarget");
+                targetObject.transform.SetParent(root.transform, false);
+                targetObject.transform.localPosition = new Vector3(0.38f, -0.16f, strap.Z);
+                var targetCollider = targetObject.AddComponent<BoxCollider>();
+                targetCollider.size = new Vector3(0.9f, 0.42f, 0.34f);
+                var target = targetObject.AddComponent<StrikePayloadMountStepTarget>();
+                target.Configure(null, strap.Step);
+                targets.Add(target);
+                if (strap.Step == StrikePayloadMountStep.ForwardStrap)
+                {
+                    forwardSecured.Add(secured.GetComponent<Renderer>());
+                    forwardLoose.Add(loose.GetComponent<Renderer>());
+                }
+                else
+                {
+                    rearSecured.Add(secured.GetComponent<Renderer>());
+                    rearLoose.Add(loose.GetComponent<Renderer>());
+                }
+            }
+
+            var harness = new GameObject("PayloadControlHarness");
+            harness.transform.SetParent(root.transform, false);
+            harness.transform.localPosition = new Vector3(-0.56f, -0.08f, 0.72f);
+            var cable = InteractionLabFactory.CreatePrimitive(
+                "PayloadHarnessCable",
+                PrimitiveType.Cube,
+                harness.transform,
+                new Vector3(0f, 0.22f, 0f),
+                new Vector3(0.08f, 0.48f, 0.08f),
+                retentionMaterial,
+                true);
+            InteractionLabFactory.DisableCollider(cable);
+            var connectedPlug = InteractionLabFactory.CreatePrimitive(
+                "PayloadHarnessPlugConnected",
+                PrimitiveType.Cube,
+                harness.transform,
+                new Vector3(0f, 0.48f, 0f),
+                new Vector3(0.28f, 0.16f, 0.24f),
+                retentionMaterial,
+                true);
+            InteractionLabFactory.DisableCollider(connectedPlug);
+            var loosePlug = InteractionLabFactory.CreatePrimitive(
+                "PayloadHarnessPlugLoose",
+                PrimitiveType.Cube,
+                harness.transform,
+                new Vector3(0.24f, 0.24f, 0.05f),
+                new Vector3(0.28f, 0.16f, 0.24f),
+                retentionMaterial,
+                true);
+            loosePlug.transform.localRotation = Quaternion.Euler(0f, 18f, -28f);
+            InteractionLabFactory.DisableCollider(loosePlug);
+            var harnessTargetObject = new GameObject("PayloadControlHarnessTarget");
+            harnessTargetObject.transform.SetParent(harness.transform, false);
+            harnessTargetObject.transform.localPosition = new Vector3(0.12f, 0.34f, 0.02f);
+            var harnessTargetCollider = harnessTargetObject.AddComponent<BoxCollider>();
+            harnessTargetCollider.size = new Vector3(0.58f, 0.54f, 0.48f);
+            var harnessTarget = harnessTargetObject.AddComponent<StrikePayloadMountStepTarget>();
+            harnessTarget.Configure(null, StrikePayloadMountStep.ControlHarness);
+            targets.Add(harnessTarget);
+
+            var procedure = rack.gameObject.AddComponent<StrikePayloadMountProcedure>();
+            foreach (var target in targets)
+            {
+                target.Configure(procedure, target.Step);
+            }
+            procedure.Configure(
+                socket,
+                audioFeedback,
+                targets,
+                forwardSecured,
+                forwardLoose,
+                rearSecured,
+                rearLoose,
+                new[] { connectedPlug.GetComponent<Renderer>() },
+                new[] { loosePlug.GetComponent<Renderer>() });
         }
 
         private static void InstallInitially(
@@ -1843,6 +2158,13 @@ namespace UnderStatic.Lab
             public string Id { get; }
             public Vector3 Position { get; }
             public bool Damaged { get; }
+        }
+
+        private enum BatteryChoiceSize
+        {
+            Compact,
+            Balanced,
+            LongRange
         }
     }
 }

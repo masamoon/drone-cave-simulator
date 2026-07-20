@@ -144,6 +144,13 @@ namespace UnderStatic.Tests.PlayMode
 
             var listing = available[0];
             var actor = market.ResolveDrone(listing);
+            var preparedRack = actor.InstalledParts.Single(part =>
+                part.Definition.Category == UnderStatic.Core.PartCategory.StrikeRack);
+            var preparedProcedure = preparedRack.GetComponent<StrikePayloadMountProcedure>();
+            Assert.That(preparedProcedure.IsComplete, Is.True,
+                $"Market payload mount was not prepared: mounted={preparedProcedure.IsMounted}, "
+                + $"mask={preparedRack.AuxiliaryProcedureMask}, state={preparedRack.Runtime.currentState}, "
+                + $"socket={preparedRack.Runtime.installedSocketId}");
             terminal.SelectView(MarketTerminalView.StrikeDrones);
             Assert.That(terminal.SelectListing(listing.listingId), Is.True);
             var result = terminal.ConfirmPurchase();

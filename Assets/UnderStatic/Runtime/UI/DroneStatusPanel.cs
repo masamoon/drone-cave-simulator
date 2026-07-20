@@ -132,6 +132,14 @@ namespace UnderStatic.UI
                 builder.Append("Part: ").Append(selectedPart.Definition?.Category.ToString() ?? "Unknown")
                     .Append(" · ").AppendLine(selectedPart.Definition?.DisplayName ?? selectedPart.name);
                 builder.Append("Service: ").AppendLine(selectedPart.ServiceDescription);
+                if (selectedPart.Definition?.Category == UnderStatic.Core.PartCategory.Battery)
+                {
+                    var effects = selectedPart.Definition.StatModifiers;
+                    builder.Append("Battery mass: ").Append(selectedPart.Definition.Mass.ToString("0.00"))
+                        .Append(" kg · END ").Append(FormatSigned(effects.endurance))
+                        .Append(" · PAY ").Append(FormatSigned(effects.payload))
+                        .Append(" · CTL ").AppendLine(FormatSigned(effects.control));
+                }
             }
 
             builder.Append("Mounted: ").Append(status.InstalledCount).Append('/')
@@ -177,12 +185,17 @@ namespace UnderStatic.UI
                     .AppendLine("s");
             }
             var extraHeight = status.MaintenanceSummary.StartsWith("Missing:") ? 32f : 0f;
+            var selectedHeight = selectedPart == null
+                ? 300f
+                : selectedPart.Definition?.Category == UnderStatic.Core.PartCategory.Battery
+                    ? 362f
+                    : 338f;
             GUI.Box(
                 new Rect(
                     12f,
                     12f,
                     410f,
-                    (selectedPart == null ? 300f : 338f) + extraHeight + (inventory == null ? 0f : 58f)
+                    selectedHeight + extraHeight + (inventory == null ? 0f : 58f)
                     + (workshopRisk == null ? 0f : 90f)),
                 builder.ToString());
         }
@@ -255,5 +268,8 @@ namespace UnderStatic.UI
             const int maxLength = 48;
             return result.Length <= maxLength ? result : $"{result[..(maxLength - 3)]}...";
         }
+
+        private static string FormatSigned(float value) =>
+            value >= 0f ? $"+{value:0.00}" : value.ToString("0.00");
     }
 }

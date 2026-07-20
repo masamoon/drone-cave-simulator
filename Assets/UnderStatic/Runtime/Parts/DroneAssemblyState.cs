@@ -101,7 +101,8 @@ namespace UnderStatic.Parts
             int cameras,
             int antennas,
             int escs = 0,
-            int flightControllers = 0)
+            int flightControllers = 0,
+            int strikeRacks = 0)
         {
             requiredCounts.Clear();
             SetRequirement(PartCategory.Motor, motors);
@@ -111,6 +112,7 @@ namespace UnderStatic.Parts
             SetRequirement(PartCategory.Antenna, antennas);
             SetRequirement(PartCategory.Esc, escs);
             SetRequirement(PartCategory.FlightController, flightControllers);
+            SetRequirement(PartCategory.StrikeRack, strikeRacks);
         }
 
         public bool TryRecordInstalled(string socketId, InstallablePart part)
@@ -186,16 +188,27 @@ namespace UnderStatic.Parts
             var motors = parts.Where(part => part.Definition.Category == PartCategory.Motor).ToArray();
             var endurance = battery == null
                 ? 0f
-                : battery.Runtime.chargeLevel * battery.Runtime.condition;
+                : Mathf.Clamp01(
+                    battery.Runtime.chargeLevel * battery.Runtime.condition
+                    + battery.Definition.StatModifiers.endurance);
             var observation = camera == null
                 ? 0f
                 : camera.Runtime.condition * camera.Definition.BaseReliability;
             var motorHealth = motors.Length == 0 ? 0f : motors.Average(part => part.Runtime.condition);
             var control = antenna == null ? motorHealth * 0.5f : (motorHealth + antenna.Runtime.condition) * 0.5f;
             var damaged = parts.Where(part => !part.IsServiceable).ToArray();
+            var incompletePayloadMounts = parts
+                .Where(part => part.Definition.Category == PartCategory.StrikeRack)
+                .Select(part => part.GetComponent<StrikePayloadMountProcedure>())
+                .Where(procedure => procedure != null && !procedure.IsComplete)
+                .ToArray();
             var depleted = battery != null && battery.IsBatteryDepleted;
             var frameFailed = runtime.frameCondition < 0.45f;
-            var ready = complete && damaged.Length == 0 && !depleted && !frameFailed;
+            var ready = complete
+                && damaged.Length == 0
+                && incompletePayloadMounts.Length == 0
+                && !depleted
+                && !frameFailed;
 
             var advisories = new List<string>();
             if (runtime.frameCondition is >= 0.45f and < 0.75f)
@@ -218,7 +231,7 @@ namespace UnderStatic.Parts
                     .Select(entry => $"{entry.Key} {parts.Count(part => part.Definition.Category == entry.Key)}/{entry.Value}");
                 summary = $"Missing: {string.Join(", ", missing)}";
             }
-            else if (depleted || damaged.Length > 0 || frameFailed)
+            else if (depleted || damaged.Length > 0 || incompletePayloadMounts.Length > 0 || frameFailed)
             {
                 var faults = new List<string>();
                 if (depleted)
@@ -227,6 +240,10 @@ namespace UnderStatic.Parts
                 }
 
                 faults.AddRange(damaged.Select(part => $"replace damaged {part.Definition.DisplayName}"));
+                if (incompletePayloadMounts.Length > 0)
+                {
+                    faults.Add("complete payload mount straps and control harness");
+                }
                 if (frameFailed)
                 {
                     faults.Add("frame unserviceable");
@@ -260,6 +277,11 @@ namespace UnderStatic.Parts
         {
             installedParts.Clear();
             installedReferences.Clear();
+            InvalidateDiagnostic();
+        }
+
+        public void NotifyAssemblyChanged()
+        {
             InvalidateDiagnostic();
         }
 

@@ -61,8 +61,8 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(GameObject.Find("BatteryStrapTail.Left"), Is.Null);
             Assert.That(GameObject.Find("BatteryStrapTail.Right"), Is.Null);
             Assert.That(scout.transform.Find("PSX_CameraPivot.Left"), Is.Not.Null);
-            Assert.That(scout.transform.Find("PSX_XTConnector"), Is.Not.Null);
-            Assert.That(scout.transform.Find("PSX_PowerLead.Black"), Is.Not.Null);
+            Assert.That(scout.transform.Find("PSX_XT60Connector/XT60Housing.Frame"), Is.Not.Null);
+            Assert.That(scout.transform.Find("PSX_PowerLead.Black.B"), Is.Not.Null);
             Assert.That(scout.transform.Find("PSX_VtxBoard"), Is.Not.Null);
             Assert.That(scout.transform.Find("PSX_Receiver"), Is.Not.Null);
             var bottomPlate = scout.transform.Find("PSX_BottomPlate").GetComponent<Renderer>();
@@ -91,47 +91,65 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(batteryLabel, Is.Not.Null);
             Assert.That(GameObject.Find("BatteryShrinkWrap"), Is.Not.Null);
             Assert.That(GameObject.Find("BatteryEndCap.Front"), Is.Not.Null);
-            Assert.That(GameObject.Find("BatteryMainConnector"), Is.Not.Null);
-            Assert.That(GameObject.Find("BatteryMainLead.Red"), Is.Not.Null);
-            Assert.That(GameObject.Find("BatteryBalancePlug"), Is.Not.Null);
+            Assert.That(GameObject.Find("BatteryXT60Connector"), Is.Not.Null);
+            Assert.That(GameObject.Find("XT60Housing.Battery"), Is.Not.Null);
+            Assert.That(GameObject.Find("BatteryMainLead.Red.B"), Is.Not.Null);
+            Assert.That(GameObject.Find("BatteryBalanceConnector"), Is.Not.Null);
+            Assert.That(GameObject.Find("BalanceHousing"), Is.Not.Null);
             Assert.That(GameObject.Find("BatteryBalanceLead.4"), Is.Not.Null);
-            var frameConnector = scout.transform.Find("PSX_XTConnector").GetComponent<Renderer>();
-            var packConnector = GameObject.Find("InstalledDepletedBattery").transform
-                .Find("PSX_PartDetail/BatteryMainConnector").GetComponent<Renderer>();
-            Assert.That(frameConnector.bounds.Intersects(packConnector.bounds), Is.True,
-                "The installed LiPo connector must meet the ESC power pigtail.");
+            Assert.That(GameObject.Find("BatteryMainConnector"), Is.Null);
+            Assert.That(GameObject.Find("BatteryBalancePlug"), Is.Null);
+            var frameConnector = scout.transform.Find("PSX_XT60Connector");
+            var installedBattery = GameObject.Find("InstalledDepletedBattery").transform;
+            var packConnector = installedBattery.Find("PSX_PartDetail/BatteryXT60Connector");
+            var frameHousing = frameConnector.Find("XT60Housing.Frame").GetComponent<Renderer>();
+            var packHousing = packConnector.Find("XT60Housing.Battery").GetComponent<Renderer>();
+            var frameFace = frameConnector.Find("XT60MatingFace.Frame").GetComponent<Renderer>();
+            var packFace = packConnector.Find("XT60MatingFace.Battery").GetComponent<Renderer>();
+            var balanceHousing = installedBattery
+                .Find("PSX_PartDetail/BatteryBalanceConnector/BalanceHousing").GetComponent<Renderer>();
+            Assert.That(frameFace.bounds.Intersects(packFace.bounds), Is.True,
+                "The keyed XT60 halves must meet face-to-face instead of overlapping as loose boxes.");
+            Assert.That(frameHousing.bounds.size.x, Is.LessThan(0.05f));
+            Assert.That(frameHousing.bounds.size.y, Is.LessThan(0.04f));
+            Assert.That(frameHousing.bounds.size.z, Is.LessThan(0.06f));
+            Assert.That(packHousing.bounds.size.x, Is.LessThan(0.05f));
+            Assert.That(packHousing.bounds.size.y, Is.LessThan(0.04f));
+            Assert.That(packHousing.bounds.size.z, Is.LessThan(0.06f));
+            Assert.That(balanceHousing.bounds.size.x, Is.LessThan(0.04f));
+            Assert.That(balanceHousing.sharedMaterial.name, Does.Contain("LightPlastic"));
             Assert.That(cameraGlass, Is.Not.Null);
             Assert.That(GameObject.Find("CameraPivot.-1"), Is.Not.Null);
             Assert.That(GameObject.Find("CameraRibbonConnector"), Is.Not.Null);
             Assert.That(strikeDrone, Is.Not.Null);
-            var strikeTube = strikeDrone.GetComponentsInChildren<Transform>(true)
-                .FirstOrDefault(item => item.name == "ImprovisedTubePayload");
-            var strikeDrop = strikeDrone.GetComponentsInChildren<Transform>(true)
-                .FirstOrDefault(item => item.name == "DropCanisterPayload");
-            Assert.That(strikeTube, Is.Not.Null);
-            Assert.That(strikeTube.gameObject.activeSelf, Is.True);
-            Assert.That(strikeTube.Find("TubeBody"), Is.Not.Null);
-            Assert.That(strikeTube.Find("TubeCableTie.-1"), Is.Not.Null);
-            Assert.That(strikeTube.parent.Find("RackLatch"), Is.Null);
-            Assert.That(strikeTube.parent.Find("RackCableTie.-1"), Is.Not.Null);
-            Assert.That(strikeDrop, Is.Not.Null);
-            Assert.That(strikeDrop.gameObject.activeSelf, Is.False);
+            var strikePayload = strikeDrone.GetComponentsInChildren<Transform>(true)
+                .FirstOrDefault(item => item.name == "InertPayloadEnvelope");
+            Assert.That(strikePayload, Is.Not.Null);
+            Assert.That(strikePayload.gameObject.activeSelf, Is.True);
+            Assert.That(strikePayload.Find("PayloadBody"), Is.Not.Null);
+            Assert.That(strikePayload.Find("PayloadFlatEnd.-1"), Is.Not.Null);
+            Assert.That(strikePayload.GetComponentsInChildren<Transform>(true)
+                .Any(item => item.name.Contains("Nose") || item.name.Contains("Fin")), Is.False);
             var reusableRack = GameObject.Find("FieldStrikeRack");
             Assert.That(reusableRack, Is.Not.Null);
-            Assert.That(reusableRack.transform.Find("PSX_PartDetail/DropCanisterPayload").gameObject.activeSelf,
+            Assert.That(reusableRack.transform.Find("PSX_PartDetail/InertPayloadEnvelope").gameObject.activeSelf,
                 Is.True);
+            Assert.That(reusableRack.transform.Find("PayloadMountFunctional/PayloadForwardStrapLoose"), Is.Not.Null);
+            Assert.That(reusableRack.transform.Find("PayloadMountFunctional/PayloadRearStrapLoose"), Is.Not.Null);
+            Assert.That(reusableRack.transform.Find(
+                "PayloadMountFunctional/PayloadControlHarness/PayloadHarnessPlugLoose"), Is.Not.Null);
             var strikeSocket = GameObject.Find("StrikeRackSocket").GetComponent<UnderStatic.Parts.PartSocket>();
             reusableRack.transform.SetParent(null, true);
             reusableRack.transform.SetPositionAndRotation(
                 strikeSocket.SeatedPosition,
                 strikeSocket.transform.rotation);
             Physics.SyncTransforms();
-            var dropPayload = reusableRack.transform.Find("PSX_PartDetail/DropCanisterPayload");
-            var payloadFloor = dropPayload.GetComponentsInChildren<Renderer>(true)
+            var payloadEnvelope = reusableRack.transform.Find("PSX_PartDetail/InertPayloadEnvelope");
+            var payloadFloor = payloadEnvelope.GetComponentsInChildren<Renderer>(true)
                 .Min(renderer => renderer.bounds.min.y);
             var benchTop = GameObject.Find("Workbench").GetComponent<Renderer>().bounds.max.y;
             Assert.That(payloadFloor, Is.GreaterThanOrEqualTo(benchTop + 0.02f),
-                "The installed drop canister must clear the workbench in service view.");
+                "The installed payload cradle must clear the workbench in service view.");
             Assert.That(propellerBlade, Is.Not.Null);
             Assert.That(frontLeftMotor, Is.Not.Null);
             Assert.That(frontLeftMotor.transform.Find("PSX_PartDetail/MotorMarkingBand"), Is.Not.Null);

@@ -484,11 +484,15 @@ namespace UnderStatic.Economy
 
                 var rack = drone.InstalledParts.FirstOrDefault(part =>
                     part?.Definition?.Category == PartCategory.StrikeRack);
-                if (rack != null && rack.Runtime.consumableCharges <= 0)
+                if (rack != null)
                 {
-                    // Schema 13 saves could contain market stock that was expended, rotated back into
-                    // stock, and purchased again. A purchased one-way airframe must always be armed.
-                    rack.Runtime.consumableCharges = 1;
+                    if (rack.Runtime.consumableCharges <= 0)
+                    {
+                        // Schema 13 saves could contain market stock that was expended, rotated back into
+                        // stock, and purchased again. A purchased one-way airframe must always be armed.
+                        rack.Runtime.consumableCharges = 1;
+                    }
+                    rack.Runtime.auxiliaryProcedureMask = StrikePayloadMountProcedure.CompleteMask;
                 }
             }
         }
@@ -496,7 +500,9 @@ namespace UnderStatic.Economy
         private static bool HasArmedStrikePayload(DroneActor drone)
         {
             return drone?.InstalledParts.Any(part => part?.Definition?.Category == PartCategory.StrikeRack
-                && part.IsServiceable && part.Runtime.consumableCharges > 0) == true;
+                && part.IsServiceable
+                && part.Runtime.consumableCharges > 0
+                && (part.GetComponent<StrikePayloadMountProcedure>()?.IsComplete ?? true)) == true;
         }
 
         private void SyncRuntimeListings()
