@@ -127,6 +127,8 @@ Controls use the checked-in Input System action asset:
 - `E` on the workbench battery charger — open its focused service view; drag a spent battery into the keyed charging dock and lift it out after charging
 - in service mode, middle-mouse drag — orbit the drone
 - in service mode, mouse wheel — zoom
+- in service mode, hover a component, socket, screw, or frame — inspect its name and diagnostic condition
+- in service mode, `RUN DIAGNOSTIC` — disclose installed component and frame condition through hover cards
 - in service mode, left click / hold — drag a stored part, tighten the pointed screw, or operate the highlighted component procedure
 - in service mode, right click / hold — loosen the pointed screw
 - in service mode, drag a stored part out of the sidebar — transition that same instance into a visible controlled 3D drag

@@ -87,6 +87,7 @@ namespace UnderStatic.Parts
         {
             runtime.hasDiagnosticResult = true;
             runtime.latestDiagnosticPassed = passed;
+            runtime.diagnosticFaultsDisclosed = true;
         }
 
         public void SetDroneLocation(StorageLocationId location)

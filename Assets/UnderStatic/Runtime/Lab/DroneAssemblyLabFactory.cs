@@ -367,6 +367,7 @@ namespace UnderStatic.Lab
                     "drone.safehouse.01",
                     new DroneStorageLocation(DroneStorageLocationKind.ServiceBay),
                     "Original workshop issue");
+                drone.AddComponent<DroneFrameInspectionTarget>().Configure(scoutActor);
                 fleetActors.Add(scoutActor);
 
                 var strikeRackTemplate = allParts.First(part =>
@@ -453,6 +454,7 @@ namespace UnderStatic.Lab
                 interactions.ConfigureInventory(inventory);
                 saveSystem.ConfigureInventory(inventory);
                 statusPanel.ConfigureInventory(inventory);
+                statusPanel.SetCompactPresentation(true);
                 var serviceMode = SafeHouseServiceModeFactory.Build(
                     inventory,
                     drone.transform,
@@ -473,6 +475,8 @@ namespace UnderStatic.Lab
                     audioFeedback);
                 statusPanel.ConfigureServiceMode(serviceMode);
                 var fleet = SafeHouseFleetFactory.Build(fleetActors);
+                UnityEngine.Object.FindAnyObjectByType<FleetRosterPanel>()
+                    ?.ConfigureServiceModes(UnityEngine.Object.FindObjectsByType<DroneServiceModeController>());
                 fleet.RegisterKnownActor(legacySurveyActor);
                 inventory.ConfigureFleet(fleet);
                 saveSystem.ConfigureFleet(fleet);

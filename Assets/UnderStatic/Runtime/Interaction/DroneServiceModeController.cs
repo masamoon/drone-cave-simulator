@@ -8,6 +8,7 @@ using UnderStatic.Lab;
 using UnderStatic.Parts;
 using UnderStatic.Persistence;
 using UnderStatic.Tools;
+using UnderStatic.UI;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -139,6 +140,9 @@ namespace UnderStatic.Interaction
         public string ServiceStatus => serviceStatus;
         public ServicePartsTab SelectedPartsTab => selectedPartsTab;
         public bool CanShowInstalledComponents => requiresServiceBayDrone && sockets.Any(socket => socket != null);
+        public ServiceInspectionSnapshot CurrentInspection => draggedPart != null
+            ? default
+            : ServiceInspectionPresenter.ForTarget(hovered, fleetSystem?.ServiceDrone);
 
         public void Configure(
             Camera targetCamera,
@@ -295,6 +299,10 @@ namespace UnderStatic.Interaction
 
         public bool RunDiagnostic()
         {
+            if (diagnostic == null)
+            {
+                diagnostic = FindAnyObjectByType<DroneDiagnosticSwitch>();
+            }
             if (!IsActive || diagnostic == null)
             {
                 serviceStatus = "Enter service mode before running the drone diagnostic";
@@ -302,7 +310,9 @@ namespace UnderStatic.Interaction
             }
 
             diagnostic.Activate();
-            serviceStatus = diagnostic.LastResult;
+            serviceStatus = diagnostic.LastResult.StartsWith("PASS", StringComparison.Ordinal)
+                ? "Diagnostic passed · hover components to verify condition"
+                : "Diagnostic complete · hover components to inspect faults";
             return true;
         }
 
@@ -314,8 +324,14 @@ namespace UnderStatic.Interaction
             }
 
             SetHovered(null);
-            screwdriver?.Deactivate();
-            activeTwistSocket?.EndLockGesture();
+            if (screwdriver != null)
+            {
+                screwdriver.Deactivate();
+            }
+            if (activeTwistSocket != null)
+            {
+                activeTwistSocket.EndLockGesture();
+            }
             activeTwistSocket = null;
             CancelServiceDrag();
 
@@ -922,6 +938,7 @@ namespace UnderStatic.Interaction
                 candidate ??= hit.collider?.GetComponentInParent<LatchTarget>();
                 candidate ??= hit.collider?.GetComponentInParent<InstallablePart>();
                 candidate ??= hit.collider?.GetComponentInParent<PartSocket>();
+                candidate ??= hit.collider?.GetComponentInParent<DroneFrameInspectionTarget>();
                 if (candidate == null || hit.distance >= closestDistance)
                 {
                     continue;
@@ -1236,7 +1253,56 @@ namespace UnderStatic.Interaction
                     new Rect(pointer.x + 14f, pointer.y + 14f, 238f, 48f),
                     $"{draggedPart.Definition.DisplayName}\n{draggedPart.ServiceDescription}");
             }
+
+            var inspection = CurrentInspection;
+            if (inspection.IsValid)
+            {
+                DrawInspectionTooltip(GetGuiPointer(), inspection);
+            }
         }
+
+        private static void DrawInspectionTooltip(Vector2 pointer, ServiceInspectionSnapshot inspection)
+        {
+            const float width = 276f;
+            const float height = 88f;
+            var x = Mathf.Clamp(pointer.x + 18f, 8f, Mathf.Max(8f, Screen.width - width - 8f));
+            var y = Mathf.Clamp(pointer.y + 18f, 8f, Mathf.Max(8f, Screen.height - height - 8f));
+            var rect = new Rect(x, y, width, height);
+            GUI.Box(rect, string.Empty);
+
+            var previousColor = GUI.color;
+            GUI.color = InspectionColor(inspection.Severity);
+            GUI.DrawTexture(new Rect(rect.x + 6f, rect.y + 6f, 6f, rect.height - 12f), Texture2D.whiteTexture);
+            GUI.Label(new Rect(rect.x + 20f, rect.y + 7f, rect.width - 28f, 22f), inspection.Title);
+            GUI.Label(new Rect(rect.x + 20f, rect.y + 29f, rect.width - 28f, 20f), inspection.Status);
+            GUI.color = previousColor;
+            GUI.Label(new Rect(rect.x + 20f, rect.y + 50f, rect.width - 28f, 20f), inspection.Detail);
+
+            if (!inspection.ShowsCondition)
+            {
+                return;
+            }
+
+            var track = new Rect(rect.x + 20f, rect.y + 72f, rect.width - 30f, 7f);
+            GUI.color = new Color(0.08f, 0.09f, 0.09f, 0.95f);
+            GUI.DrawTexture(track, Texture2D.whiteTexture);
+            GUI.color = InspectionColor(inspection.Severity);
+            GUI.DrawTexture(
+                new Rect(track.x, track.y, track.width * inspection.Condition, track.height),
+                Texture2D.whiteTexture);
+            GUI.color = previousColor;
+        }
+
+        private static Color InspectionColor(ServiceInspectionSeverity severity) => severity switch
+        {
+            ServiceInspectionSeverity.Serviceable => new Color(0.26f, 0.78f, 0.58f),
+            ServiceInspectionSeverity.Worn => new Color(0.9f, 0.72f, 0.24f),
+            ServiceInspectionSeverity.Damaged => new Color(0.94f, 0.43f, 0.16f),
+            ServiceInspectionSeverity.Failed => new Color(0.86f, 0.18f, 0.14f),
+            ServiceInspectionSeverity.Depleted => new Color(0.75f, 0.3f, 0.12f),
+            ServiceInspectionSeverity.Missing => new Color(0.82f, 0.18f, 0.18f),
+            _ => new Color(0.48f, 0.68f, 0.72f)
+        };
 
         private void DrawInventoryRows()
         {

@@ -110,6 +110,7 @@ namespace UnderStatic.Missions
 
             actor.Runtime.hasDiagnosticResult = false;
             actor.Runtime.latestDiagnosticPassed = false;
+            actor.Runtime.diagnosticFaultsDisclosed = false;
             foreach (var part in actor.InstalledParts)
             {
                 part.Runtime.tested = false;

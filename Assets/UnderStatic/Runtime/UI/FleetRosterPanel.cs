@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnderStatic.Fleet;
 using UnderStatic.Interaction;
 using UnityEngine;
@@ -15,12 +16,17 @@ namespace UnderStatic.UI
         [SerializeField] private FleetSystem fleet;
         [SerializeField] private FirstPersonController controller;
         [SerializeField] private PlayerInput playerInput;
+        [SerializeField] private DroneServiceModeController serviceMode;
+        [SerializeField] private DroneServiceModeController[] serviceModes = System.Array.Empty<DroneServiceModeController>();
 
         private readonly Dictionary<string, Texture2D> thumbnails = new();
         private InputAction tabletAction;
         private bool controllerWasEnabled;
 
         public bool IsOpen { get; private set; }
+        public bool ShouldShow => fleet != null
+            && serviceMode?.IsActive != true
+            && !serviceModes.Any(controller => controller != null && controller.IsActive);
         public string InputBinding => tabletAction?.GetBindingDisplayString() ?? "Fleet Tablet";
 
         public void Configure(FleetSystem fleetSystem, FirstPersonController firstPersonController = null)
@@ -31,9 +37,24 @@ namespace UnderStatic.UI
             tabletAction = playerInput?.actions?.FindAction("Player/Fleet Tablet");
         }
 
+        public void ConfigureServiceMode(DroneServiceModeController controller)
+        {
+            serviceMode = controller;
+            serviceModes = controller == null
+                ? System.Array.Empty<DroneServiceModeController>()
+                : new[] { controller };
+        }
+
+        public void ConfigureServiceModes(IEnumerable<DroneServiceModeController> controllers)
+        {
+            serviceModes = controllers?.Where(controller => controller != null).Distinct().ToArray()
+                ?? System.Array.Empty<DroneServiceModeController>();
+            serviceMode = serviceModes.FirstOrDefault();
+        }
+
         public void Open()
         {
-            if (IsOpen || fleet == null || (controller != null && !controller.enabled))
+            if (IsOpen || !ShouldShow || (controller != null && !controller.enabled))
             {
                 return;
             }
@@ -128,7 +149,7 @@ namespace UnderStatic.UI
 
         private void OnGUI()
         {
-            if (fleet == null)
+            if (!ShouldShow)
             {
                 return;
             }

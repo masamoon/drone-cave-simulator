@@ -23,12 +23,21 @@ namespace UnderStatic.UI
         [SerializeField] private DroneServiceModeController serviceMode;
         [SerializeField] private PlayerInput playerInput;
         [SerializeField] private bool visibleOnStart;
+        [SerializeField] private bool compactPresentation;
         private readonly StringBuilder builder = new(512);
         private FleetSystem fleetSystem;
         private InputAction toggleAction;
         private WorkshopRiskSystem workshopRisk;
 
         public bool IsVisible { get; private set; }
+        public bool CompactPresentation => compactPresentation;
+        public string CompactState => assembly == null
+            ? "NO AIRFRAME"
+            : !assembly.Runtime.hasDiagnosticResult
+                ? "UNDIAGNOSED"
+                : assembly.Runtime.latestDiagnosticPassed && assembly.Readiness.IsMissionReady
+                    ? "READY"
+                    : "MAINTENANCE";
 
         public void ToggleVisibility()
         {
@@ -85,6 +94,11 @@ namespace UnderStatic.UI
             workshopRisk = risk;
         }
 
+        public void SetCompactPresentation(bool compact)
+        {
+            compactPresentation = compact;
+        }
+
         public void ConfigureFleet(FleetSystem fleet)
         {
             if (fleetSystem != null)
@@ -117,6 +131,12 @@ namespace UnderStatic.UI
         {
             if (!IsVisible || assembly == null || serviceMode?.IsActive == true)
             {
+                return;
+            }
+
+            if (compactPresentation)
+            {
+                DrawCompactPanel();
                 return;
             }
 
@@ -198,6 +218,14 @@ namespace UnderStatic.UI
                     selectedHeight + extraHeight + (inventory == null ? 0f : 58f)
                     + (workshopRisk == null ? 0f : 90f)),
                 builder.ToString());
+        }
+
+        private void DrawCompactPanel()
+        {
+            builder.Clear();
+            builder.Append("SERVICE BAY · ").AppendLine(CompactState);
+            builder.Append("Enter service view and hover components to inspect");
+            GUI.Box(new Rect(12f, 12f, 354f, 58f), builder.ToString());
         }
 
         private void BindToggleAction()
