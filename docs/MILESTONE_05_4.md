@@ -14,7 +14,7 @@ The operation remains abstract. There is no direct FPV piloting, infantry combat
 - Place the workshop at normalized map position `(0.15, 0.15)` and originate every sortie there.
 - Seed one distant enemy base, two stationary artillery contacts, and four mobile infantry contacts.
 - Guarantee that at least two infantry contacts and one artillery contact begin inside the fully charged starting Scout's reconnaissance envelope.
-- Keep hidden truth separate from player-visible snapshots used by the tactical map, report, and reconstruction.
+- Keep hidden truth separate from player-visible snapshots used by the tactical map, report, and live feed.
 - Track contact intelligence as `Hidden`, `Current`, `Stale`, `Disproven`, or `Destroyed`.
 - Artillery and the base remain stationary. Infantry moves deterministically by 0.15–0.45 km at the start of a new day.
 - Preserve stale infantry markers as selectable last-known positions. A strike there resolves `NoContact`, commits its resource, and disproves that observation without revealing the new position.
@@ -39,11 +39,15 @@ Kamikaze Strike requires an expendable aircraft and charged warhead. Travel is o
 - No-contact results, misses, and aborts grant no strike reward.
 - One sortie may be active at a time while normal workshop interaction continues.
 
-## Presentation and reconstruction
+## Presentation and final-approach feed
 
 The terminal presents one large tactical map with sortie controls, staged-aircraft statistics, route/range feedback, a live staged-aircraft reconnaissance reach envelope, a sortie log, active progress, launch controls, and readable reports. Discovered contacts, intelligence age, destroyed state, route, sensor corridor, workshop position, and active aircraft progress all use the same map.
 
-After-action reconstruction consumes only player-visible battlefield state plus the saved plan and actual result. Recon shows only contacts revealed by that sortie. A stale infantry no-contact result reconstructs the empty searched position and never the infantry's new hidden position.
+Once an active sortie reaches final approach, the terminal may open an optional degraded first-person feed.
+Before resolution it shows only planned terrain, route, and unconfirmed search markers. The deterministic mission
+result then authorizes the terminal engagement, hold, signal-loss, or egress presentation. Recon shows only
+contacts revealed by that sortie. A stale infantry no-contact result shows the empty searched position and never
+the infantry's new hidden position. Resolved reports do not expose a separate replay action.
 
 ## Persistence
 
@@ -51,6 +55,6 @@ Save schema 10 contains the battlefield seed, truth and intelligence state, dama
 
 ## Acceptance
 
-Automated coverage must include deterministic generation, hidden-state filtering, route/range and coordinate logic, progressive corridor discovery, intelligence movement and reacquisition, known-only targeting, stationary and multi-hit durability, fleet/resource transitions, exactly-once rewards, schema-10 round trips and legacy rejection, and reconstruction information boundaries.
+Automated coverage must include deterministic generation, hidden-state filtering, route/range and coordinate logic, progressive corridor discovery, intelligence movement and reacquisition, known-only targeting, stationary and multi-hit durability, fleet/resource transitions, exactly-once rewards, schema-10 round trips and legacy rejection, and live-feed information boundaries.
 
-Play Mode validation must exercise route editing, live recon progress, same-day and stale infantry strikes, reacquisition, both strike profiles, multi-hit base damage, save/load at each operation phase, and report/reconstruction readability. Map scale, route feel, sensor width, density, payout pacing, duration, icons, and stale-intelligence fairness require human tuning.
+Play Mode validation must exercise route editing, live recon progress, same-day and stale infantry strikes, reacquisition, both strike profiles, multi-hit base damage, save/load at each operation phase, and feed/report readability. Map scale, route feel, sensor width, density, payout pacing, duration, icons, feed degradation, and stale-intelligence fairness require human tuning.

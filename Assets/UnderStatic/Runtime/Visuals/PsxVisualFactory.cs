@@ -42,7 +42,8 @@ namespace UnderStatic.Visuals
                 if (renderer.gameObject.name is "CenterPlate" or "FrameArm"
                     || renderer.gameObject.GetComponent<PartSocket>() != null
                         && renderer.gameObject.name.StartsWith("MotorSocket_", StringComparison.Ordinal)
-                    || renderer.gameObject.name is "BatteryTraySocket" or "CameraBracketSocket"
+                    || renderer.gameObject.name is "BatteryTraySocket" or "EscStackSocket"
+                        or "FlightControllerSocket" or "CameraBracketSocket"
                         or "AntennaConnectorSocket" or "StrikeRackSocket")
                 {
                     renderer.enabled = false;
@@ -56,103 +57,82 @@ namespace UnderStatic.Visuals
             var rubber = kit.MaterialFor(PsxSurface.Rubber);
             var label = kit.MaterialFor(PsxSurface.Label);
             var warning = kit.MaterialFor(PsxSurface.Warning);
-            var center = new Vector3(0f, 1.18f, 0.86f);
+            var center = new Vector3(0f, 1.155f, 0.86f);
 
-            CreateMesh("PSX_CentreShell", presentation, new Vector3(0f, 1.145f, 0.86f),
-                Quaternion.identity, Vector3.one,
-                kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.7f, 0.035f, 0.54f), 0.07f)),
-                composite);
-            CreateMesh("PSX_AccessPanel", presentation, new Vector3(0f, 1.262f, 0.86f),
-                Quaternion.identity, Vector3.one,
-                kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.59f, 0.025f, 0.45f), 0.055f)),
-                composite);
-            CreateMesh("PSX_ESCBoard", presentation, new Vector3(0f, 1.177f, 0.86f),
-                Quaternion.identity, Vector3.one,
-                kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.45f, 0.018f, 0.34f), 0.025f)),
-                electronics);
-            CreateMesh("PSX_FlightController", presentation, new Vector3(0f, 1.217f, 0.845f),
-                Quaternion.identity, Vector3.one,
-                kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.35f, 0.018f, 0.28f), 0.02f)),
-                electronics);
-            CreateMesh("PSX_GyroShield", presentation, new Vector3(0f, 1.233f, 0.82f),
-                Quaternion.identity, Vector3.one,
-                kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.09f, 0.016f, 0.08f), 0.01f)),
-                bareMetal);
-            CreateMesh("PSX_RearRadioDeck", presentation, new Vector3(-0.11f, 1.211f, 1.055f),
-                Quaternion.identity, Vector3.one,
-                kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.25f, 0.022f, 0.13f), 0.018f)),
-                paintedMetal);
-            CreateMesh("PSX_RadioModule", presentation, new Vector3(-0.11f, 1.229f, 1.055f),
-                Quaternion.identity, Vector3.one,
-                kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.17f, 0.025f, 0.075f), 0.012f)),
-                electronics);
-            CreateMesh("PSX_IdentificationStripe", presentation, new Vector3(0f, 1.276f, 0.69f),
-                Quaternion.identity, Vector3.one,
-                kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.26f, 0.008f, 0.045f), 0.008f)),
-                label);
-            for (var grainIndex = 0; grainIndex < 3; grainIndex++)
+            foreach (var renderer in drone.GetComponentsInChildren<Renderer>(true))
             {
-                var startZ = 0.73f + grainIndex * 0.1f;
-                CreateFlatBeam($"PSX_CompositeGrain.{grainIndex}", presentation,
-                    new Vector3(-0.255f, 1.277f, startZ),
-                    new Vector3(0.255f, 1.277f, startZ + 0.14f),
-                    0.0035f, 0.0025f, rubber, kit);
+                if (renderer.GetComponentInParent<InstallablePart>() != null)
+                {
+                    continue;
+                }
+                if (renderer.gameObject.name.StartsWith("BatteryStrap", StringComparison.Ordinal)
+                    || renderer.gameObject.name is "BatteryAntiSlipPad" or "FlightControllerSoftMount")
+                {
+                    renderer.sharedMaterial = rubber;
+                }
+                else if (renderer.gameObject.name.StartsWith("StackHarness", StringComparison.Ordinal))
+                {
+                    renderer.sharedMaterial = renderer.gameObject.name.Contains("Cable", StringComparison.Ordinal)
+                        ? rubber
+                        : label;
+                }
             }
-            CreateMesh("PSX_ServiceStencil", presentation, new Vector3(0.18f, 1.28f, 0.99f),
-                Quaternion.Euler(0f, -7f, 0f), Vector3.one,
-                kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.12f, 0.005f, 0.045f), 0.006f)),
-                label);
 
-            var stackCorners = new[]
+            CreateMesh("PSX_BottomPlate", presentation, new Vector3(0f, 1.145f, 0.86f),
+                Quaternion.identity, Vector3.one,
+                kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.54f, 0.025f, 0.42f), 0.055f)),
+                composite);
+            CreateMesh("PSX_TopPlate", presentation, new Vector3(0f, 1.31f, 0.86f),
+                Quaternion.identity, Vector3.one,
+                kit.RegisterMesh(PsxMeshFactory.ChamferedFramePlate(
+                    new Vector2(0.54f, 0.42f), new Vector2(0.3f, 0.2f), 0.018f, 0.045f)),
+                composite);
+            var standoffPositions = new[]
             {
-                new Vector3(-0.245f, 1.205f, 0.7f), new Vector3(0.245f, 1.205f, 0.7f),
-                new Vector3(-0.245f, 1.205f, 1.02f), new Vector3(0.245f, 1.205f, 1.02f)
+                new Vector3(-0.225f, 1.23f, 0.705f), new Vector3(0.225f, 1.23f, 0.705f),
+                new Vector3(-0.225f, 1.23f, 0.86f), new Vector3(0.225f, 1.23f, 0.86f),
+                new Vector3(-0.225f, 1.23f, 1.015f), new Vector3(0.225f, 1.23f, 1.015f)
             };
-            for (var index = 0; index < stackCorners.Length; index++)
+            for (var index = 0; index < standoffPositions.Length; index++)
             {
-                CreateMesh($"PSX_StackStandoff.{index}", presentation, stackCorners[index],
+                CreateMesh($"PSX_FrameStandoff.{index}", presentation, standoffPositions[index],
                     Quaternion.identity, Vector3.one,
-                    kit.RegisterMesh(PsxMeshFactory.LowPolyCylinder(0.018f, 0.115f, 10)),
-                    bareMetal);
-                CreateMesh($"PSX_StackFastener.{index}", presentation,
-                    stackCorners[index] + Vector3.up * 0.066f,
+                    kit.RegisterMesh(PsxMeshFactory.LowPolyCylinder(0.018f, 0.145f, 8)), bareMetal);
+                CreateMesh($"PSX_TopPlateScrew.{index}", presentation,
+                    new Vector3(standoffPositions[index].x, 1.323f, standoffPositions[index].z),
                     Quaternion.identity, Vector3.one,
-                    kit.RegisterMesh(PsxMeshFactory.LowPolyCylinder(0.025f, 0.018f, 10)),
-                    bareMetal);
+                    kit.RegisterMesh(PsxMeshFactory.LowPolyCylinder(0.029f, 0.012f, 8)), paintedMetal);
             }
-
-            for (var chipIndex = 0; chipIndex < 6; chipIndex++)
-            {
-                var row = chipIndex / 3;
-                var column = chipIndex % 3;
-                CreateMesh($"PSX_BoardComponent.{chipIndex}", presentation,
-                    new Vector3(-0.12f + column * 0.12f, 1.231f, 0.775f + row * 0.13f),
-                    Quaternion.identity, Vector3.one,
-                    kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.052f, 0.018f, 0.044f), 0.006f)),
-                    chipIndex % 3 == 0 ? bareMetal : rubber);
-            }
+            CreateMesh("PSX_VtxBoard", presentation, new Vector3(-0.1f, 1.19f, 1.035f),
+                Quaternion.identity, Vector3.one,
+                kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.19f, 0.018f, 0.105f), 0.014f)),
+                electronics);
+            CreateMesh("PSX_Receiver", presentation, new Vector3(0.12f, 1.19f, 1.035f),
+                Quaternion.identity, Vector3.one,
+                kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.13f, 0.022f, 0.07f), 0.012f)),
+                rubber);
 
             var endpoints = new[]
             {
-                new Vector3(-0.48f, 1.18f, 0.48f), new Vector3(0.48f, 1.18f, 0.48f),
-                new Vector3(-0.48f, 1.18f, 1.24f), new Vector3(0.48f, 1.18f, 1.24f)
+                new Vector3(-0.48f, 1.155f, 0.48f), new Vector3(0.48f, 1.155f, 0.48f),
+                new Vector3(-0.48f, 1.155f, 1.24f), new Vector3(0.48f, 1.155f, 1.24f)
             };
             for (var index = 0; index < endpoints.Length; index++)
             {
                 var direction = (endpoints[index] - center).normalized;
                 var lateral = Vector3.Cross(Vector3.up, direction);
-                var armStart = center + direction * 0.12f + Vector3.down * 0.012f;
-                var armEnd = endpoints[index] + Vector3.down * 0.012f;
-                CreateFlatBeam($"PSX_ArmBrace.{index}", presentation, armStart, armEnd,
-                    0.082f, 0.036f, composite, kit);
-                CreateMesh($"PSX_MotorAdapter.{index}", presentation,
-                    new Vector3(endpoints[index].x, 1.205f, endpoints[index].z),
+                var armStart = center + direction * 0.1f;
+                var armEnd = endpoints[index];
+                CreateTaperedFlatBeam($"PSX_ArmBrace.{index}", presentation, armStart, armEnd,
+                    0.092f, 0.062f, 0.032f, composite, kit);
+                CreateMesh($"PSX_MotorMount.{index}", presentation,
+                    new Vector3(endpoints[index].x, 1.168f, endpoints[index].z),
                     Quaternion.identity, Vector3.one,
-                    kit.RegisterMesh(PsxMeshFactory.LowPolyCylinder(0.105f, 0.04f, 12)),
-                    paintedMetal);
+                    kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.16f, 0.025f, 0.14f), 0.035f)),
+                    composite);
 
-                var leadStart = center + direction * 0.2f + Vector3.up * 0.025f;
-                var leadEnd = endpoints[index] - direction * 0.1f + Vector3.up * 0.025f;
+                var leadStart = center + direction * 0.18f + Vector3.up * 0.026f;
+                var leadEnd = endpoints[index] - direction * 0.08f + Vector3.up * 0.026f;
                 var leadMaterials = new[] { warning, electronics, rubber };
                 for (var leadIndex = 0; leadIndex < leadMaterials.Length; leadIndex++)
                 {
@@ -165,19 +145,38 @@ namespace UnderStatic.Visuals
                 }
             }
 
-            CreateMesh("PSX_CameraCage.Left", presentation, new Vector3(-0.112f, 1.215f, 0.535f),
+            CreateMesh("PSX_CameraCage.Left", presentation, new Vector3(-0.112f, 1.205f, 0.535f),
                 Quaternion.identity, Vector3.one,
                 kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.028f, 0.135f, 0.155f), 0.01f)),
                 composite);
-            CreateMesh("PSX_CameraCage.Right", presentation, new Vector3(0.112f, 1.215f, 0.535f),
+            CreateMesh("PSX_CameraCage.Right", presentation, new Vector3(0.112f, 1.205f, 0.535f),
                 Quaternion.identity, Vector3.one,
                 kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.028f, 0.135f, 0.155f), 0.01f)),
                 composite);
-            CreateMesh("PSX_CameraCage.Top", presentation, new Vector3(0f, 1.274f, 0.545f),
+            CreateMesh("PSX_CameraCage.Crossbar", presentation, new Vector3(0f, 1.265f, 0.545f),
                 Quaternion.identity, Vector3.one,
                 kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.25f, 0.022f, 0.135f), 0.022f)),
                 composite);
-            CreateMesh("PSX_AntennaMount", presentation, new Vector3(0.2f, 1.282f, 1.12f),
+            for (var side = -1; side <= 1; side += 2)
+            {
+                CreateMesh($"PSX_CameraPivot.{(side < 0 ? "Left" : "Right")}", presentation,
+                    new Vector3(side * 0.13f, 1.205f, 0.535f), Quaternion.Euler(0f, 0f, 90f), Vector3.one,
+                    kit.RegisterMesh(PsxMeshFactory.LowPolyCylinder(0.035f, 0.025f, 8)), bareMetal);
+            }
+            CreateMesh("PSX_XTConnector", presentation, new Vector3(0.14f, 1.37f, 1.085f),
+                Quaternion.Euler(0f, 18f, 0f), Vector3.one,
+                kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.09f, 0.055f, 0.12f), 0.014f)),
+                warning);
+            CreateMesh("PSX_PowerCapacitor", presentation, new Vector3(0.08f, 1.195f, 1.085f),
+                Quaternion.Euler(0f, 0f, 90f), Vector3.one,
+                kit.RegisterMesh(PsxMeshFactory.LowPolyCylinder(0.035f, 0.105f, 10)), electronics);
+            CreateBeam("PSX_PowerLead.Red", presentation,
+                new Vector3(0.12f, 1.205f, 1.045f), new Vector3(0.115f, 1.35f, 1.075f),
+                0.009f, warning, kit);
+            CreateBeam("PSX_PowerLead.Black", presentation,
+                new Vector3(0.17f, 1.195f, 1.045f), new Vector3(0.16f, 1.35f, 1.09f),
+                0.009f, rubber, kit);
+            CreateMesh("PSX_AntennaMount", presentation, new Vector3(0.2f, 1.252f, 1.12f),
                 Quaternion.identity, Vector3.one,
                 kit.RegisterMesh(PsxMeshFactory.LowPolyCylinder(0.065f, 0.045f, 10)),
                 paintedMetal);
@@ -212,8 +211,9 @@ namespace UnderStatic.Visuals
                     PartCategory.Camera => renderer.gameObject.name.Contains("Lens", StringComparison.OrdinalIgnoreCase)
                         ? kit.MaterialFor(PsxSurface.Lens)
                         : kit.MaterialFor(PsxSurface.PaintedMetal),
-                    PartCategory.Battery => kit.MaterialFor(PsxSurface.Electronics),
+                    PartCategory.Battery => kit.MaterialFor(PsxSurface.Rubber),
                     PartCategory.Antenna => kit.MaterialFor(PsxSurface.Rubber),
+                    PartCategory.Esc or PartCategory.FlightController => kit.MaterialFor(PsxSurface.Electronics),
                     _ => kit.MaterialFor(PsxSurface.PaintedMetal)
                 };
             }
@@ -222,8 +222,8 @@ namespace UnderStatic.Visuals
             switch (category)
             {
                 case PartCategory.Motor:
-                    CreateMesh("MotorAdapterPuck", detail, new Vector3(0f, -0.08f, 0f), Quaternion.identity, Vector3.one,
-                        kit.RegisterMesh(PsxMeshFactory.LowPolyCylinder(0.58f, 0.1f, 12)),
+                    CreateMesh("MotorBase", detail, new Vector3(0f, -0.06f, 0f), Quaternion.identity, Vector3.one,
+                        kit.RegisterMesh(PsxMeshFactory.LowPolyCylinder(0.54f, 0.09f, 12)),
                         kit.MaterialFor(PsxSurface.BareMetal));
                     CreateMesh("MotorStator", detail, new Vector3(0f, 0.07f, 0f), Quaternion.identity, Vector3.one,
                         kit.RegisterMesh(PsxMeshFactory.LowPolyCylinder(0.48f, 0.18f, 12)),
@@ -254,22 +254,85 @@ namespace UnderStatic.Visuals
                     }
                     break;
                 case PartCategory.Battery:
-                    CreateMesh("BatteryLabel", detail, new Vector3(0f, 0.54f, -0.02f), Quaternion.identity, Vector3.one,
-                        kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.78f, 0.04f, 0.68f), 0.045f)),
-                        kit.MaterialFor(PsxSurface.Label));
-                    CreateMesh("BatteryStrap", detail, new Vector3(0f, 0.58f, 0f), Quaternion.identity, Vector3.one,
-                        kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.2f, 0.08f, 1.08f), 0.03f)),
+                    CreateMesh("BatteryShrinkWrap", detail, Vector3.zero, Quaternion.identity, Vector3.one,
+                        kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(1f, 0.96f, 1f), 0.07f)),
                         kit.MaterialFor(PsxSurface.Rubber));
-                    CreateMesh("BatteryTerminal", detail, new Vector3(0f, 0.08f, 0.59f), Quaternion.identity, Vector3.one,
-                        kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.58f, 0.4f, 0.15f), 0.035f)),
-                        kit.MaterialFor(PsxSurface.BareMetal));
-                    for (var bandIndex = -1; bandIndex <= 1; bandIndex += 2)
+                    CreateMesh("BatteryLabel", detail, new Vector3(0f, 0.515f, -0.08f), Quaternion.identity, Vector3.one,
+                        kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.76f, 0.035f, 0.72f), 0.035f)),
+                        kit.MaterialFor(PsxSurface.Label));
+                    CreateMesh("BatteryEndCap.Front", detail, new Vector3(0f, 0f, -0.505f), Quaternion.identity, Vector3.one,
+                        kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(1.035f, 0.97f, 0.07f), 0.035f)),
+                        kit.MaterialFor(PsxSurface.Rubber));
+                    CreateMesh("BatteryEndCap.Rear", detail, new Vector3(0f, 0f, 0.505f), Quaternion.identity, Vector3.one,
+                        kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(1.035f, 0.97f, 0.07f), 0.035f)),
+                        kit.MaterialFor(PsxSurface.Rubber));
+                    CreateMesh("BatteryMainConnector", detail, new Vector3(0.34f, 0.03f, 0.72f), Quaternion.identity, Vector3.one,
+                        kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.34f, 0.28f, 0.26f), 0.045f)),
+                        kit.MaterialFor(PsxSurface.Warning));
+                    CreateBeam("BatteryMainLead.Red", detail,
+                        new Vector3(0.15f, 0.08f, 0.49f), new Vector3(0.3f, 0.05f, 0.7f),
+                        0.04f, kit.MaterialFor(PsxSurface.Warning), kit);
+                    CreateBeam("BatteryMainLead.Black", detail,
+                        new Vector3(-0.08f, 0.08f, 0.49f), new Vector3(0.2f, 0.05f, 0.71f),
+                        0.04f, kit.MaterialFor(PsxSurface.PaintedMetal), kit);
+                    CreateMesh("BatteryBalancePlug", detail, new Vector3(-0.39f, -0.02f, 0.7f), Quaternion.identity, Vector3.one,
+                        kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.3f, 0.18f, 0.2f), 0.025f)),
+                        kit.MaterialFor(PsxSurface.Label));
+                    for (var wireIndex = 0; wireIndex < 5; wireIndex++)
                     {
-                        CreateMesh($"BatteryWrapBand.{bandIndex}", detail,
-                            new Vector3(0f, 0f, bandIndex * 0.32f), Quaternion.identity, Vector3.one,
-                            kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(1.02f, 1.02f, 0.045f), 0.015f)),
+                        var x = -0.24f + wireIndex * 0.035f;
+                        CreateBeam($"BatteryBalanceLead.{wireIndex}", detail,
+                            new Vector3(x, -0.12f, 0.49f), new Vector3(-0.34f + wireIndex * 0.018f, -0.02f, 0.68f),
+                            0.012f, wireIndex == 0
+                                ? kit.MaterialFor(PsxSurface.Warning)
+                                : kit.MaterialFor(PsxSurface.PaintedMetal), kit);
+                    }
+                    for (var cellIndex = 1; cellIndex < 4; cellIndex++)
+                    {
+                        CreateMesh($"BatteryCellCrease.{cellIndex}", detail,
+                            new Vector3(-0.505f + cellIndex * 0.252f, -0.495f, 0f), Quaternion.identity, Vector3.one,
+                            kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.015f, 0.018f, 0.92f), 0.004f)),
+                            kit.MaterialFor(PsxSurface.PaintedMetal));
+                    }
+                    break;
+                case PartCategory.Esc:
+                    CreateElectronicsBoard("EscBoard", detail, 1f, kit);
+                    for (var index = 0; index < 8; index++)
+                    {
+                        var row = index / 4;
+                        var column = index % 4;
+                        CreateMesh($"EscMosfet.{index}", detail,
+                            new Vector3(-0.31f + column * 0.205f, 0.18f, -0.2f + row * 0.4f),
+                            Quaternion.identity, Vector3.one,
+                            kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.13f, 0.12f, 0.16f), 0.018f)),
                             kit.MaterialFor(PsxSurface.Rubber));
                     }
+                    for (var side = -1; side <= 1; side += 2)
+                    for (var pad = -1; pad <= 1; pad++)
+                    {
+                        CreateMesh($"EscMotorPad.{side}.{pad}", detail,
+                            new Vector3(side * 0.48f, 0.16f, pad * 0.27f), Quaternion.identity, Vector3.one,
+                            kit.RegisterMesh(PsxMeshFactory.LowPolyCylinder(0.085f, 0.035f, 8)),
+                            kit.MaterialFor(PsxSurface.BareMetal));
+                    }
+                    CreateMesh("EscStackPort", detail, new Vector3(0f, 0.18f, 0.4f), Quaternion.identity, Vector3.one,
+                        kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.34f, 0.11f, 0.12f), 0.018f)),
+                        kit.MaterialFor(PsxSurface.Label));
+                    break;
+                case PartCategory.FlightController:
+                    CreateElectronicsBoard("FlightControllerBoard", detail, 0.96f, kit);
+                    CreateMesh("FlightControllerGyro", detail, new Vector3(0f, 0.2f, -0.05f), Quaternion.identity, Vector3.one,
+                        kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.24f, 0.13f, 0.24f), 0.025f)),
+                        kit.MaterialFor(PsxSurface.Rubber));
+                    CreateMesh("FlightControllerProcessor", detail, new Vector3(-0.23f, 0.19f, 0.2f), Quaternion.identity, Vector3.one,
+                        kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.2f, 0.11f, 0.2f), 0.02f)),
+                        kit.MaterialFor(PsxSurface.Rubber));
+                    CreateMesh("FlightControllerUsbPort", detail, new Vector3(0.49f, 0.17f, -0.2f), Quaternion.identity, Vector3.one,
+                        kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.18f, 0.15f, 0.22f), 0.025f)),
+                        kit.MaterialFor(PsxSurface.BareMetal));
+                    CreateMesh("FlightControllerStackPort", detail, new Vector3(0f, 0.19f, 0.42f), Quaternion.identity, Vector3.one,
+                        kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.36f, 0.13f, 0.13f), 0.018f)),
+                        kit.MaterialFor(PsxSurface.Label));
                     break;
                 case PartCategory.Camera:
                     CreateMesh("CameraBezel", detail, new Vector3(0f, 0f, -0.62f), Quaternion.Euler(90f, 0f, 0f), Vector3.one,
@@ -288,6 +351,17 @@ namespace UnderStatic.Visuals
                             kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.1f, 1.08f, 0.92f), 0.025f)),
                             kit.MaterialFor(PsxSurface.FrameComposite));
                     }
+                    for (var side = -1; side <= 1; side += 2)
+                    {
+                        CreateMesh($"CameraPivot.{side}", detail,
+                            new Vector3(side * 0.6f, 0f, -0.18f), Quaternion.Euler(0f, 0f, 90f), Vector3.one,
+                            kit.RegisterMesh(PsxMeshFactory.LowPolyCylinder(0.13f, 0.13f, 8)),
+                            kit.MaterialFor(PsxSurface.BareMetal));
+                    }
+                    CreateMesh("CameraRibbonConnector", detail, new Vector3(0f, -0.28f, 0.59f),
+                        Quaternion.identity, Vector3.one,
+                        kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.38f, 0.15f, 0.11f), 0.025f)),
+                        kit.MaterialFor(PsxSurface.Label));
                     break;
                 case PartCategory.Antenna:
                     CreateMesh("AntennaWhip", detail, new Vector3(0f, 0.14f, 0f), Quaternion.identity, Vector3.one,
@@ -304,12 +378,7 @@ namespace UnderStatic.Visuals
                         kit.MaterialFor(PsxSurface.Warning));
                     break;
                 case PartCategory.StrikeRack:
-                    CreateMesh("RackHousing", detail, new Vector3(0f, 0.12f, 0f), Quaternion.identity, Vector3.one,
-                        kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(1.55f, 0.65f, 1.7f), 0.16f)),
-                        kit.MaterialFor(PsxSurface.PaintedMetal));
-                    CreateMesh("RackWarning", detail, new Vector3(0f, 0.47f, 0f), Quaternion.identity, Vector3.one,
-                        kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.8f, 0.04f, 0.3f), 0.03f)),
-                        kit.MaterialFor(PsxSurface.Warning));
+                    CreateStrikeRackVisual(detail, kit);
                     break;
                 case PartCategory.Propeller:
                     CreateMesh("PropellerCollet", detail, Vector3.down * 0.32f, Quaternion.identity, Vector3.one,
@@ -328,7 +397,26 @@ namespace UnderStatic.Visuals
                     }
                     break;
             }
+            if (category == PartCategory.StrikeRack)
+            {
+                UpdateStrikePayloadVisual(part);
+            }
             return true;
+        }
+
+        public static void UpdateStrikePayloadVisual(InstallablePart part)
+        {
+            if (part == null || part.Definition.Category != PartCategory.StrikeRack)
+            {
+                return;
+            }
+
+            var detail = part.transform.Find("PSX_PartDetail");
+            var tubePayload = detail?.Find("ImprovisedTubePayload");
+            var dropPayload = detail?.Find("DropCanisterPayload");
+            var usesTube = (part.Definition.MissionCapabilities & PartMissionCapability.KamikazeWarhead) != 0;
+            if (tubePayload != null) tubePayload.gameObject.SetActive(usesTube);
+            if (dropPayload != null) dropPayload.gameObject.SetActive(!usesTube);
         }
 
         public static void EnhanceTacticalTerminal(Transform control, PsxVisualKit kit)
@@ -479,6 +567,80 @@ namespace UnderStatic.Visuals
                 material);
         }
 
+        private static void CreateStrikeRackVisual(Transform detail, PsxVisualKit kit)
+        {
+            var composite = kit.MaterialFor(PsxSurface.FrameComposite);
+            var metal = kit.MaterialFor(PsxSurface.BareMetal);
+            var painted = kit.MaterialFor(PsxSurface.PaintedMetal);
+            var rubber = kit.MaterialFor(PsxSurface.Rubber);
+            var warning = kit.MaterialFor(PsxSurface.Warning);
+            var label = kit.MaterialFor(PsxSurface.Label);
+
+            for (var side = -1; side <= 1; side += 2)
+            {
+                CreateMesh($"RackRail.{side}", detail, new Vector3(side * 0.58f, 0.16f, 0f),
+                    Quaternion.identity, Vector3.one,
+                    kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.18f, 0.22f, 2.15f), 0.045f)),
+                    composite);
+            }
+            for (var end = -1; end <= 1; end += 2)
+            {
+                CreateMesh($"RackCrossbar.{end}", detail, new Vector3(0f, 0.12f, end * 0.82f),
+                    Quaternion.identity, Vector3.one,
+                    kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(1.45f, 0.2f, 0.2f), 0.045f)),
+                    metal);
+            }
+            for (var tie = -1; tie <= 1; tie += 2)
+            {
+                CreateMesh($"RackCableTie.{tie}", detail, new Vector3(0f, 0.25f, tie * 0.58f),
+                    Quaternion.identity, Vector3.one,
+                    kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(1.42f, 0.08f, 0.16f), 0.025f)),
+                    rubber);
+            }
+
+            var tube = new GameObject("ImprovisedTubePayload").transform;
+            tube.SetParent(detail, false);
+            CreateMesh("TubeBody", tube, new Vector3(0f, -0.35f, 0f), Quaternion.Euler(90f, 0f, 0f), Vector3.one,
+                kit.RegisterMesh(PsxMeshFactory.LowPolyCylinder(0.48f, 3.9f, 10)), painted);
+            CreateMesh("TubeNose", tube, new Vector3(0f, -0.35f, -2.35f), Quaternion.Euler(90f, 0f, 0f), Vector3.one,
+                kit.RegisterMesh(PsxMeshFactory.FacetedCanopy(0.6f, 0.78f)), warning);
+            CreateMesh("TubeRearCollar", tube, new Vector3(0f, -0.35f, 2.08f), Quaternion.Euler(90f, 0f, 0f), Vector3.one,
+                kit.RegisterMesh(PsxMeshFactory.LowPolyCylinder(0.58f, 0.38f, 10)), metal);
+            for (var fin = 0; fin < 4; fin++)
+            {
+                CreateMesh($"TubeFin.{fin}", tube, new Vector3(0f, -0.35f, 2.18f),
+                    Quaternion.Euler(0f, 0f, fin * 45f), Vector3.one,
+                    kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(1.28f, 0.14f, 0.72f), 0.025f)),
+                    composite);
+            }
+            for (var strap = -1; strap <= 1; strap += 2)
+            {
+                CreateMesh($"TubeCableTie.{strap}", tube, new Vector3(0f, -0.12f, strap * 0.82f),
+                    Quaternion.identity, Vector3.one,
+                    kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(1.28f, 0.12f, 0.22f), 0.04f)),
+                    strap < 0 ? label : rubber);
+            }
+
+            var drop = new GameObject("DropCanisterPayload").transform;
+            drop.SetParent(detail, false);
+            drop.localPosition = new Vector3(0.55f, 0f, 0f);
+            CreateMesh("DropBody", drop, new Vector3(0f, -0.75f, 0f), Quaternion.identity, Vector3.one,
+                kit.RegisterMesh(PsxMeshFactory.LowPolyCylinder(0.5f, 1.55f, 10)), painted);
+            CreateMesh("DropNose", drop, new Vector3(0f, -1.75f, 0f), Quaternion.identity, Vector3.one,
+                kit.RegisterMesh(PsxMeshFactory.FacetedCanopy(0.48f, 0.5f)), warning);
+            CreateMesh("DropTail", drop, new Vector3(0f, 0.02f, 0f), Quaternion.identity, Vector3.one,
+                kit.RegisterMesh(PsxMeshFactory.LowPolyCylinder(0.58f, 0.38f, 10)), metal);
+            for (var fin = 0; fin < 4; fin++)
+            {
+                CreateMesh($"DropFin.{fin}", drop, new Vector3(0f, 0.04f, 0f),
+                    Quaternion.Euler(0f, fin * 45f, 0f), Vector3.one,
+                    kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(1.18f, 0.42f, 0.12f), 0.025f)),
+                    composite);
+            }
+            CreateMesh("DropCableTie", drop, new Vector3(0f, -0.2f, 0f), Quaternion.identity, Vector3.one,
+                kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(1.32f, 0.14f, 0.34f), 0.045f)), label);
+        }
+
         private static GameObject CreateFlatBeam(
             string name,
             Transform parent,
@@ -497,6 +659,47 @@ namespace UnderStatic.Visuals
                 kit.RegisterMesh(PsxMeshFactory.ChamferedBox(
                     new Vector3(width, thickness, horizontal.magnitude),
                     Mathf.Min(width * 0.22f, 0.018f))),
+                material);
+        }
+
+        private static void CreateElectronicsBoard(
+            string name,
+            Transform parent,
+            float size,
+            PsxVisualKit kit)
+        {
+            CreateMesh(name, parent, Vector3.zero, Quaternion.identity, Vector3.one,
+                kit.RegisterMesh(PsxMeshFactory.ChamferedBox(
+                    new Vector3(size, 0.12f, size), 0.055f)),
+                kit.MaterialFor(PsxSurface.Electronics));
+            foreach (var x in new[] { -0.42f, 0.42f })
+            foreach (var z in new[] { -0.42f, 0.42f })
+            {
+                CreateMesh($"{name}.MountRing.{x}.{z}", parent,
+                    new Vector3(x * size, 0.1f, z * size), Quaternion.identity, Vector3.one,
+                    kit.RegisterMesh(PsxMeshFactory.LowPolyCylinder(0.075f, 0.04f, 10)),
+                    kit.MaterialFor(PsxSurface.BareMetal));
+            }
+        }
+
+        private static GameObject CreateTaperedFlatBeam(
+            string name,
+            Transform parent,
+            Vector3 start,
+            Vector3 end,
+            float rootWidth,
+            float tipWidth,
+            float thickness,
+            Material material,
+            PsxVisualKit kit)
+        {
+            var direction = end - start;
+            var horizontal = new Vector3(direction.x, 0f, direction.z);
+            var yaw = Mathf.Atan2(horizontal.x, horizontal.z) * Mathf.Rad2Deg;
+            return CreateMesh(name, parent, (start + end) * 0.5f,
+                Quaternion.Euler(0f, yaw, 0f), Vector3.one,
+                kit.RegisterMesh(PsxMeshFactory.TaperedBeam(
+                    horizontal.magnitude, rootWidth, tipWidth, thickness)),
                 material);
         }
 
@@ -530,6 +733,14 @@ namespace UnderStatic.Visuals
                 SetRendererEnabled(part.transform.Find("Lens"), false);
             }
             else if (category == PartCategory.Antenna)
+            {
+                SetRendererEnabled(part.transform, false);
+            }
+            else if (category == PartCategory.Battery)
+            {
+                SetRendererEnabled(part.transform, false);
+            }
+            else if (category is PartCategory.Esc or PartCategory.FlightController)
             {
                 SetRendererEnabled(part.transform, false);
             }

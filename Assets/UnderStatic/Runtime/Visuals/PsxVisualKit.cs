@@ -159,11 +159,12 @@ namespace UnderStatic.Visuals
             if (surface == PsxSurface.FrameComposite)
             {
                 if (border) return -0.2f;
-                var diagonal = (x + y) % 9;
-                var grain = diagonal < 2 ? 0.18f : -0.055f;
-                if ((x + y * 2) % 17 == 0) grain += 0.07f;
-                if (Hash01(x, y, 401) < 0.025f + wear * 0.045f) grain += 0.45f * wear;
-                return grain;
+                var cellX = x / 2;
+                var cellY = y / 2;
+                var twill = (cellX + cellY) % 2 == 0 ? 0.105f : -0.072f;
+                var diagonal = (x + y) % 7 < 2 ? 0.035f : -0.012f;
+                if (Hash01(x, y, 401) < 0.018f + wear * 0.035f) diagonal += 0.28f * wear;
+                return twill + diagonal;
             }
             if (surface == PsxSurface.PaintedMetal)
             {

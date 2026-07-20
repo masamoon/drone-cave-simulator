@@ -30,9 +30,9 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(Object.FindAnyObjectByType<DroneStatusPanel>(), Is.Not.Null);
             Assert.That(Object.FindAnyObjectByType<DroneDiagnosticSwitch>(), Is.Not.Null);
             Assert.That(Object.FindAnyObjectByType<SaveSystem>(), Is.Not.Null);
-            Assert.That(sockets.Length, Is.EqualTo(11));
-            Assert.That(parts.Length, Is.EqualTo(13));
-            Assert.That(assembly.InstalledPartCount, Is.EqualTo(11));
+            Assert.That(sockets.Length, Is.EqualTo(13));
+            Assert.That(parts.Length, Is.EqualTo(15));
+            Assert.That(assembly.InstalledPartCount, Is.EqualTo(13));
 
             var damagedMotor = parts.Single(part => part.name == "Motor_rear-left");
             var depletedBattery = parts.Single(part => part.name == "InstalledDepletedBattery");
@@ -107,12 +107,12 @@ namespace UnderStatic.Tests.PlayMode
 
             Assert.That(persistence.RestoreAllFromJson(json, parts, sockets), Is.True);
             Assert.That(battery.Runtime.chargeLevel, Is.Zero);
-            Assert.That(assembly.InstalledPartCount, Is.EqualTo(11));
+            Assert.That(assembly.InstalledPartCount, Is.EqualTo(13));
             Assert.That(assembly.Readiness.IsMissionReady, Is.False);
         }
 
         [UnityTest]
-        public IEnumerator ScratchBuildLabStartsWithAnEmptyFrameAndElevenLooseParts()
+        public IEnumerator ScratchBuildLabStartsWithAnEmptyFrameAndThirteenLooseParts()
         {
             SceneManager.LoadScene("DroneBuildLab", LoadSceneMode.Single);
             yield return null;
@@ -123,8 +123,8 @@ namespace UnderStatic.Tests.PlayMode
             var sockets = Object.FindObjectsByType<PartSocket>();
 
             Assert.That(assembly, Is.Not.Null);
-            Assert.That(parts.Length, Is.EqualTo(11));
-            Assert.That(sockets.Length, Is.EqualTo(11));
+            Assert.That(parts.Length, Is.EqualTo(13));
+            Assert.That(sockets.Length, Is.EqualTo(13));
             Assert.That(assembly.InstalledPartCount, Is.Zero);
             Assert.That(parts.All(part => part.Runtime.currentState == InteractionState.Loose), Is.True);
             Assert.That(sockets.All(socket => socket.OccupiedPart == null), Is.True);
@@ -157,6 +157,48 @@ namespace UnderStatic.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator ScratchBuildRequiresEscBeforeSeatingAndConnectingFlightController()
+        {
+            SceneManager.LoadScene("DroneBuildLab", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var esc = GameObject.Find("Loose4In1Esc").GetComponent<InstallablePart>();
+            var escSocket = GameObject.Find("EscStackSocket").GetComponent<PartSocket>();
+            var controller = GameObject.Find("LooseFlightController").GetComponent<InstallablePart>();
+            var controllerSocket = GameObject.Find("FlightControllerSocket").GetComponent<PartSocket>();
+            var harness = GameObject.Find("FlightControllerStackHarness").transform;
+            var connectedPlug = harness.Find("StackHarnessPlugConnected").GetComponent<Renderer>();
+            var loosePlug = harness.Find("StackHarnessPlugLoose").GetComponent<Renderer>();
+
+            Assert.That(controllerSocket.InstallationPrerequisite, Is.SameAs(escSocket));
+            Assert.That(controllerSocket.InstallationPrerequisiteMet, Is.False);
+            Assert.That(controllerSocket.CanAccept(controller), Is.False);
+            Assert.That(controllerSocket.InteractionPrompt, Does.Contain("ESC first"));
+
+            MountForCollectionTest(esc, escSocket);
+            Assert.That(controllerSocket.InstallationPrerequisiteMet, Is.True);
+            Assert.That(controller.TryTransition(InteractionState.Held), Is.True);
+            controller.transform.SetPositionAndRotation(
+                controllerSocket.SeatedPosition
+                + controllerSocket.WorldInsertionAxis * controllerSocket.ProfileInsertionDistance,
+                controllerSocket.transform.rotation);
+            Assert.That(controllerSocket.TryBeginGuidance(controller), Is.True);
+            Assert.That(controllerSocket.UpdateGuidance(controller, controllerSocket.SeatedPosition, 1f), Is.True);
+            Assert.That(controller.Runtime.currentState, Is.EqualTo(InteractionState.Seated));
+            Assert.That(controllerSocket.LatchClosed, Is.False);
+            Assert.That(connectedPlug.enabled, Is.False);
+            Assert.That(loosePlug.enabled, Is.True);
+            Assert.That(controllerSocket.ToggleLatch(), Is.True);
+            Assert.That(controller.Runtime.currentState, Is.EqualTo(InteractionState.Installed));
+            Assert.That(controllerSocket.LatchClosed, Is.True);
+            Assert.That(connectedPlug.enabled, Is.True);
+            Assert.That(loosePlug.enabled, Is.False);
+            Assert.That(Quaternion.Angle(harness.localRotation, Quaternion.identity), Is.LessThan(0.1f));
+            Assert.That(escSocket.RemovalBlocked, Is.True);
+        }
+
+        [UnityTest]
         public IEnumerator ScratchBuildCanMountAllPartsThenStripBackToEmptyFrame()
         {
             SceneManager.LoadScene("DroneBuildLab", LoadSceneMode.Single);
@@ -178,7 +220,7 @@ namespace UnderStatic.Tests.PlayMode
                 MountForCollectionTest(part, socket);
             }
 
-            Assert.That(assembly.InstalledPartCount, Is.EqualTo(11));
+            Assert.That(assembly.InstalledPartCount, Is.EqualTo(13));
             Assert.That(assembly.Readiness.IsMissionReady, Is.True);
             Assert.That(assembly.Readiness.Endurance, Is.EqualTo(0.96f).Within(0.001f));
 
@@ -261,9 +303,9 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(ambience, Is.Not.Null);
             Assert.That(ambience.IsRunning, Is.True);
             Assert.That(assembly, Is.Not.Null);
-            Assert.That(assembly.InstalledPartCount, Is.EqualTo(11));
-            Assert.That(Object.FindObjectsByType<InstallablePart>().Length, Is.EqualTo(38));
-            Assert.That(Object.FindObjectsByType<PartSocket>().Length, Is.EqualTo(37));
+            Assert.That(assembly.InstalledPartCount, Is.EqualTo(13));
+            Assert.That(Object.FindObjectsByType<InstallablePart>().Length, Is.EqualTo(44));
+            Assert.That(Object.FindObjectsByType<PartSocket>().Length, Is.EqualTo(43));
             Assert.That(assembly.Readiness.IsMissionReady, Is.False);
         }
 
@@ -296,7 +338,7 @@ namespace UnderStatic.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator GuidedBatteryInteractSlidesIntoTrayBeforeLatchCloses()
+        public IEnumerator GuidedBatteryInteractSeatsPackBeforeStrapTightens()
         {
             SceneManager.LoadScene("DroneBuildLab", LoadSceneMode.Single);
             yield return null;
@@ -307,7 +349,10 @@ namespace UnderStatic.Tests.PlayMode
             var camera = Camera.main;
             var battery = GameObject.Find("BatteryPack").GetComponent<InstallablePart>();
             var socket = GameObject.Find("BatteryTraySocket").GetComponent<PartSocket>();
-            var latch = GameObject.Find("BatteryLatch").transform;
+            var strap = GameObject.Find("BatteryRetentionStrap").transform;
+            var retentionBand = strap.Find("BatteryStrapSecuredFrontTop").GetComponent<Renderer>();
+            var retentionSide = strap.Find("BatteryStrapSecuredFrontSideLeft").GetComponent<Renderer>();
+            var looseTail = strap.Find("BatteryStrapLooseFrontLeft").GetComponent<Renderer>();
 
             controller.enabled = false;
             camera.transform.SetPositionAndRotation(
@@ -345,6 +390,8 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(interactions.HeldPart, Is.Null);
             Assert.That(socket.OccupiedPart, Is.SameAs(battery));
             Assert.That(socket.LatchClosed, Is.False);
+            Assert.That(retentionBand.enabled, Is.False);
+            Assert.That(looseTail.enabled, Is.True);
 
             var latchAim = socket.transform.position + Vector3.right * 0.09f;
             var latchCameraPosition = latchAim + new Vector3(0f, 0.24f, -0.62f);
@@ -354,20 +401,32 @@ namespace UnderStatic.Tests.PlayMode
             Physics.SyncTransforms();
             yield return null;
             yield return null;
-            Assert.That(interactions.Focused, Is.SameAs(socket).Or.SameAs(battery));
+            Assert.That(interactions.Focused,
+                Is.SameAs(socket).Or.SameAs(battery).Or.SameAs(strap.GetComponent<LatchTarget>()));
 
             interactions.Interact();
             yield return null;
             Assert.That(battery.Runtime.currentState, Is.EqualTo(InteractionState.Installed));
             Assert.That(socket.LatchClosed, Is.True);
-            Assert.That(Mathf.DeltaAngle(latch.localEulerAngles.z, 0f), Is.EqualTo(0f).Within(0.1f));
+            Assert.That(retentionBand.enabled, Is.True);
+            Assert.That(retentionSide.enabled, Is.True);
+            Assert.That(looseTail.enabled, Is.False);
+            Assert.That(Mathf.DeltaAngle(strap.localEulerAngles.z, 0f), Is.EqualTo(0f).Within(0.1f));
+            var topPlate = strap.parent.Find("PSX_ScoutPresentation/PSX_TopPlate")?.GetComponent<Renderer>();
+            if (topPlate != null)
+            {
+                Assert.That(retentionSide.bounds.min.y, Is.LessThanOrEqualTo(topPlate.bounds.max.y + 0.01f));
+            }
+            Assert.That(retentionSide.bounds.max.y, Is.GreaterThanOrEqualTo(retentionBand.bounds.min.y - 0.01f));
 
             interactions.Interact();
             yield return null;
             Assert.That(battery.Runtime.currentState, Is.EqualTo(InteractionState.Seated));
             Assert.That(socket.LatchClosed, Is.False);
             Assert.That(socket.LatchOpenedForExtraction, Is.True);
-            Assert.That(Mathf.DeltaAngle(latch.localEulerAngles.z, 105f), Is.EqualTo(0f).Within(0.1f));
+            Assert.That(retentionBand.enabled, Is.False);
+            Assert.That(looseTail.enabled, Is.True);
+            Assert.That(Mathf.DeltaAngle(strap.localEulerAngles.z, 0f), Is.EqualTo(0f).Within(0.1f));
             Assert.That(socket.InteractionPrompt, Does.Contain("pull battery"));
 
             interactions.Interact();
@@ -378,7 +437,7 @@ namespace UnderStatic.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator EmptyBatteryTrayCanRelatchAndAcceptAReplacement()
+        public IEnumerator EmptyBatteryPadKeepsStrapLooseAndAcceptsAReplacement()
         {
             SceneManager.LoadScene("DroneAssemblyLab", LoadSceneMode.Single);
             yield return null;
@@ -394,11 +453,12 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(depleted.TryTransition(InteractionState.Loose), Is.True);
             Assert.That(socket.OccupiedPart, Is.Null);
 
-            Assert.That(socket.ToggleLatch(), Is.True);
-            Assert.That(socket.LatchClosed, Is.True);
-            Assert.That(socket.CanAccept(replacement), Is.False);
-            Assert.That(socket.ToggleLatch(), Is.True);
+            var retentionBand = GameObject.Find("BatteryRetentionStrap")
+                .transform.Find("BatteryStrapSecuredFrontTop").GetComponent<Renderer>();
+            Assert.That(socket.ToggleLatch(), Is.False);
             Assert.That(socket.LatchClosed, Is.False);
+            Assert.That(retentionBand.enabled, Is.False,
+                "An empty strap must stay loose instead of forming a rigid floating bridge.");
             Assert.That(socket.CanAccept(replacement), Is.True);
 
             Assert.That(replacement.TryTransition(InteractionState.Held), Is.True);
@@ -444,6 +504,16 @@ namespace UnderStatic.Tests.PlayMode
                 return 1;
             }
 
+            if (socketName.StartsWith("EscStackSocket"))
+            {
+                return 0;
+            }
+
+            if (socketName.StartsWith("FlightControllerSocket"))
+            {
+                return 1;
+            }
+
             return 2;
         }
 
@@ -467,6 +537,16 @@ namespace UnderStatic.Tests.PlayMode
             if (socketName.StartsWith("Camera"))
             {
                 return PartCategory.Camera;
+            }
+
+            if (socketName.StartsWith("EscStackSocket"))
+            {
+                return PartCategory.Esc;
+            }
+
+            if (socketName.StartsWith("FlightControllerSocket"))
+            {
+                return PartCategory.FlightController;
             }
 
             return PartCategory.Antenna;

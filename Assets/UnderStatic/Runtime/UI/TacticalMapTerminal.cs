@@ -113,15 +113,15 @@ namespace UnderStatic.UI
             return true;
         }
 
-        public bool ReplaySelected()
+        public bool OpenLiveFeed()
         {
-            var runtime = missions?.FindMission(selectedReportId) ?? missions?.LatestReport;
-            if (runtime == null || replayDirector?.TryPlay(runtime) != true)
+            var runtime = missions?.ActiveMission;
+            if (runtime == null || replayDirector?.CanStartLiveFeed(runtime) != true)
             {
                 return false;
             }
             Close();
-            return true;
+            return replayDirector.TryPlayLiveFeed(runtime);
         }
 
         public bool EndOperations() => operationalDay?.TryEndOperations() == true;
@@ -354,6 +354,12 @@ namespace UnderStatic.UI
         private void DrawPlannerPanel(Rect rect)
         {
             GUI.Box(rect, string.Empty);
+            var active = missions.ActiveMission;
+            if (active != null)
+            {
+                DrawActiveMissionPanel(rect, active);
+                return;
+            }
             var actor = fleet.ReadyDrone;
             var eligibility = missions.EvaluateDraft(actor);
             var plan = missions.PreviewPlan();
@@ -511,16 +517,42 @@ namespace UnderStatic.UI
             var buttonY = rect.yMax - 34f;
             GUI.Box(new Rect(rect.x + 8f, reportY, rect.width - 16f,
                 Mathf.Max(0f, buttonY - reportY - 4f)), reportText, reportStyle);
-            GUI.enabled = replayDirector != null;
-            if (GUI.Button(new Rect(rect.x + 8f, buttonY, rect.width * 0.55f - 12f, 26f), "RECONSTRUCTION"))
-            {
-                ReplaySelected();
-            }
             GUI.enabled = !selectedReport.reportAcknowledged;
-            if (GUI.Button(new Rect(rect.x + rect.width * 0.55f, buttonY,
-                    rect.width * 0.45f - 8f, 26f), "ACKNOWLEDGE"))
+            if (GUI.Button(new Rect(rect.x + 8f, buttonY, rect.width - 16f, 26f), "ACKNOWLEDGE"))
             {
                 missions.TryAcknowledgeReport(selectedReport.missionInstanceId);
+            }
+            GUI.enabled = true;
+        }
+
+        private void DrawActiveMissionPanel(Rect rect, MissionRuntimeData active)
+        {
+            var y = rect.y + 12f;
+            GUI.Label(new Rect(rect.x + 12f, y, rect.width - 24f, 24f),
+                $"ACTIVE · {LabelFor(active.plan.sortieType)}");
+            y += 32f;
+            GUI.Label(new Rect(rect.x + 12f, y, rect.width - 24f, 84f),
+                $"ROUTE {active.telemetryPathProgress:P0}\n" +
+                $"LINK {(workshopRisk?.IsTransmitterPowered == false ? "LOST" : "LIVE")}\n" +
+                missions.LastStatus);
+            y += 94f;
+
+            var feedAvailable = replayDirector?.CanStartLiveFeed(active) == true;
+            GUI.enabled = feedAvailable;
+            if (GUI.Button(new Rect(rect.x + 12f, y, rect.width - 24f, 38f),
+                    feedAvailable ? "OPEN DEGRADED LIVE FEED" : "LIVE FEED · WAIT FOR FINAL APPROACH"))
+            {
+                OpenLiveFeed();
+            }
+            GUI.enabled = true;
+            y += 48f;
+            GUI.Label(new Rect(rect.x + 12f, y, rect.width - 24f, 58f),
+                "The feed is optional. Mission results remain deterministic, and the report remains authoritative.");
+            y += 68f;
+            GUI.enabled = missions.CanRecallActive();
+            if (GUI.Button(new Rect(rect.x + 12f, y, rect.width - 24f, 30f), "RECALL AIRCRAFT"))
+            {
+                missions.TryRecallActive();
             }
             GUI.enabled = true;
         }
@@ -623,7 +655,9 @@ namespace UnderStatic.UI
                 $"SORTIE · {active.plan.sortieType} · {active.state}\n" +
                 $"{active.telemetryPathProgress:P0} · " +
                 $"LINK {(workshopRisk?.IsTransmitterPowered == false ? $"LOST {active.linkLostSeconds:0.0}s" : "LIVE")}\n" +
-                missions.LastStatus);
+                (replayDirector?.CanStartLiveFeed(active) == true
+                    ? "FINAL APPROACH · LIVE FEED AVAILABLE AT TACTICAL MAP"
+                    : missions.LastStatus));
             if (missions.CanRecallActive()
                 && GUI.Button(new Rect(Screen.width - 116f, Screen.height - 116f, 100f, 24f), "RECALL"))
             {

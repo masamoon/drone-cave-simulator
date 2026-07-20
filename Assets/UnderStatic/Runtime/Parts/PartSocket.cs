@@ -73,13 +73,31 @@ namespace UnderStatic.Parts
         public bool InstallationPrerequisiteMet => installationPrerequisite == null
             || installationPrerequisite.OccupiedPart?.Runtime.currentState
                 is InteractionState.Installed or InteractionState.Tested;
+        private bool IsFlightControllerConnector => AcceptedPrimaryCategory == PartCategory.FlightController;
+        private string LatchNoun => IsFlightControllerConnector ? "stack harness" : "battery strap";
+        private string LatchPlacementPrompt => IsFlightControllerConnector
+            ? "seat the flight controller on its soft mounts"
+            : "place a compatible LiPo on the top pad";
+        private string LatchRemovalPrompt => IsFlightControllerConnector
+            ? "remove flight controller"
+            : "pull battery from top pad";
+        private string EmptyRetentionPrompt => IsFlightControllerConnector
+            ? "HARNESS READY - seat the flight controller on its soft mounts"
+            : AcceptedPrimaryCategory == PartCategory.Battery
+                ? "STRAPS LOOSE - place a compatible LiPo on the top plate"
+                : LatchClosed
+                    ? $"E: open empty {LatchNoun}"
+                    : $"OPEN - {LatchPlacementPrompt} - E: secure {LatchNoun}";
+        private string PrerequisitePrompt => installationPrerequisite?.AcceptedPrimaryCategory == PartCategory.Motor
+            ? "Install and secure the matching motor first"
+            : IsFlightControllerConnector
+                ? "Install and secure the ESC first"
+                : "Install and secure the prerequisite component first";
         public string InteractionPrompt => OccupiedPart == null
             ? !InstallationPrerequisiteMet
-                ? "Install and secure the matching motor first"
+                ? PrerequisitePrompt
                 : ProcedureType == InstallationProcedureType.Latch
-                    ? LatchClosed
-                        ? "E: open empty battery latch"
-                        : "LATCH OPEN · slide a compatible battery into the tray · E: close latch"
+                    ? EmptyRetentionPrompt
                     : ProcedureType == InstallationProcedureType.ChargingDock
                         ? "Drag a spent battery onto the charging connector"
                     : "Empty component socket"
@@ -92,10 +110,10 @@ namespace UnderStatic.Parts
                         ? "Hold LMB to unlock"
                         : "Hold LMB to twist-lock",
                 InstallationProcedureType.Latch => LatchClosed
-                    ? "E: open battery latch"
+                    ? $"E: open {LatchNoun}"
                     : LatchOpenedForExtraction
-                        ? "LATCH OPEN · E: pull battery from tray"
-                        : "LATCH OPEN · E: close battery latch",
+                        ? $"OPEN - E: {LatchRemovalPrompt}"
+                        : $"OPEN - E: secure {LatchNoun}",
                 InstallationProcedureType.ChargingDock =>
                     "LMB: lift battery from charging dock",
                 _ => OccupiedPart.Runtime.currentState is InteractionState.Installed or InteractionState.Tested
@@ -239,7 +257,8 @@ namespace UnderStatic.Parts
             return InstallationPrerequisiteMet
                 && (ProcedureType != InstallationProcedureType.Latch || !LatchClosed)
                 && acceptedCategories.Contains(part.Definition.Category)
-                && standards.Any(part.Definition.SupportsStandard);
+                && (standards.Any(part.Definition.SupportsStandard)
+                    || acceptedTags.Any(part.Definition.SupportsSocketTag));
         }
 
         public bool TryBeginGuidance(InstallablePart part)
@@ -558,6 +577,15 @@ namespace UnderStatic.Parts
 
             if (OccupiedPart == null)
             {
+                if (AcceptedPrimaryCategory is PartCategory.Battery or PartCategory.FlightController)
+                {
+                    LatchClosed = false;
+                    LatchOpenedForExtraction = false;
+                    procedureOpenedForExtraction = false;
+                    UpdateLatchVisual();
+                    audioFeedback?.PlayReject();
+                    return false;
+                }
                 LatchClosed = !LatchClosed;
                 LatchOpenedForExtraction = false;
                 procedureOpenedForExtraction = false;
@@ -899,17 +927,63 @@ namespace UnderStatic.Parts
 
             targetCollider.enabled = true;
             targetCollider.isTrigger = true;
-            targetCollider.center = new Vector3(0.12f, 0f, 0f);
-            targetCollider.size = new Vector3(0.42f, 0.18f, 0.2f);
-            var handle = latchVisual.Find("BatteryLatchHandle");
-            target.Configure(this, handle != null ? handle.GetComponent<Renderer>() : null);
+            targetCollider.center = Vector3.zero;
+            targetCollider.size = AcceptedPrimaryCategory == PartCategory.Battery
+                ? new Vector3(0.52f, 0.22f, 0.34f)
+                : new Vector3(0.22f, 0.14f, 0.2f);
+            var interactionVisual = AcceptedPrimaryCategory == PartCategory.Battery
+                ? latchVisual.Find("BatteryStrapSecuredFrontTop")
+                : latchVisual.Find("StackHarnessPlugConnected");
+            target.Configure(
+                this,
+                interactionVisual != null ? interactionVisual.GetComponent<Renderer>() : null);
         }
 
         private void UpdateLatchVisual()
         {
             if (latchVisual != null)
             {
+                if (AcceptedPrimaryCategory == PartCategory.Battery)
+                {
+                    latchVisual.localRotation = Quaternion.identity;
+                    var hasWraparoundStraps = latchVisual.GetComponentsInChildren<Renderer>(true)
+                        .Any(renderer => renderer.gameObject.name.StartsWith(
+                            "BatteryStrapSecured",
+                            StringComparison.Ordinal));
+                    if (hasWraparoundStraps)
+                    {
+                        SetVisualGroupEnabled(
+                            latchVisual,
+                            "BatteryStrapSecured",
+                            LatchClosed && OccupiedPart != null);
+                        SetVisualGroupEnabled(latchVisual, "BatteryStrapLoose", !LatchClosed);
+                        return;
+                    }
+                }
+
+                if (IsFlightControllerConnector
+                    && latchVisual.Find("StackHarnessPlugConnected") != null)
+                {
+                    latchVisual.localRotation = Quaternion.identity;
+                    SetVisualGroupEnabled(
+                        latchVisual,
+                        "StackHarnessPlugConnected",
+                        LatchClosed && OccupiedPart != null);
+                    SetVisualGroupEnabled(latchVisual, "StackHarnessPlugLoose", !LatchClosed);
+                    return;
+                }
                 latchVisual.localRotation = Quaternion.Euler(0f, 0f, LatchClosed ? 0f : 105f);
+            }
+        }
+
+        private static void SetVisualGroupEnabled(Transform parent, string namePrefix, bool enabled)
+        {
+            foreach (var renderer in parent.GetComponentsInChildren<Renderer>(true))
+            {
+                if (renderer.gameObject.name.StartsWith(namePrefix, StringComparison.Ordinal))
+                {
+                    renderer.enabled = enabled;
+                }
             }
         }
 

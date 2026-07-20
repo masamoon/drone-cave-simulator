@@ -90,7 +90,7 @@ namespace UnderStatic.Tests
         }
 
         [Test]
-        public void Latch_EmptyTrayCanCloseAndReopenBeforeReplacementInsertion()
+        public void BatteryStrapStaysLooseWithoutPackAndSecuresReplacement()
         {
             var socket = CreateSocket(
                 "battery.socket",
@@ -101,10 +101,7 @@ namespace UnderStatic.Tests
             var original = CreatePart("original-battery", PartCategory.Battery, "battery.slide-4s");
             var replacement = CreatePart("replacement-battery", PartCategory.Battery, "battery.slide-4s");
 
-            Assert.That(socket.ToggleLatch(), Is.True);
-            Assert.That(socket.LatchClosed, Is.True);
-            Assert.That(socket.CanAccept(original), Is.False);
-            Assert.That(socket.ToggleLatch(), Is.True);
+            Assert.That(socket.ToggleLatch(), Is.False);
             Assert.That(socket.LatchClosed, Is.False);
             Assert.That(socket.CanAccept(original), Is.True);
 
@@ -125,10 +122,7 @@ namespace UnderStatic.Tests
             Assert.That(original.TryTransition(InteractionState.Loose), Is.True);
             Assert.That(socket.OccupiedPart, Is.Null);
 
-            Assert.That(socket.ToggleLatch(), Is.True);
-            Assert.That(socket.LatchClosed, Is.True);
-            Assert.That(socket.CanAccept(replacement), Is.False);
-            Assert.That(socket.ToggleLatch(), Is.True);
+            Assert.That(socket.ToggleLatch(), Is.False);
             Assert.That(socket.LatchClosed, Is.False);
             Assert.That(socket.CanAccept(replacement), Is.True);
 
@@ -140,7 +134,7 @@ namespace UnderStatic.Tests
         }
 
         [Test]
-        public void EmptyLatchState_PersistsWithoutAnInstalledBattery()
+        public void EmptyBatteryStrapPersistsOpenState()
         {
             var socket = CreateSocket(
                 "battery.socket",
@@ -149,8 +143,8 @@ namespace UnderStatic.Tests
                 InstallationProcedureType.Latch);
             var persistence = root.AddComponent<SaveSystem>();
 
-            Assert.That(socket.ToggleLatch(), Is.True);
-            Assert.That(socket.LatchClosed, Is.True);
+            Assert.That(socket.ToggleLatch(), Is.False);
+            Assert.That(socket.LatchClosed, Is.False);
             var json = persistence.CaptureAllToJson(
                 System.Array.Empty<InstallablePart>(),
                 new[] { socket });
@@ -162,7 +156,7 @@ namespace UnderStatic.Tests
                 System.Array.Empty<InstallablePart>(),
                 new[] { socket }), Is.True);
             Assert.That(socket.OccupiedPart, Is.Null);
-            Assert.That(socket.LatchClosed, Is.True);
+            Assert.That(socket.LatchClosed, Is.False);
         }
 
         [Test]

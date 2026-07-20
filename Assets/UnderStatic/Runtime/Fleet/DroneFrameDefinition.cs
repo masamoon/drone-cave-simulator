@@ -105,7 +105,9 @@ namespace UnderStatic.Fleet
                 new DroneSocketRequirement { category = PartCategory.Propeller, count = 4, standard = propeller },
                 new DroneSocketRequirement { category = PartCategory.Battery, count = 1, standard = battery },
                 new DroneSocketRequirement { category = PartCategory.Camera, count = 1, standard = CompatibilityStandardId.SharedCamera },
-                new DroneSocketRequirement { category = PartCategory.Antenna, count = 1, standard = CompatibilityStandardId.SharedAntenna }
+                new DroneSocketRequirement { category = PartCategory.Antenna, count = 1, standard = CompatibilityStandardId.SharedAntenna },
+                new DroneSocketRequirement { category = PartCategory.Esc, count = 1, standard = CompatibilityStandardId.SharedEsc },
+                new DroneSocketRequirement { category = PartCategory.FlightController, count = 1, standard = CompatibilityStandardId.SharedFlightController }
             };
         }
     }

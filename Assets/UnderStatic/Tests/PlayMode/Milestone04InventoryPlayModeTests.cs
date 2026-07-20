@@ -223,7 +223,7 @@ namespace UnderStatic.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator DroneBatteryLatchHasAForgivingDirectInteractionTarget()
+        public IEnumerator DroneBatteryStrapHasAForgivingDirectInteractionTarget()
         {
             SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
             yield return null;
@@ -238,12 +238,12 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(service.TryInstallPart(replacement, socket), Is.True);
             Assert.That(replacement.Runtime.currentState, Is.EqualTo(InteractionState.Seated));
 
-            var latch = GameObject.Find("BatteryLatch").GetComponent<LatchTarget>();
-            var targetCollider = latch.GetComponent<BoxCollider>();
-            Assert.That(latch.Socket, Is.SameAs(socket));
+            var strap = GameObject.Find("BatteryRetentionStrap").GetComponent<LatchTarget>();
+            var targetCollider = strap.GetComponent<BoxCollider>();
+            Assert.That(strap.Socket, Is.SameAs(socket));
             Assert.That(targetCollider, Is.Not.Null);
             Assert.That(targetCollider.size.x, Is.GreaterThanOrEqualTo(0.4f));
-            latch.Activate();
+            strap.Activate();
             Assert.That(socket.LatchClosed, Is.True);
             Assert.That(replacement.Runtime.currentState, Is.EqualTo(InteractionState.Installed));
         }
@@ -628,10 +628,10 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(GameObject.Find("DroneReadyShelfControl"), Is.Null);
             Assert.That(inventory.TryMoveDroneToReady(false), Is.True);
             Assert.That(assembly.Runtime.location, Is.EqualTo(StorageLocationId.SafeHouseReadyShelf));
-            Assert.That(assembly.InstalledPartCount, Is.EqualTo(11));
+            Assert.That(assembly.InstalledPartCount, Is.EqualTo(13));
             Assert.That(inventory.TryMoveDroneToServiceBay(false), Is.True);
             Assert.That(assembly.Runtime.location, Is.EqualTo(StorageLocationId.SafeHouseServiceBay));
-            Assert.That(assembly.InstalledPartCount, Is.EqualTo(11));
+            Assert.That(assembly.InstalledPartCount, Is.EqualTo(13));
         }
 
         [UnityTest]

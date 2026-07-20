@@ -97,8 +97,8 @@ namespace UnderStatic.Replays
                     ? "Observation route · no contacts found"
                     : $"Observation route · {runtime.discoveredContactIds.Length} contact(s) found",
                 _ when runtime.outcome == MissionOutcome.NoContact => "Last known position empty",
-                SortieType.KamikazeStrike when showEngagement => "Confirmed kamikaze strike reconstruction",
-                SortieType.GrenadeDrop when showEngagement => "Confirmed grenade-drop reconstruction",
+                SortieType.KamikazeStrike when showEngagement => "Confirmed kamikaze terminal feed",
+                SortieType.GrenadeDrop when showEngagement => "Confirmed grenade-drop terminal feed",
                 _ => "Engagement ineffective or held"
             };
             return new MissionReplayPlan(
@@ -116,6 +116,38 @@ namespace UnderStatic.Replays
                 runtime.plan.sortieType == SortieType.Recon
                     ? runtime.discoveredTypes.ToArray()
                     : Array.Empty<BattlefieldContactType>());
+        }
+
+        public static MissionReplayPlan CreateLive(MissionRuntimeData runtime)
+        {
+            if (runtime?.plan == null)
+            {
+                return Create(runtime);
+            }
+
+            var strikeType = runtime.plan.sortieType switch
+            {
+                SortieType.KamikazeStrike => MissionReplayStrikeType.Kamikaze,
+                SortieType.GrenadeDrop => MissionReplayStrikeType.BombDrop,
+                _ => MissionReplayStrikeType.None
+            };
+            var classification = runtime.plan.sortieType switch
+            {
+                SortieType.Recon => "Live observation pass - contacts unconfirmed",
+                SortieType.KamikazeStrike => "Live terminal approach - effect unconfirmed",
+                _ => "Live payload approach - effect unconfirmed"
+            };
+            return new MissionReplayPlan(
+                false,
+                false,
+                strikeType,
+                classification,
+                runtime.plan.route.Select(item => item.ToVector2()).ToArray(),
+                runtime.plan.aimedPosition.ToVector2(),
+                runtime.targetType,
+                false,
+                Array.Empty<Vector2>(),
+                Array.Empty<BattlefieldContactType>());
         }
 
         public MissionReplayPhase PhaseAt(float normalizedTime)

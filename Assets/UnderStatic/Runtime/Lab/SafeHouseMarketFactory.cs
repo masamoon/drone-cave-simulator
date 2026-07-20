@@ -334,7 +334,7 @@ namespace UnderStatic.Lab
             clone.name = $"Market_{spec.Id}";
             var assembly = clone.GetComponent<DroneAssemblyState>();
             assembly.ClearAll();
-            assembly.ConfigureRequirements(4, 4, 1, 1, 1);
+            assembly.ConfigureRequirements(4, 4, 1, 1, 1, 1, 1);
             var sockets = clone.GetComponentsInChildren<PartSocket>(true)
                 .OrderBy(socket => socket.LocalSocketId, StringComparer.Ordinal)
                 .ToArray();
@@ -362,7 +362,8 @@ namespace UnderStatic.Lab
             // Propeller sockets require their matching motor to be present during deterministic restore.
             // Keep motors installed in broker stock and express motor faults through condition instead.
             var missing = installable
-                .Where(part => part.Definition.Category != PartCategory.Motor)
+                .Where(part => part.Definition.Category is not (
+                    PartCategory.Motor or PartCategory.Esc or PartCategory.FlightController))
                 .OrderBy(part => StableHash($"{spec.Id}:{part.name}"))
                 .Take(spec.MissingParts)
                 .ToHashSet();
@@ -467,7 +468,7 @@ namespace UnderStatic.Lab
 
             var assembly = clone.GetComponent<DroneAssemblyState>();
             assembly.ClearAll();
-            assembly.ConfigureRequirements(4, 4, 1, 1, 1);
+            assembly.ConfigureRequirements(4, 4, 1, 1, 1, 1, 1);
             var sockets = clone.GetComponentsInChildren<PartSocket>(true)
                 .OrderBy(socket => socket.LocalSocketId, StringComparer.Ordinal)
                 .ToArray();
@@ -571,6 +572,8 @@ namespace UnderStatic.Lab
             PartCategory.Battery => "battery.slide",
             PartCategory.Camera => "camera.rail",
             PartCategory.Antenna => "antenna.thread",
+            PartCategory.Esc => "electronics.esc.30x30",
+            PartCategory.FlightController => "electronics.fc.30x30",
             _ => string.Empty
         };
 

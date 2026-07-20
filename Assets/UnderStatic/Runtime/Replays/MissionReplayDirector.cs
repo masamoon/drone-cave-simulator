@@ -13,6 +13,9 @@ namespace UnderStatic.Replays
     [DisallowMultipleComponent]
     public sealed class MissionReplayDirector : MonoBehaviour
     {
+        public const float LiveFeedStartProgress = 0.6f;
+        private const float LiveFeedResultBoundary = 0.58f;
+
         [SerializeField] private MissionSystem missions;
         [SerializeField] private BattlefieldSystem battlefield;
         [SerializeField] private FirstPersonController controller;
@@ -40,17 +43,23 @@ namespace UnderStatic.Replays
         private uint staticNoiseState;
         private MissionReplayPlan activePlan;
         private InputAction cancelAction;
+        private bool isLiveFeed;
+        private bool liveResultReceived;
+        private float normalizedPlayback;
+        private float terminalHoldElapsed;
 
         public bool IsPlaying { get; private set; }
         public bool IsComplete { get; private set; }
         public bool EngagementVisible { get; private set; }
         public bool StaticVisible { get; private set; }
+        public bool IsLiveFeed => isLiveFeed;
+        public bool LiveResultReceived => liveResultReceived;
         public MissionReplayStrikeType ActiveStrikeType => activePlan.StrikeType;
         public MissionRuntimeData ActiveMission { get; private set; }
         public MissionTopographyMap ActiveMap { get; private set; }
         public MissionReplayPhase CurrentPhase => !IsPlaying
             ? MissionReplayPhase.Complete
-            : activePlan.PhaseAt(elapsed / definition.ReplayDuration);
+            : activePlan.PhaseAt(normalizedPlayback);
 
         public void Configure(
             MissionSystem missionSystem,
@@ -103,14 +112,46 @@ namespace UnderStatic.Replays
                 return false;
             }
 
+            return BeginPresentation(runtime, false);
+        }
+
+        public bool CanStartLiveFeed(MissionRuntimeData runtime)
+        {
+            return runtime != null
+                && runtime.state == MissionRuntimeState.Active
+                && runtime.outcome == MissionOutcome.None
+                && runtime.pathProgress >= LiveFeedStartProgress
+                && !runtime.recallRequested
+                && !runtime.lostLinkTriggered
+                && missions?.IsTransmitterPowered != false
+                && definition != null
+                && battlefield?.Map != null;
+        }
+
+        public bool TryPlayLiveFeed(MissionRuntimeData runtime)
+        {
+            return CanStartLiveFeed(runtime) && BeginPresentation(runtime, true);
+        }
+
+        private bool BeginPresentation(MissionRuntimeData runtime, bool liveFeed)
+        {
+
             if (IsPlaying)
             {
                 StopReplay();
             }
 
+            isLiveFeed = liveFeed;
+            liveResultReceived = !liveFeed;
             ActiveMission = runtime;
             ActiveMap = TopographyFor(runtime);
-            activePlan = MissionReplayPlan.Create(runtime);
+            activePlan = liveFeed ? MissionReplayPlan.CreateLive(runtime) : MissionReplayPlan.Create(runtime);
+            normalizedPlayback = liveFeed
+                ? Mathf.Lerp(0f, LiveFeedResultBoundary,
+                    Mathf.InverseLerp(LiveFeedStartProgress, 1f, runtime.pathProgress))
+                : 0f;
+            elapsed = normalizedPlayback * definition.ReplayDuration;
+            terminalHoldElapsed = 0f;
             BuildReconstruction();
             SuspendWorkshopPresentation();
             workshopCamera = Camera.main;
@@ -128,7 +169,6 @@ namespace UnderStatic.Replays
             previousCursorVisible = Cursor.visible;
             Cursor.lockState = CursorLockMode.Confined;
             Cursor.visible = true;
-            elapsed = 0f;
             staticRefreshElapsed = 0f;
             staticNoiseState = unchecked((uint)runtime.resolutionSeed) | 1u;
             EngagementVisible = false;
@@ -136,7 +176,7 @@ namespace UnderStatic.Replays
             IsComplete = false;
             IsPlaying = true;
             cancelAction?.Enable();
-            ApplyPose(0f);
+            ApplyPose(normalizedPlayback);
             return true;
         }
 
@@ -146,21 +186,99 @@ namespace UnderStatic.Replays
             {
                 return;
             }
-            var advancedElapsed = elapsed + Mathf.Max(0f, deltaSeconds);
-            elapsed = advancedElapsed;
-            var normalized = Mathf.Clamp01(elapsed / definition.ReplayDuration);
+
+            if (isLiveFeed)
+            {
+                TickLiveFeed(deltaSeconds);
+                return;
+            }
+
+            elapsed += Mathf.Max(0f, deltaSeconds);
+            normalizedPlayback = Mathf.Clamp01(elapsed / definition.ReplayDuration);
+            UpdatePresentation(normalizedPlayback, deltaSeconds);
+            if (elapsed >= definition.ReplayDuration)
+            {
+                IsComplete = true;
+            }
+            var automaticReturnStartsAt = activePlan.StrikeType == MissionReplayStrikeType.Kamikaze
+                ? definition.ReplayDuration * 0.72f
+                : definition.ReplayDuration;
+            if (elapsed >= automaticReturnStartsAt + definition.WorkshopReturnDelay)
+            {
+                StopReplay();
+            }
+        }
+
+        private void TickLiveFeed(float deltaSeconds)
+        {
+            var delta = Mathf.Max(0f, deltaSeconds);
+            if (!liveResultReceived && ActiveMission != null
+                && ActiveMission.state != MissionRuntimeState.Active
+                && ActiveMission.outcome != MissionOutcome.None)
+            {
+                liveResultReceived = true;
+                activePlan = MissionReplayPlan.Create(ActiveMission);
+                normalizedPlayback = LiveFeedResultBoundary;
+                elapsed = normalizedPlayback * definition.ReplayDuration;
+                BuildReconstruction();
+            }
+
+            if (!liveResultReceived)
+            {
+                var progress = ActiveMission == null
+                    ? LiveFeedStartProgress
+                    : ActiveMission.telemetryPathProgress;
+                normalizedPlayback = Mathf.Lerp(0f, LiveFeedResultBoundary,
+                    Mathf.InverseLerp(LiveFeedStartProgress, 1f, progress));
+                elapsed = normalizedPlayback * definition.ReplayDuration;
+                if (ActiveMission?.lostLinkTriggered == true || missions?.IsTransmitterPowered == false)
+                {
+                    StaticVisible = true;
+                    terminalHoldElapsed += delta;
+                    RefreshDegradedSignal(delta);
+                    if (terminalHoldElapsed >= definition.WorkshopReturnDelay)
+                    {
+                        StopReplay();
+                    }
+                    return;
+                }
+            }
+            else
+            {
+                elapsed += delta;
+                normalizedPlayback = Mathf.Clamp01(elapsed / definition.ReplayDuration);
+            }
+
+            UpdatePresentation(normalizedPlayback, delta);
+            var terminalReached = activePlan.StrikeType == MissionReplayStrikeType.Kamikaze
+                ? normalizedPlayback >= 0.72f
+                : normalizedPlayback >= 1f;
+            if (terminalReached)
+            {
+                IsComplete = true;
+                var terminalSeconds = definition.ReplayDuration
+                    * (activePlan.StrikeType == MissionReplayStrikeType.Kamikaze ? 0.72f : 1f);
+                terminalHoldElapsed = Mathf.Max(0f, elapsed - terminalSeconds);
+                if (terminalHoldElapsed >= definition.WorkshopReturnDelay)
+                {
+                    StopReplay();
+                }
+            }
+            else
+            {
+                terminalHoldElapsed = 0f;
+            }
+        }
+
+        private void UpdatePresentation(float normalized, float deltaSeconds)
+        {
             ApplyPose(normalized);
             StaticVisible = activePlan.StrikeType == MissionReplayStrikeType.Kamikaze
                 && normalized >= 0.72f;
             UpdateBombDrop(normalized);
-            if (StaticVisible)
+            if (StaticVisible || isLiveFeed)
             {
-                staticRefreshElapsed += Mathf.Max(0f, deltaSeconds);
-                if (staticRefreshElapsed >= 0.055f)
-                {
-                    staticRefreshElapsed = 0f;
-                    RefreshStaticTexture();
-                }
+                RefreshDegradedSignal(deltaSeconds);
             }
             var engagementStart = activePlan.StrikeType == MissionReplayStrikeType.Kamikaze
                 ? 0.715f
@@ -183,16 +301,15 @@ namespace UnderStatic.Replays
                     targetVisual.transform.localScale = new Vector3(1f, 0.35f, 1f);
                 }
             }
-            if (elapsed >= definition.ReplayDuration)
+        }
+
+        private void RefreshDegradedSignal(float deltaSeconds)
+        {
+            staticRefreshElapsed += Mathf.Max(0f, deltaSeconds);
+            if (staticRefreshElapsed >= 0.055f)
             {
-                IsComplete = true;
-            }
-            var automaticReturnStartsAt = activePlan.StrikeType == MissionReplayStrikeType.Kamikaze
-                ? definition.ReplayDuration * 0.72f
-                : definition.ReplayDuration;
-            if (advancedElapsed >= automaticReturnStartsAt + definition.WorkshopReturnDelay)
-            {
-                StopReplay();
+                staticRefreshElapsed = 0f;
+                RefreshStaticTexture();
             }
         }
 
@@ -206,6 +323,10 @@ namespace UnderStatic.Replays
             IsComplete = false;
             EngagementVisible = false;
             StaticVisible = false;
+            isLiveFeed = false;
+            liveResultReceived = false;
+            normalizedPlayback = 0f;
+            terminalHoldElapsed = 0f;
             cancelAction?.Disable();
             if (workshopCamera != null)
             {
@@ -260,12 +381,25 @@ namespace UnderStatic.Replays
                     new Rect(Screen.width * 0.5f - 130f, Screen.height * 0.5f - 28f, 260f, 56f),
                     "SIGNAL LOST // CONTACT");
             }
-            GUI.Box(new Rect(18f, 18f, 480f, 88f),
-                $"AFTER-ACTION RECONSTRUCTION · {ActiveMission.plan.sortieType}\n" +
-                $"{CurrentPhase.ToString().ToUpperInvariant()} · {activePlan.Classification}\n" +
-                $"Recorded result: {ActiveMission.outcome}");
+            else if (isLiveFeed && staticTexture != null)
+            {
+                var previousColour = GUI.color;
+                var pulse = 0.1f + Mathf.PingPong(Time.unscaledTime * 0.07f, 0.08f);
+                GUI.color = new Color(1f, 1f, 1f, pulse);
+                GUI.DrawTexture(new Rect(0f, 0f, Screen.width, Screen.height), staticTexture,
+                    ScaleMode.StretchToFill, false);
+                GUI.color = previousColour;
+            }
+            GUI.Box(new Rect(18f, 18f, 520f, 88f), isLiveFeed
+                ? $"LIVE FPV FEED · DEGRADED LINK · {ActiveMission.plan.sortieType}\n" +
+                  $"{CurrentPhase.ToString().ToUpperInvariant()} · {activePlan.Classification}\n" +
+                  (liveResultReceived ? $"Terminal result: {ActiveMission.outcome}" : "Terminal result: PENDING")
+                : $"PRESENTATION VALIDATION · {ActiveMission.plan.sortieType}\n" +
+                  $"{CurrentPhase.ToString().ToUpperInvariant()} · {activePlan.Classification}\n" +
+                  $"Recorded result: {ActiveMission.outcome}");
             if (GUI.Button(new Rect(Screen.width - 224f, Screen.height - 62f, 206f, 44f),
-                    IsComplete ? "RETURN TO WORKSHOP [ESC]" : "END RECONSTRUCTION [ESC]"))
+                    IsComplete ? "RETURN TO WORKSHOP [ESC]"
+                    : isLiveFeed ? "LEAVE LIVE FEED [ESC]" : "END PRESENTATION [ESC]"))
             {
                 StopReplay();
             }
@@ -305,7 +439,7 @@ namespace UnderStatic.Replays
         private void BuildReconstruction()
         {
             DestroyReconstruction();
-            reconstructionRoot = new GameObject("MissionReconstruction");
+            reconstructionRoot = new GameObject(isLiveFeed ? "MissionLiveFeed" : "MissionPresentation");
             reconstructionRoot.transform.SetParent(transform, false);
             reconstructionRoot.transform.localPosition = new Vector3(0f, -35f, 260f);
 
@@ -356,12 +490,9 @@ namespace UnderStatic.Replays
                 bombVisual.SetActive(false);
             }
 
-            if (activePlan.StrikeType == MissionReplayStrikeType.Kamikaze)
-            {
-                BuildStaticTexture();
-            }
+            BuildStaticTexture();
 
-            var cameraObject = new GameObject("FPVReconstructionCamera");
+            var cameraObject = new GameObject(isLiveFeed ? "FPVLiveFeedCamera" : "FPVPresentationCamera");
             cameraObject.transform.SetParent(reconstructionRoot.transform, false);
             replayCamera = cameraObject.AddComponent<Camera>();
             replayCamera.fieldOfView = 52f;

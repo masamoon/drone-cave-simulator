@@ -15,7 +15,7 @@ namespace UnderStatic.Tests.PlayMode
     public sealed class Milestone051ReplayPlayModeTests
     {
         [UnityTest]
-        public IEnumerator SafeHouseReplayUsesPersistentMapPreview()
+        public IEnumerator SafeHouseLiveFeedUsesPersistentMapPreview()
         {
             SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
             yield return null;
@@ -30,7 +30,7 @@ namespace UnderStatic.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator ResolvedReconReplayAutomaticallyRestoresWorkshopState()
+        public IEnumerator ReconLiveFeedAutomaticallyRestoresWorkshopStateAfterResult()
         {
             SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
             yield return null;
@@ -40,22 +40,26 @@ namespace UnderStatic.Tests.PlayMode
             var interactions = Object.FindAnyObjectByType<InteractionSystem>();
             var terminal = Object.FindAnyObjectByType<TacticalMapTerminal>();
             var workshopCamera = Camera.main;
-            var runtime = Runtime(SortieType.Recon);
+            var runtime = ActiveRuntime(SortieType.Recon);
             runtime.discoveredContactIds = new[] { "contact.artillery.01" };
             runtime.discoveredPositions = new[] { new BattlefieldMapPoint(new Vector2(0.6f, 0.7f)) };
             runtime.discoveredTypes = new[] { BattlefieldContactType.Artillery };
 
             terminal.Activate();
             Assert.That(controller.enabled, Is.False);
-            Assert.That(director.TryPlay(runtime), Is.True);
+            Assert.That(director.TryPlayLiveFeed(runtime), Is.True);
             Assert.That(controller.enabled, Is.False);
             Assert.That(workshopCamera.enabled, Is.False);
             Assert.That(interactions.enabled, Is.False);
-            Assert.That(GameObject.Find("FPVReconstructionCamera"), Is.Not.Null);
+            Assert.That(GameObject.Find("FPVLiveFeedCamera"), Is.Not.Null);
             Assert.That(GameObject.Find("ReconstructionTarget"), Is.Not.Null);
-            director.Tick(13.9f);
+            runtime.state = MissionRuntimeState.Resolved;
+            runtime.outcome = MissionOutcome.Success;
+            director.Tick(0.01f);
+            Assert.That(director.LiveResultReceived, Is.True);
+            director.Tick(6.8f);
             Assert.That(director.IsPlaying, Is.True);
-            director.Tick(0.2f);
+            director.Tick(0.3f);
             yield return null;
 
             Assert.That(director.IsPlaying, Is.False);
@@ -71,13 +75,16 @@ namespace UnderStatic.Tests.PlayMode
             yield return null;
             yield return null;
             var director = Object.FindAnyObjectByType<MissionReplayDirector>();
-            var runtime = Runtime(SortieType.KamikazeStrike, MissionOutcome.NoContact);
+            var runtime = ActiveRuntime(SortieType.KamikazeStrike);
             runtime.ordnanceConsumed = true;
             runtime.aircraftExpended = true;
             runtime.breakdown.positiveIdentification = false;
 
-            Assert.That(director.TryPlay(runtime), Is.True);
-            director.Tick(9f);
+            Assert.That(director.TryPlayLiveFeed(runtime), Is.True);
+            runtime.state = MissionRuntimeState.Resolved;
+            runtime.outcome = MissionOutcome.NoContact;
+            director.Tick(0.01f);
+            director.Tick(1.8f);
             yield return null;
 
             Assert.That(director.IsPlaying, Is.True);
@@ -94,11 +101,14 @@ namespace UnderStatic.Tests.PlayMode
             yield return null;
             yield return null;
             var director = Object.FindAnyObjectByType<MissionReplayDirector>();
-            var runtime = Runtime(SortieType.GrenadeDrop, MissionOutcome.NoContact);
+            var runtime = ActiveRuntime(SortieType.GrenadeDrop);
             runtime.breakdown.positiveIdentification = false;
             runtime.ordnanceConsumed = true;
 
-            Assert.That(director.TryPlay(runtime), Is.True);
+            Assert.That(director.TryPlayLiveFeed(runtime), Is.True);
+            runtime.state = MissionRuntimeState.Resolved;
+            runtime.outcome = MissionOutcome.NoContact;
+            director.Tick(0.01f);
             Assert.That(GameObject.Find("EmptyLastKnownPosition"), Is.Not.Null);
             Assert.That(GameObject.Find("DistantFigure.0"), Is.Null);
             Assert.That(director.ActiveStrikeType, Is.EqualTo(MissionReplayStrikeType.BombDrop));
@@ -115,20 +125,23 @@ namespace UnderStatic.Tests.PlayMode
             var director = Object.FindAnyObjectByType<MissionReplayDirector>();
             var controller = Object.FindAnyObjectByType<FirstPersonController>();
             var workshopCamera = Camera.main;
-            var runtime = Runtime(SortieType.KamikazeStrike, MissionOutcome.Success);
+            var runtime = ActiveRuntime(SortieType.KamikazeStrike);
             runtime.ordnanceConsumed = true;
             runtime.aircraftExpended = true;
             runtime.breakdown.positiveIdentification = true;
             runtime.targetType = BattlefieldContactType.Artillery;
 
-            Assert.That(director.TryPlay(runtime), Is.True);
-            director.Tick(9f);
+            Assert.That(director.TryPlayLiveFeed(runtime), Is.True);
+            runtime.state = MissionRuntimeState.Resolved;
+            runtime.outcome = MissionOutcome.Success;
+            director.Tick(0.01f);
+            director.Tick(1.8f);
             Assert.That(director.ActiveStrikeType, Is.EqualTo(MissionReplayStrikeType.Kamikaze));
             Assert.That(director.CurrentPhase, Is.EqualTo(MissionReplayPhase.SignalLost));
             Assert.That(director.StaticVisible, Is.True);
             director.Tick(1.5f);
             Assert.That(director.IsPlaying, Is.True);
-            director.Tick(0.2f);
+            director.Tick(0.5f);
             Assert.That(director.IsPlaying, Is.False);
             Assert.That(controller.enabled, Is.True);
             Assert.That(workshopCamera.enabled, Is.True);
@@ -136,7 +149,7 @@ namespace UnderStatic.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator EscapeReturnsFromReconstructionImmediately()
+        public IEnumerator EscapeReturnsFromLiveFeedImmediately()
         {
             SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
             yield return null;
@@ -145,7 +158,7 @@ namespace UnderStatic.Tests.PlayMode
             var controller = Object.FindAnyObjectByType<FirstPersonController>();
             var workshopCamera = Camera.main;
 
-            Assert.That(director.TryPlay(Runtime(SortieType.Recon)), Is.True);
+            Assert.That(director.TryPlayLiveFeed(ActiveRuntime(SortieType.Recon)), Is.True);
             var keyboard = Keyboard.current ?? InputSystem.AddDevice<Keyboard>();
             InputSystem.QueueStateEvent(keyboard, new KeyboardState());
             InputSystem.Update();
@@ -180,5 +193,14 @@ namespace UnderStatic.Tests.PlayMode
             },
             breakdown = new MissionResultBreakdown { positiveIdentification = true }
         };
+
+        private static MissionRuntimeData ActiveRuntime(SortieType type)
+        {
+            var runtime = Runtime(type, MissionOutcome.None);
+            runtime.state = MissionRuntimeState.Active;
+            runtime.pathProgress = 0.65f;
+            runtime.telemetryPathProgress = 0.65f;
+            return runtime;
+        }
     }
 }

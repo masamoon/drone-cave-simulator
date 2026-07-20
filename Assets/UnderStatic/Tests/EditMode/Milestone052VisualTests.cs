@@ -57,7 +57,7 @@ namespace UnderStatic.Tests
         }
 
         [Test]
-        public void FrameCompositeSwatch_HasDirectionalTextureInsideMipSafeArea()
+        public void FrameCompositeSwatch_HasTightWeaveInsideMipSafeArea()
         {
             var profile = Track(PsxVisualProfile.CreateTransient());
             var root = Track(new GameObject("Kit"));
@@ -104,6 +104,9 @@ namespace UnderStatic.Tests
             var box = Track(PsxMeshFactory.ChamferedBox(new Vector3(2f, 1f, 3f), 0.2f));
             var cylinder = Track(PsxMeshFactory.LowPolyCylinder(1f, 2f, 8));
             var canopy = Track(PsxMeshFactory.FacetedCanopy(1f, 2f));
+            var framePlate = Track(PsxMeshFactory.ChamferedFramePlate(
+                new Vector2(2f, 1.5f), new Vector2(1f, 0.65f), 0.08f, 0.14f));
+            var taperedBeam = Track(PsxMeshFactory.TaperedBeam(2.4f, 0.4f, 0.2f, 0.12f));
             var propellerBlade = Track(PsxMeshFactory.SweptPropellerBlade(
                 0.5f, 3f, 0.65f, 0.4f, 0.42f, 0.12f));
 
@@ -112,6 +115,11 @@ namespace UnderStatic.Tests
             Assert.That(box.triangles.Length / 3, Is.LessThan(80));
             Assert.That(cylinder.triangles.Length / 3, Is.LessThan(50));
             Assert.That(canopy.triangles.Length / 3, Is.EqualTo(8));
+            Assert.That(framePlate.bounds.size.x, Is.EqualTo(2f).Within(0.001f));
+            Assert.That(framePlate.bounds.size.y, Is.EqualTo(0.08f).Within(0.001f));
+            Assert.That(framePlate.triangles.Length / 3, Is.EqualTo(64));
+            Assert.That(taperedBeam.bounds.size.z, Is.EqualTo(2.4f).Within(0.001f));
+            Assert.That(taperedBeam.triangles.Length / 3, Is.EqualTo(12));
             Assert.That(propellerBlade.bounds.size.x, Is.EqualTo(2.5f).Within(0.001f));
             Assert.That(propellerBlade.triangles.Length / 3, Is.EqualTo(12));
         }
@@ -163,6 +171,63 @@ namespace UnderStatic.Tests
         }
 
         [Test]
+        public void StrikeRackEnhancement_SelectsReadablePayloadForMissionCapability()
+        {
+            var kit = CreateKit();
+            var dropDefinition = Track(PartDefinition.CreateTransient(
+                "rack.visual-drop", "Drop Rack", PartCategory.StrikeRack, new[] { "strike-rack.rail" },
+                capabilities: PartMissionCapability.GrenadeDrop));
+            var tubeDefinition = Track(PartDefinition.CreateTransient(
+                "rack.visual-tube", "One-way Payload", PartCategory.StrikeRack, new[] { "strike-rack.rail" },
+                capabilities: PartMissionCapability.KamikazeWarhead));
+            var root = Track(GameObject.CreatePrimitive(PrimitiveType.Cube));
+            var part = root.AddComponent<InstallablePart>();
+            part.Initialize(dropDefinition, "rack.visual.instance");
+
+            Assert.That(PsxVisualFactory.EnhancePart(part, kit), Is.True);
+            var detail = root.transform.Find("PSX_PartDetail");
+            var drop = detail.Find("DropCanisterPayload");
+            var tube = detail.Find("ImprovisedTubePayload");
+            Assert.That(drop.gameObject.activeSelf, Is.True);
+            Assert.That(tube.gameObject.activeSelf, Is.False);
+            Assert.That(drop.Find("DropBody"), Is.Not.Null);
+            Assert.That(tube.Find("TubeBody"), Is.Not.Null);
+            Assert.That(detail.Find("RackRail.-1"), Is.Not.Null);
+            Assert.That(detail.GetComponentsInChildren<Collider>(true), Is.Empty);
+
+            part.Initialize(tubeDefinition, "rack.visual.instance");
+            PsxVisualFactory.UpdateStrikePayloadVisual(part);
+            Assert.That(drop.gameObject.activeSelf, Is.False);
+            Assert.That(tube.gameObject.activeSelf, Is.True);
+        }
+
+        [Test]
+        public void ElectronicsAndLipoEnhancement_ExposeRecognizableServiceDetails()
+        {
+            var kit = CreateKit();
+            var esc = CreateVisualPart("ESC", PartCategory.Esc, "electronics.esc.30x30");
+            var controller = CreateVisualPart(
+                "FlightController", PartCategory.FlightController, "electronics.fc.30x30");
+            var battery = CreateVisualPart("Battery", PartCategory.Battery, "battery.slide-4s");
+
+            Assert.That(PsxVisualFactory.EnhancePart(esc, kit), Is.True);
+            Assert.That(PsxVisualFactory.EnhancePart(controller, kit), Is.True);
+            Assert.That(PsxVisualFactory.EnhancePart(battery, kit), Is.True);
+            Assert.That(esc.transform.Find("PSX_PartDetail/EscBoard"), Is.Not.Null);
+            Assert.That(esc.transform.Find("PSX_PartDetail/EscMosfet.7"), Is.Not.Null);
+            Assert.That(esc.transform.Find("PSX_PartDetail/EscMotorPad.1.1"), Is.Not.Null);
+            Assert.That(controller.transform.Find("PSX_PartDetail/FlightControllerBoard"), Is.Not.Null);
+            Assert.That(controller.transform.Find("PSX_PartDetail/FlightControllerGyro"), Is.Not.Null);
+            Assert.That(controller.transform.Find("PSX_PartDetail/FlightControllerUsbPort"), Is.Not.Null);
+            Assert.That(battery.transform.Find("PSX_PartDetail/BatteryShrinkWrap"), Is.Not.Null);
+            Assert.That(battery.transform.Find("PSX_PartDetail/BatteryMainConnector"), Is.Not.Null);
+            Assert.That(battery.transform.Find("PSX_PartDetail/BatteryBalancePlug"), Is.Not.Null);
+            Assert.That(battery.transform.Find("PSX_PartDetail/BatteryBalanceLead.4"), Is.Not.Null);
+            Assert.That(battery.transform.Find("PSX_PartDetail/BatteryStrap"), Is.Null,
+                "The retention strap belongs to the frame, not to the removable LiPo.");
+        }
+
+        [Test]
         public void ScoutEnhancement_IsIdempotentAndWithinTriangleBudget()
         {
             var kit = CreateKit();
@@ -177,19 +242,35 @@ namespace UnderStatic.Tests
                 .Where(filter => filter.sharedMesh != null)
                 .Sum(filter => filter.sharedMesh.triangles.Length / 3);
 
-            Assert.That(marker.Find("PSX_CentreShell"), Is.Not.Null);
-            Assert.That(marker.Find("PSX_ESCBoard"), Is.Not.Null);
-            Assert.That(marker.Find("PSX_FlightController"), Is.Not.Null);
-            Assert.That(marker.Find("PSX_StackStandoff.3"), Is.Not.Null);
+            Assert.That(marker.Find("PSX_BottomPlate"), Is.Not.Null);
+            Assert.That(marker.Find("PSX_TopPlate"), Is.Not.Null);
+            Assert.That(marker.Find("PSX_FrameStandoff.5"), Is.Not.Null);
+            Assert.That(marker.Find("PSX_TopPlateScrew.5"), Is.Not.Null);
             Assert.That(marker.Find("PSX_CameraCage.Left"), Is.Not.Null);
-            Assert.That(marker.Find("PSX_MotorAdapter.3"), Is.Not.Null);
+            Assert.That(marker.Find("PSX_MotorMount.3"), Is.Not.Null);
             Assert.That(marker.Find("PSX_WireRun.3"), Is.Not.Null);
             Assert.That(marker.Find("PSX_MotorWire.3.2"), Is.Not.Null);
-            Assert.That(marker.Find("PSX_CompositeGrain.2"), Is.Not.Null);
-            Assert.That(marker.Find("PSX_CompositeWeave.Reverse.0"), Is.Null);
-            Assert.That(marker.Find("PSX_ServiceStencil"), Is.Not.Null);
+            Assert.That(marker.Find("PSX_ArmTruss.3"), Is.Null);
+            Assert.That(marker.Find("PSX_ArmTape.3"), Is.Null);
+            Assert.That(marker.Find("PSX_MotorAdapter.3"), Is.Null);
+            Assert.That(marker.Find("PSX_CameraPivot.Left"), Is.Not.Null);
+            Assert.That(marker.Find("PSX_XTConnector"), Is.Not.Null);
+            Assert.That(marker.Find("PSX_PowerLead.Red"), Is.Not.Null);
+            Assert.That(marker.Find("PSX_VtxBoard"), Is.Not.Null);
+            Assert.That(marker.Find("PSX_Receiver"), Is.Not.Null);
             Assert.That(marker.GetComponentsInChildren<Collider>(true), Is.Empty);
             Assert.That(triangles, Is.LessThan(8000));
+        }
+
+        private InstallablePart CreateVisualPart(string name, PartCategory category, string tag)
+        {
+            var definition = Track(PartDefinition.CreateTransient(
+                $"{name}.visual-test", name, category, new[] { tag }));
+            var root = Track(GameObject.CreatePrimitive(PrimitiveType.Cube));
+            root.name = name;
+            var part = root.AddComponent<InstallablePart>();
+            part.Initialize(definition, $"{name}.visual.instance");
+            return part;
         }
 
         [Test]

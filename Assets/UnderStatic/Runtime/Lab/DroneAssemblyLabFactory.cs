@@ -105,7 +105,7 @@ namespace UnderStatic.Lab
 
             var drone = new GameObject("WorkshopDrone");
             var assembly = drone.AddComponent<DroneAssemblyState>();
-            assembly.ConfigureRequirements(4, 4, 1, 1, 1);
+            assembly.ConfigureRequirements(4, 4, 1, 1, 1, 1, 1);
             CreateFrame(drone.transform, frameMaterial, darkMaterial);
             if (startDisassembled)
             {
@@ -155,10 +155,10 @@ namespace UnderStatic.Lab
 
             var arms = new[]
             {
-                new ArmLayout("front-left", new Vector3(-0.48f, 1.24f, 0.48f), false),
-                new ArmLayout("front-right", new Vector3(0.48f, 1.24f, 0.48f), false),
-                new ArmLayout("rear-left", new Vector3(-0.48f, 1.24f, 1.24f), true),
-                new ArmLayout("rear-right", new Vector3(0.48f, 1.24f, 1.24f), false)
+                new ArmLayout("front-left", new Vector3(-0.48f, 1.185f, 0.48f), false),
+                new ArmLayout("front-right", new Vector3(0.48f, 1.185f, 0.48f), false),
+                new ArmLayout("rear-left", new Vector3(-0.48f, 1.185f, 1.24f), true),
+                new ArmLayout("rear-right", new Vector3(0.48f, 1.185f, 1.24f), false)
             };
             var motorStagingPositions = new[]
             {
@@ -190,7 +190,7 @@ namespace UnderStatic.Lab
                     darkMaterial,
                     serviceableMaterial,
                     drone.transform,
-                    -0.011f);
+                    0.012f);
                 allSockets.Add(motorSocket);
 
                 var propellerSocketObject = InteractionLabFactory.CreatePrimitive(
@@ -266,12 +266,22 @@ namespace UnderStatic.Lab
                 allParts.Add(propeller);
             }
 
+            CreateFlightStackStations(
+                drone.transform,
+                assembly,
+                audioFeedback,
+                darkMaterial,
+                serviceableMaterial,
+                batteryLatchMaterial,
+                startDisassembled,
+                allParts,
+                allSockets);
             CreateBatteryStation(
                 drone.transform,
                 assembly,
                 audioFeedback,
                 frameMaterial,
-                batteryLatchMaterial,
+                darkMaterial,
                 deadBatteryMaterial,
                 batteryMaterial,
                 batteryRailMaterial,
@@ -495,17 +505,17 @@ namespace UnderStatic.Lab
                 "CenterPlate",
                 PrimitiveType.Cube,
                 parent,
-                new Vector3(0f, 1.16f, 0.86f),
-                new Vector3(0.58f, 0.09f, 0.46f),
+                new Vector3(0f, 1.145f, 0.86f),
+                new Vector3(0.56f, 0.035f, 0.42f),
                 frame);
             var endpoints = new[]
             {
-                new Vector3(-0.48f, 1.18f, 0.48f),
-                new Vector3(0.48f, 1.18f, 0.48f),
-                new Vector3(-0.48f, 1.18f, 1.24f),
-                new Vector3(0.48f, 1.18f, 1.24f)
+                new Vector3(-0.48f, 1.155f, 0.48f),
+                new Vector3(0.48f, 1.155f, 0.48f),
+                new Vector3(-0.48f, 1.155f, 1.24f),
+                new Vector3(0.48f, 1.155f, 1.24f)
             };
-            var center = new Vector3(0f, 1.18f, 0.86f);
+            var center = new Vector3(0f, 1.155f, 0.86f);
             foreach (var endpoint in endpoints)
             {
                 var direction = endpoint - center;
@@ -514,7 +524,7 @@ namespace UnderStatic.Lab
                     PrimitiveType.Cube,
                     parent,
                     (center + endpoint) * 0.5f,
-                    new Vector3(0.09f, 0.055f, direction.magnitude),
+                    new Vector3(0.085f, 0.035f, direction.magnitude),
                     dark);
                 arm.transform.rotation = Quaternion.Euler(
                     0f,
@@ -722,6 +732,222 @@ namespace UnderStatic.Lab
             return socket;
         }
 
+        private static void CreateFlightStackStations(
+            Transform drone,
+            DroneAssemblyState assembly,
+            AudioFeedbackSystem audio,
+            Material fixtureMaterial,
+            Material boardMaterial,
+            Material connectorMaterial,
+            bool startDisassembled,
+            ICollection<InstallablePart> parts,
+            ICollection<PartSocket> sockets)
+        {
+            var escDefinition = LoadDefinition(
+                "CompatibleEsc",
+                "esc.4in1.30x30",
+                "30x30 4-in-1 ESC",
+                PartCategory.Esc,
+                "electronics.esc.30x30",
+                0.91f,
+                0.018f);
+            var controllerDefinition = LoadDefinition(
+                "CompatibleFlightController",
+                "fc.f7.30x30",
+                "F7 Flight Controller",
+                PartCategory.FlightController,
+                "electronics.fc.30x30",
+                0.93f,
+                0.012f);
+            var escProfile = InstallationProfile.CreateTransient(
+                InstallationProcedureType.Fasteners,
+                0.2f,
+                22f,
+                0.035f,
+                0.68f,
+                fasteners: 4,
+                rotations: 2.1f);
+            var controllerProfile = InstallationProfile.CreateTransient(
+                InstallationProcedureType.Latch,
+                0.18f,
+                20f,
+                0.03f,
+                0.68f,
+                resistanceZone: 0.18f);
+
+            var escPosition = new Vector3(0f, 1.175f, 0.86f);
+            var escSocket = CreateFastenerSocket(
+                "EscStackSocket",
+                "drone.esc.center",
+                escPosition,
+                PartCategory.Esc,
+                "electronics.esc.30x30",
+                escProfile,
+                assembly,
+                audio,
+                fixtureMaterial,
+                connectorMaterial,
+                drone,
+                0.038f);
+            escSocket.SetCompatibilityStandards(CompatibilityStandardId.SharedEsc);
+            escSocket.SetInsertionAxis(Vector3.up);
+            sockets.Add(escSocket);
+
+            var controllerPosition = new Vector3(0f, 1.225f, 0.86f);
+            var controllerSocketObject = InteractionLabFactory.CreatePrimitive(
+                "FlightControllerSocket",
+                PrimitiveType.Cube,
+                drone,
+                controllerPosition,
+                new Vector3(0.19f, 0.012f, 0.19f),
+                fixtureMaterial);
+            controllerSocketObject.GetComponent<Renderer>().enabled = false;
+            foreach (var x in new[] { -0.078f, 0.078f })
+            foreach (var z in new[] { -0.078f, 0.078f })
+            {
+                var grommet = InteractionLabFactory.CreatePrimitive(
+                    "FlightControllerSoftMount",
+                    PrimitiveType.Cylinder,
+                    drone,
+                    controllerPosition + new Vector3(x, -0.018f, z),
+                    new Vector3(0.021f, 0.028f, 0.021f),
+                    connectorMaterial);
+                InteractionLabFactory.DisableCollider(grommet);
+            }
+            var harness = CreateStackHarness(
+                drone,
+                new Vector3(0.105f, 1.205f, 0.925f),
+                connectorMaterial,
+                fixtureMaterial);
+            var controllerSocket = controllerSocketObject.AddComponent<PartSocket>();
+            controllerSocket.Configure(
+                "drone.flight-controller.center",
+                new[] { PartCategory.FlightController },
+                new[] { "electronics.fc.30x30" },
+                controllerProfile,
+                assembly,
+                latch: harness,
+                feedback: audio,
+                standards: new[] { CompatibilityStandardId.SharedFlightController });
+            controllerSocket.SetInsertionAxis(Vector3.up);
+            controllerSocket.SetInstallationPrerequisite(escSocket);
+            escSocket.SetRemovalBlockers(controllerSocket);
+            sockets.Add(controllerSocket);
+
+            var esc = InteractionLabFactory.CreateComponentPart(
+                startDisassembled ? "Loose4In1Esc" : "Installed4In1Esc",
+                null,
+                startDisassembled ? new Vector3(0.34f, 1.1f, 0.22f) : escPosition,
+                PartCategory.Esc,
+                escDefinition,
+                boardMaterial,
+                "esc-4in1-installed");
+            var controller = InteractionLabFactory.CreateComponentPart(
+                startDisassembled ? "LooseFlightController" : "InstalledFlightController",
+                null,
+                startDisassembled ? new Vector3(0.62f, 1.1f, 0.22f) : controllerPosition,
+                PartCategory.FlightController,
+                controllerDefinition,
+                boardMaterial,
+                "flight-controller-installed");
+            if (startDisassembled)
+            {
+                esc.SetCondition(0.94f);
+                controller.SetCondition(0.95f);
+            }
+            else
+            {
+                InstallInitially(esc, escSocket, 0.91f, 1f);
+                InstallInitially(controller, controllerSocket, 0.93f, 1f);
+            }
+            parts.Add(esc);
+            parts.Add(controller);
+        }
+
+        private static Transform CreateStackHarness(
+            Transform parent,
+            Vector3 pivotPosition,
+            Material connectorMaterial,
+            Material ribbonMaterial)
+        {
+            var pivot = new GameObject("FlightControllerStackHarness");
+            pivot.transform.SetParent(parent, true);
+            pivot.transform.position = pivotPosition;
+            var cable = InteractionLabFactory.CreatePrimitive(
+                "StackHarnessCable",
+                PrimitiveType.Cube,
+                pivot.transform,
+                new Vector3(0f, -0.015f, 0f),
+                new Vector3(0.018f, 0.055f, 0.065f),
+                ribbonMaterial,
+                true);
+            var connectedPlug = InteractionLabFactory.CreatePrimitive(
+                "StackHarnessPlugConnected",
+                PrimitiveType.Cube,
+                pivot.transform,
+                new Vector3(-0.012f, 0.026f, 0f),
+                new Vector3(0.065f, 0.024f, 0.075f),
+                connectorMaterial,
+                true);
+            var loosePlug = InteractionLabFactory.CreatePrimitive(
+                "StackHarnessPlugLoose",
+                PrimitiveType.Cube,
+                pivot.transform,
+                new Vector3(0.026f, 0.018f, 0.008f),
+                new Vector3(0.065f, 0.024f, 0.075f),
+                connectorMaterial,
+                true);
+            loosePlug.transform.localRotation = Quaternion.Euler(0f, 18f, -22f);
+            InteractionLabFactory.DisableCollider(cable);
+            InteractionLabFactory.DisableCollider(connectedPlug);
+            InteractionLabFactory.DisableCollider(loosePlug);
+            return pivot.transform;
+        }
+
+        private static Transform CreateBatteryRetentionStrap(
+            Transform parent,
+            Vector3 pivotPosition,
+            Material material)
+        {
+            var pivot = new GameObject("BatteryRetentionStrap");
+            pivot.transform.SetParent(parent, true);
+            pivot.transform.position = pivotPosition;
+            foreach (var strap in new[] { (Name: "Front", Z: -0.105f), (Name: "Rear", Z: 0.105f) })
+            {
+                var top = InteractionLabFactory.CreatePrimitive(
+                    $"BatteryStrapSecured{strap.Name}Top",
+                    PrimitiveType.Cube,
+                    pivot.transform,
+                    new Vector3(0f, 0.14f, strap.Z),
+                    new Vector3(0.215f, 0.012f, 0.065f),
+                    material,
+                    true);
+                InteractionLabFactory.DisableCollider(top);
+                foreach (var side in new[] { -1f, 1f })
+                {
+                    var wrap = InteractionLabFactory.CreatePrimitive(
+                        $"BatteryStrapSecured{strap.Name}Side{(side < 0f ? "Left" : "Right")}",
+                        PrimitiveType.Cube,
+                        pivot.transform,
+                        new Vector3(side * 0.103f, 0.08f, strap.Z),
+                        new Vector3(0.014f, 0.128f, 0.065f),
+                        material,
+                        true);
+                    InteractionLabFactory.DisableCollider(wrap);
+                    var looseTail = InteractionLabFactory.CreatePrimitive(
+                        $"BatteryStrapLoose{strap.Name}{(side < 0f ? "Left" : "Right")}",
+                        PrimitiveType.Cube,
+                        pivot.transform,
+                        new Vector3(side * 0.165f, 0.014f, strap.Z),
+                        new Vector3(0.11f, 0.009f, 0.065f),
+                        material,
+                        true);
+                    InteractionLabFactory.DisableCollider(looseTail);
+                }
+            }
+            return pivot.transform;
+        }
+
         private static void CreateBatteryStation(
             Transform drone,
             DroneAssemblyState assembly,
@@ -739,7 +965,7 @@ namespace UnderStatic.Lab
             var definition = LoadDefinition(
                 "CompatibleBattery",
                 "battery.4s.01",
-                "4S Workshop Battery",
+                "4S LiPo Pack",
                 PartCategory.Battery,
                 "battery.slide-4s",
                 0.9f,
@@ -756,32 +982,23 @@ namespace UnderStatic.Lab
                 "BatteryTraySocket",
                 PrimitiveType.Cube,
                 drone,
-                new Vector3(0f, 1.29f, 0.88f),
-                new Vector3(0.2f, 0.045f, 0.28f),
+                new Vector3(0f, 1.33f, 0.88f),
+                new Vector3(0.2f, 0.025f, 0.33f),
                 fixtureMaterial);
-            foreach (var railX in new[] { -0.13f, 0.13f })
+            foreach (var padX in new[] { -0.16f, 0.16f })
             {
-                var rail = InteractionLabFactory.CreatePrimitive(
-                    "BatteryTrayRail",
+                var gripPad = InteractionLabFactory.CreatePrimitive(
+                    "BatteryAntiSlipPad",
                     PrimitiveType.Cube,
                     drone,
-                    new Vector3(railX, 1.34f, 0.88f),
-                    new Vector3(0.025f, 0.055f, 0.36f),
-                    railMaterial);
-                InteractionLabFactory.DisableCollider(rail);
+                    new Vector3(padX, 1.324f, 0.88f),
+                    new Vector3(0.09f, 0.008f, 0.3f),
+                    latchMaterial);
+                InteractionLabFactory.DisableCollider(gripPad);
             }
-
-            var connector = InteractionLabFactory.CreatePrimitive(
-                "BatteryConnector",
-                PrimitiveType.Cube,
+            var latch = CreateBatteryRetentionStrap(
                 drone,
-                new Vector3(0f, 1.34f, 1.045f),
-                new Vector3(0.16f, 0.06f, 0.035f),
-                railMaterial);
-            InteractionLabFactory.DisableCollider(connector);
-            var latch = InteractionLabFactory.CreateBatteryLatch(
-                drone,
-                new Vector3(-0.12f, 1.36f, 0.68f),
+                new Vector3(0f, 1.31f, 0.88f),
                 latchMaterial);
             var socket = socketObject.AddComponent<PartSocket>();
             socket.Configure(
@@ -792,8 +1009,8 @@ namespace UnderStatic.Lab
                 assembly,
                 latch: latch,
                 feedback: audio);
-            socket.SetInsertionAxis(Vector3.back);
-            socket.SetSeatedOffset(Vector3.up * 0.06f);
+            socket.SetInsertionAxis(Vector3.up);
+            socket.SetSeatedOffset(Vector3.up * 0.064f);
             sockets.Add(socket);
 
             if (startDisassembled)
@@ -1091,7 +1308,7 @@ namespace UnderStatic.Lab
 
             var assembly = clone.GetComponent<DroneAssemblyState>();
             assembly.ClearAll();
-            assembly.ConfigureRequirements(4, 4, 1, 1, 1);
+            assembly.ConfigureRequirements(4, 4, 1, 1, 1, 1, 1);
             var sockets = clone.GetComponentsInChildren<PartSocket>(true)
                 .OrderBy(socket => socket.LocalSocketId, StringComparer.Ordinal)
                 .ToArray();
@@ -1175,6 +1392,7 @@ namespace UnderStatic.Lab
                 rackTemplateDefinition.MonetaryValue,
                 PartMissionCapability.KamikazeWarhead);
             rack.Initialize(warheadDefinition, $"expendable-{sequence:00}-strike-rack-01");
+            PsxVisualFactory.UpdateStrikePayloadVisual(rack);
             var rackRuntime = rack.Runtime.Copy();
             rackRuntime.consumableCharges = 1;
             rack.RestoreRuntime(rackRuntime);
@@ -1209,7 +1427,7 @@ namespace UnderStatic.Lab
             }
             var assembly = clone.GetComponent<DroneAssemblyState>();
             assembly.ClearAll();
-            assembly.ConfigureRequirements(4, 4, 1, 1, 1);
+            assembly.ConfigureRequirements(4, 4, 1, 1, 1, 1, 1);
 
             var sockets = clone.GetComponentsInChildren<PartSocket>(true)
                 .OrderBy(socket => socket.LocalSocketId, StringComparer.Ordinal)
@@ -1322,6 +1540,8 @@ namespace UnderStatic.Lab
                 PartCategory.Propeller => CompatibilityStandardId.SurveyPropeller,
                 PartCategory.Camera => CompatibilityStandardId.SharedCamera,
                 PartCategory.Antenna => CompatibilityStandardId.SharedAntenna,
+                PartCategory.Esc => CompatibilityStandardId.SharedEsc,
+                PartCategory.FlightController => CompatibilityStandardId.SharedFlightController,
                 _ => default
             };
             var modifiers = source.Category switch
@@ -1386,7 +1606,7 @@ namespace UnderStatic.Lab
             var missing = new HashSet<InstallablePart> { missingMotor, missingBattery, missingPropeller };
 
             assembly.ClearAll();
-            assembly.ConfigureRequirements(4, 4, 1, 1, 1);
+            assembly.ConfigureRequirements(4, 4, 1, 1, 1, 1, 1);
             foreach (var socket in sockets)
             {
                 socket.ClearForRestore();
@@ -1471,6 +1691,8 @@ namespace UnderStatic.Lab
                 PartCategory.Propeller => CompatibilityStandardId.HeavyPropeller,
                 PartCategory.Camera => CompatibilityStandardId.SharedCamera,
                 PartCategory.Antenna => CompatibilityStandardId.SharedAntenna,
+                PartCategory.Esc => CompatibilityStandardId.SharedEsc,
+                PartCategory.FlightController => CompatibilityStandardId.SharedFlightController,
                 _ => default
             };
             var value = category switch
@@ -1537,7 +1759,7 @@ namespace UnderStatic.Lab
                 "StrikeRackSocket",
                 PrimitiveType.Cube,
                 drone,
-                new Vector3(0f, 1.04f, 0.86f),
+                new Vector3(0f, 1.14f, 0.86f),
                 new Vector3(0.24f, 0.045f, 0.28f),
                 socketMaterial,
                 true);

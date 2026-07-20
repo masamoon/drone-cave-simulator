@@ -20,7 +20,9 @@ namespace UnderStatic.Core
         Battery,
         Camera,
         Antenna,
-        StrikeRack
+        StrikeRack,
+        Esc,
+        FlightController
     }
 
     public static class InteractionStateRules

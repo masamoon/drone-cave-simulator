@@ -38,6 +38,8 @@ namespace UnderStatic.Parts
         public static readonly CompatibilityStandardId SharedCamera = new("utility.camera.shared");
         public static readonly CompatibilityStandardId SharedAntenna = new("utility.antenna.shared");
         public static readonly CompatibilityStandardId SharedStrikeRack = new("utility.strike-rack.shared");
+        public static readonly CompatibilityStandardId SharedEsc = new("electronics.esc.30x30");
+        public static readonly CompatibilityStandardId SharedFlightController = new("electronics.fc.30x30");
 
         public static CompatibilityStandardId FromLegacyTag(string legacyTag)
         {
@@ -49,6 +51,8 @@ namespace UnderStatic.Parts
                 "camera.rail" or "camera.micro-bracket" => SharedCamera,
                 "antenna.thread" or "antenna.keyed-connector" => SharedAntenna,
                 "strike-rack.rail" => SharedStrikeRack,
+                "electronics.esc.30x30" => SharedEsc,
+                "electronics.fc.30x30" => SharedFlightController,
                 _ => string.IsNullOrWhiteSpace(legacyTag)
                     ? default
                     : new CompatibilityStandardId($"legacy.{legacyTag}")

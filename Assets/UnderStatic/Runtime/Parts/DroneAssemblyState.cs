@@ -99,7 +99,9 @@ namespace UnderStatic.Parts
             int propellers,
             int batteries,
             int cameras,
-            int antennas)
+            int antennas,
+            int escs = 0,
+            int flightControllers = 0)
         {
             requiredCounts.Clear();
             SetRequirement(PartCategory.Motor, motors);
@@ -107,6 +109,8 @@ namespace UnderStatic.Parts
             SetRequirement(PartCategory.Battery, batteries);
             SetRequirement(PartCategory.Camera, cameras);
             SetRequirement(PartCategory.Antenna, antennas);
+            SetRequirement(PartCategory.Esc, escs);
+            SetRequirement(PartCategory.FlightController, flightControllers);
         }
 
         public bool TryRecordInstalled(string socketId, InstallablePart part)

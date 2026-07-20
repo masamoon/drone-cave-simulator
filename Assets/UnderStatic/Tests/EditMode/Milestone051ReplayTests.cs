@@ -74,6 +74,23 @@ namespace UnderStatic.Tests
         }
 
         [Test]
+        public void LiveFeedPlan_DoesNotClaimTargetOrEffectBeforeResolution()
+        {
+            var runtime = Runtime(SortieType.KamikazeStrike, MissionOutcome.None,
+                new Vector2(0.7f, 0.6f));
+            runtime.state = MissionRuntimeState.Active;
+            runtime.ordnanceConsumed = true;
+            runtime.breakdown.positiveIdentification = false;
+
+            var plan = MissionReplayPlan.CreateLive(runtime);
+
+            Assert.That(plan.StrikeType, Is.EqualTo(MissionReplayStrikeType.Kamikaze));
+            Assert.That(plan.ShowTarget, Is.False);
+            Assert.That(plan.ShowEngagement, Is.False);
+            Assert.That(plan.Classification, Does.Contain("unconfirmed"));
+        }
+
+        [Test]
         public void NoContactReplay_ShowsEmptyAimedPositionWithoutHiddenTruth()
         {
             var runtime = Runtime(SortieType.KamikazeStrike, MissionOutcome.NoContact, new Vector2(0.4f, 0.5f));

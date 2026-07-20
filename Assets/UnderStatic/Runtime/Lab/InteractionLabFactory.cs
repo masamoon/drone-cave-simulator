@@ -603,10 +603,12 @@ namespace UnderStatic.Lab
             var scale = category switch
             {
                 PartCategory.Propeller => new Vector3(0.065f, 0.045f, 0.065f),
-                PartCategory.Battery => new Vector3(0.13f, 0.075f, 0.21f),
+                PartCategory.Battery => new Vector3(0.18f, 0.105f, 0.31f),
                 PartCategory.Camera => new Vector3(0.12f, 0.1f, 0.09f),
                 PartCategory.Antenna => new Vector3(0.025f, 0.16f, 0.025f),
                 PartCategory.StrikeRack => new Vector3(0.12f, 0.055f, 0.18f),
+                PartCategory.Esc => new Vector3(0.225f, 0.02f, 0.185f),
+                PartCategory.FlightController => new Vector3(0.185f, 0.018f, 0.155f),
                 _ => Vector3.one * 0.1f
             };
             var partObject = CreatePrimitive(
@@ -664,6 +666,8 @@ namespace UnderStatic.Lab
                 PartCategory.Battery => "BatteryTraySocket",
                 PartCategory.Camera => "CameraBracketSocket",
                 PartCategory.Antenna => "AntennaConnectorSocket",
+                PartCategory.Esc => "EscStackSocket",
+                PartCategory.FlightController => "FlightControllerSocket",
                 _ => $"{category}Socket"
             };
         }
@@ -676,6 +680,8 @@ namespace UnderStatic.Lab
                 PartCategory.Camera => 0.11f,
                 PartCategory.Propeller => 0.018f,
                 PartCategory.Antenna => 0.015f,
+                PartCategory.Esc => 0.018f,
+                PartCategory.FlightController => 0.012f,
                 _ => 0.1f
             };
         }

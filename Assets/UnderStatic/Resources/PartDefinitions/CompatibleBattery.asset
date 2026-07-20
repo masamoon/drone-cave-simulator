@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: CompatibleBattery
   m_EditorClassIdentifier: UnderStatic.Runtime::UnderStatic.Parts.PartDefinition
   id: battery.compatible.01
-  displayName: 4S Slide Battery
+  displayName: 4S LiPo Pack
   category: 3
   compatibleSocketTags:
   - battery.slide-4s

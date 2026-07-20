@@ -98,7 +98,7 @@ The first milestone intentionally implements only one motor, one socket, one flo
 
 ## Prototype status
 
-The repository now contains a Unity `6000.4.8f1` Universal Render Pipeline project implemented through Milestone 6.1. Open `Assets/Scenes/SafeHouse.unity` for the current playable workshop: maintain modular drones, store whole chassis, trade persistent parts and salvage aircraft, and launch abstract daily sorties from the tactical map. Returning reusable sorties now create deterministic localized maintenance, while workshop launches, powered transmissions, motor tests, and repeated routes build persistent qualitative exposure. The physical transmitter can be silenced at the cost of lost-link recall or delayed strike confirmation. One authored remote cache supports short first-person setup, aircraft recovery, and limited-capacity salvage excursions while preserving the same drone identity across the complete workshop–field cycle. Resolved reports retain deterministic after-action reconstruction and the PSX-level low-poly presentation kit. The three lab scenes remain regression fixtures.
+The repository now contains a Unity `6000.4.8f1` Universal Render Pipeline project implemented through Milestone 6.1. Open `Assets/Scenes/SafeHouse.unity` for the current playable workshop: maintain modular drones, store whole chassis, trade persistent parts and salvage aircraft, and launch abstract daily sorties from the tactical map. Returning reusable sorties now create deterministic localized maintenance, while workshop launches, powered transmissions, motor tests, and repeated routes build persistent qualitative exposure. The physical transmitter can be silenced at the cost of lost-link recall or delayed strike confirmation. One authored remote cache supports short first-person setup, aircraft recovery, and limited-capacity salvage excursions while preserving the same drone identity across the complete workshop–field cycle. Active sorties expose an optional degraded first-person feed during final approach; resolved reports remain the authoritative outcome record. The three lab scenes remain regression fixtures.
 
 Controls use the checked-in Input System action asset:
 
@@ -121,8 +121,8 @@ Controls use the checked-in Input System action asset:
 - tactical map during Recon or a pre-release Grenade Drop — recall while the link is powered
 - tactical map remote controls — plan deployment, retrieve a cached aircraft, or recover a salvage cache
 - reopen the tactical map after recovery — inspect and acknowledge the deterministic report or end operations
-- on a resolved report, `VIEW RECONSTRUCTION` — generate the seeded topography as a temporary in-engine replay
-- in a reconstruction, `END RECONSTRUCTION` / `RETURN TO WORKSHOP` — restore the previous workshop camera and controls
+- during an active sortie's final approach — reopen the tactical map and select `OPEN DEGRADED LIVE FEED`
+- in the live feed, `LEAVE LIVE FEED` / `RETURN TO WORKSHOP` — restore the previous workshop camera and controls
 - `E` while aiming anywhere around the service-bay drone — enter focused drone service mode
 - `E` on the workbench battery charger — open its focused service view; drag a spent battery into the keyed charging dock and lift it out after charging
 - in service mode, middle-mouse drag — orbit the drone

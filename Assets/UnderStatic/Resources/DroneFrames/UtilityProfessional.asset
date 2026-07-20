@@ -38,6 +38,14 @@ MonoBehaviour:
     count: 1
     standard:
       value: utility.antenna.shared
+  - category: 7
+    count: 1
+    standard:
+      value: electronics.esc.30x30
+  - category: 8
+    count: 1
+    standard:
+      value: electronics.fc.30x30
   baseStats:
     speed: 0.54
     endurance: 0.696

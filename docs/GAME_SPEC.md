@@ -62,6 +62,17 @@ The core fantasy is:
 
 > We have three usable airframes, nine batteries, one good camera, and four units asking for help. What can I keep alive before the enemy notices us?
 
+Strike capability is built in the workshop, never purchased as a ready-to-use aircraft. The player acquires
+ordinary civilian drones, FPV kits, and mismatched donor components, strips away unsuitable assemblies, and
+converts the remaining airframe into a mission-specific one-way or reusable payload carrier. A "strike drone"
+is therefore an earned runtime configuration with visible workshop history, not a product category sold by the
+market.
+
+Converted aircraft should visibly retain evidence of their origin and alteration: incomplete retail shells,
+vacated mounting points, exposed boards, rerouted leads, improvised cradles, mixed fasteners, straps, tape, and
+field-made adapters. Payload preparation remains abstracted to mounting, retention, balance, compatibility, and
+functional testing; the game does not reproduce real-world explosive preparation, fuzing, or arming procedures.
+
 ---
 
 ## 4. Tone and setting
@@ -567,6 +578,14 @@ Initial derived statistics:
 
 A build does not need to be optimal to be mission-capable.
 
+The compact FPV electronics stack is assembled as distinct serviceable parts inside a carbon-plate frame held
+apart by visible metal standoffs. The lower four-in-one ESC is seated and secured first; the flight controller
+then seats on authored soft mounts and becomes installed only after the player plugs in its short keyed wiring
+harness. The connector moves only the final few centimetres into its board socket; it is not represented by a
+hinged cover or latch. Removing the ESC requires unplugging and removing the flight controller first. Boards,
+mounting rings, fasteners, motor pads, solder pads, ports, and wiring remain readable at the grounded low-poly
+target.
+
 ---
 
 ### 8.6 Inventory and storage
@@ -611,13 +630,22 @@ Core actions:
 - secure;
 - read basic status.
 
+Compact FPV batteries are soft rectangular LiPo bricks rather than proprietary slide cartridges. They rest on
+anti-slip pads on the structural carbon top plate and visibly carry thick red/black main leads with an XT-style
+connector plus a thinner balance-wire bundle and white balance plug. Two separate hook-and-loop straps pass
+around both the battery and top plate. Their side wraps must visibly connect the tightened top bands to the
+frame; when loosened, their tails lie flat against the plate instead of floating or hinging open. No battery
+hatch, proprietary rail, or hard-plastic latch is used.
+
 For the vertical slice, battery interaction follows after the motor framework is proven.
 
 ---
 
 ### 8.8 Mission system
 
-Missions are abstract simulations rather than piloted sequences.
+Missions are abstract simulations rather than piloted sequences. During the final approach, the player may
+optionally open a degraded first-person feed generated from the planned route and persistent battlefield.
+The feed is observational: it provides no direct flight control and never replaces deterministic resolution.
 
 Immutable sortie profiles define:
 
@@ -955,7 +983,8 @@ Create visible storage, condition, salvage, and cannibalization.
 
 ### Milestone 5
 
-Implement the persistent battlefield, player-planned reconnaissance and strike sorties, and after-action reconstruction.
+Implement the persistent battlefield, player-planned reconnaissance and strike sorties, and degraded
+final-approach live feeds.
 
 ### Milestone 6
 

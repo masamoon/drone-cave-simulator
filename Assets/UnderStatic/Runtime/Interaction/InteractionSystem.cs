@@ -244,6 +244,19 @@ namespace UnderStatic.Interaction
             {
                 InteractWithPart(occupiedSocket.OccupiedPart);
             }
+            else if (focused is LatchTarget retentionTarget)
+            {
+                var retentionSocket = retentionTarget.Socket;
+                if (retentionSocket?.LatchOpenedForExtraction == true
+                    && retentionSocket.OccupiedPart != null)
+                {
+                    InteractWithPart(retentionSocket.OccupiedPart);
+                }
+                else
+                {
+                    retentionTarget.Activate();
+                }
+            }
             else if (focused is IActivatable activatable)
             {
                 activatable.Activate();
