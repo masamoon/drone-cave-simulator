@@ -1977,10 +1977,14 @@ namespace UnderStatic.Lab
                     PrimitiveType.Cube,
                     root.transform,
                     new Vector3(side * 0.42f, 0f, 0f),
-                    new Vector3(0.18f, 0.18f, 1.85f),
+                    new Vector3(0.18f, 0.18f, 3.55f),
                     structureMaterial,
                     true);
                 InteractionLabFactory.DisableCollider(rail);
+                if (!scratchBuild)
+                {
+                    rail.GetComponent<Renderer>().enabled = false;
+                }
             }
             foreach (var end in new[] { -1f, 1f })
             {
@@ -1988,11 +1992,15 @@ namespace UnderStatic.Lab
                     $"PayloadCradleCrossbar.{end}",
                     PrimitiveType.Cube,
                     root.transform,
-                    new Vector3(0f, -0.12f, end * 0.62f),
+                    new Vector3(0f, -0.12f, end * 1.52f),
                     new Vector3(1.08f, 0.16f, 0.16f),
                     structureMaterial,
                     true);
                 InteractionLabFactory.DisableCollider(crossbar);
+                if (!scratchBuild)
+                {
+                    crossbar.GetComponent<Renderer>().enabled = false;
+                }
             }
 
             PartSocket payloadSocket = null;
@@ -2033,8 +2041,8 @@ namespace UnderStatic.Lab
             var rearLoose = new List<Renderer>();
             foreach (var strap in new[]
                      {
-                         (Name: "Forward", Z: -0.58f, Step: StrikePayloadMountStep.ForwardStrap),
-                         (Name: "Rear", Z: 0.58f, Step: StrikePayloadMountStep.RearStrap)
+                         (Name: "Forward", Z: -0.95f, Step: StrikePayloadMountStep.ForwardStrap),
+                         (Name: "Rear", Z: 0.95f, Step: StrikePayloadMountStep.RearStrap)
                      })
             {
                 var secured = InteractionLabFactory.CreatePrimitive(
@@ -2095,21 +2103,44 @@ namespace UnderStatic.Lab
 
             var harness = new GameObject("PayloadControlHarness");
             harness.transform.SetParent(root.transform, false);
-            harness.transform.localPosition = new Vector3(-0.56f, -0.08f, 0.72f);
-            var cable = InteractionLabFactory.CreatePrimitive(
-                "PayloadHarnessCable",
+            harness.transform.localPosition = new Vector3(-0.56f, -0.08f, 1.48f);
+            var harnessCableMaterial = InteractionLabFactory.CreateMaterial(
+                "Payload Harness Cable",
+                new Color(0.055f, 0.07f, 0.065f));
+            var harnessSocket = InteractionLabFactory.CreatePrimitive(
+                "PayloadHarnessBulkheadSocket",
                 PrimitiveType.Cube,
                 harness.transform,
-                new Vector3(0f, 0.22f, 0f),
-                new Vector3(0.08f, 0.48f, 0.08f),
+                Vector3.zero,
+                new Vector3(0.24f, 0.2f, 0.22f),
                 retentionMaterial,
                 true);
-            InteractionLabFactory.DisableCollider(cable);
+            InteractionLabFactory.DisableCollider(harnessSocket);
+            var connectedCable = InteractionLabFactory.CreatePrimitive(
+                "PayloadHarnessCableConnected",
+                PrimitiveType.Cube,
+                harness.transform,
+                new Vector3(0.15f, 0.08f, 0f),
+                new Vector3(0.14f, 0.36f, 0.14f),
+                harnessCableMaterial,
+                true);
+            connectedCable.transform.localRotation = Quaternion.Euler(0f, 0f, -62f);
+            InteractionLabFactory.DisableCollider(connectedCable);
+            var looseCable = InteractionLabFactory.CreatePrimitive(
+                "PayloadHarnessCableLoose",
+                PrimitiveType.Cube,
+                harness.transform,
+                new Vector3(-0.09f, 0.04f, 0f),
+                new Vector3(0.14f, 0.22f, 0.14f),
+                harnessCableMaterial,
+                true);
+            looseCable.transform.localRotation = Quaternion.Euler(0f, 0f, 66f);
+            InteractionLabFactory.DisableCollider(looseCable);
             var connectedPlug = InteractionLabFactory.CreatePrimitive(
                 "PayloadHarnessPlugConnected",
                 PrimitiveType.Cube,
                 harness.transform,
-                new Vector3(0f, 0.48f, 0f),
+                new Vector3(0.32f, 0.16f, 0f),
                 new Vector3(0.28f, 0.16f, 0.24f),
                 retentionMaterial,
                 true);
@@ -2118,17 +2149,17 @@ namespace UnderStatic.Lab
                 "PayloadHarnessPlugLoose",
                 PrimitiveType.Cube,
                 harness.transform,
-                new Vector3(0.24f, 0.24f, 0.05f),
+                new Vector3(-0.18f, 0.08f, 0f),
                 new Vector3(0.28f, 0.16f, 0.24f),
                 retentionMaterial,
                 true);
-            loosePlug.transform.localRotation = Quaternion.Euler(0f, 18f, -28f);
+            loosePlug.transform.localRotation = Quaternion.Euler(0f, 18f, 18f);
             InteractionLabFactory.DisableCollider(loosePlug);
             var harnessTargetObject = new GameObject("PayloadControlHarnessTarget");
             harnessTargetObject.transform.SetParent(harness.transform, false);
-            harnessTargetObject.transform.localPosition = new Vector3(0.12f, 0.34f, 0.02f);
+            harnessTargetObject.transform.localPosition = new Vector3(0.22f, 0.38f, 0.02f);
             var harnessTargetCollider = harnessTargetObject.AddComponent<BoxCollider>();
-            harnessTargetCollider.size = new Vector3(0.58f, 0.54f, 0.48f);
+            harnessTargetCollider.size = new Vector3(0.9f, 0.9f, 0.48f);
             var harnessTarget = harnessTargetObject.AddComponent<StrikePayloadMountStepTarget>();
             harnessTarget.Configure(null, StrikePayloadMountStep.ControlHarness);
             targets.Add(harnessTarget);
@@ -2146,8 +2177,16 @@ namespace UnderStatic.Lab
                 forwardLoose,
                 rearSecured,
                 rearLoose,
-                new[] { connectedPlug.GetComponent<Renderer>() },
-                new[] { loosePlug.GetComponent<Renderer>() },
+                new[]
+                {
+                    connectedCable.GetComponent<Renderer>(),
+                    connectedPlug.GetComponent<Renderer>()
+                },
+                new[]
+                {
+                    looseCable.GetComponent<Renderer>(),
+                    loosePlug.GetComponent<Renderer>()
+                },
                 payloadSocket);
 
             if (scratchBuild)

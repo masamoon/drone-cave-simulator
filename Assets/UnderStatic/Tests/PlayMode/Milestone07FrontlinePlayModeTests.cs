@@ -84,9 +84,28 @@ namespace UnderStatic.Tests.PlayMode
                 .Single(part => part.name == "FieldStrikeRack");
             var payloadSocket = rack.GetComponentsInChildren<PartSocket>(true)
                 .Single(socket => socket.AcceptedPrimaryCategory == PartCategory.Payload);
+            var rackRail = rack.transform.Find("PSX_PartDetail/RackRail.-1");
+            var looseHarnessCable = rack.transform.Find(
+                "PayloadMountFunctional/PayloadControlHarness/PayloadHarnessCableLoose")
+                .GetComponent<Renderer>();
+            var looseHarnessPlug = rack.transform.Find(
+                "PayloadMountFunctional/PayloadControlHarness/PayloadHarnessPlugLoose")
+                .GetComponent<Renderer>();
+            var harnessSocket = rack.transform.Find(
+                "PayloadMountFunctional/PayloadControlHarness/PayloadHarnessBulkheadSocket")
+                .GetComponent<Renderer>();
 
             Assert.That(payloadSocket.InstallationPrerequisite?.AcceptedPrimaryCategory,
                 Is.EqualTo(PartCategory.StrikeRack));
+            Assert.That(rackRail.GetComponent<MeshFilter>().sharedMesh.bounds.size.z,
+                Is.GreaterThanOrEqualTo(3.7f));
+            Assert.That(rack.transform.Find("PSX_PartDetail/RackAirframeMountingBridge.-1"), Is.Not.Null);
+            Assert.That(rack.transform.Find("PSX_PartDetail/RackAirframeMountingBridge.1"), Is.Not.Null);
+            Assert.That(rack.transform.Find("PayloadMountFunctional/PayloadCradleRail.-1")
+                .GetComponent<Renderer>().enabled, Is.False);
+            Assert.That(looseHarnessCable.bounds.Intersects(looseHarnessPlug.bounds), Is.True);
+            Assert.That(looseHarnessCable.bounds.Intersects(harnessSocket.bounds), Is.True);
+            Assert.That(payload.transform.Find("PSX_PartDetail/PayloadHarnessPortFlange"), Is.Not.Null);
             var serviceDrone = Object.FindAnyObjectByType<FleetSystem>().ServiceDrone.transform;
             var originalPosition = serviceDrone.position;
             var originalRotation = serviceDrone.rotation;

@@ -646,22 +646,29 @@ namespace UnderStatic.Visuals
             {
                 CreateMesh($"RackRail.{side}", detail, new Vector3(side * 0.58f, 0.16f, 0f),
                     Quaternion.identity, Vector3.one,
-                    kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.18f, 0.22f, 2.15f), 0.045f)),
+                    kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.18f, 0.22f, 3.75f), 0.045f)),
                     composite);
             }
             for (var end = -1; end <= 1; end += 2)
             {
-                CreateMesh($"RackCrossbar.{end}", detail, new Vector3(0f, 0.12f, end * 0.82f),
+                CreateMesh($"RackCrossbar.{end}", detail, new Vector3(0f, 0.12f, end * 1.62f),
                     Quaternion.identity, Vector3.one,
                     kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(1.45f, 0.2f, 0.2f), 0.045f)),
                     metal);
             }
             for (var saddle = -1; saddle <= 1; saddle += 2)
             {
-                CreateMesh($"RackSaddle.{saddle}", detail, new Vector3(0f, -0.08f, saddle * 0.58f),
+                CreateMesh($"RackSaddle.{saddle}", detail, new Vector3(0f, -0.08f, saddle * 0.95f),
                     Quaternion.identity, Vector3.one,
                     kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(1.18f, 0.2f, 0.28f), 0.045f)),
                     rubber);
+            }
+            for (var mount = -1; mount <= 1; mount += 2)
+            {
+                CreateMesh($"RackAirframeMountingBridge.{mount}", detail,
+                    new Vector3(0f, 0.82f, mount * 0.33f), Quaternion.identity, Vector3.one,
+                    kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(1.45f, 0.18f, 0.28f), 0.045f)),
+                    painted);
             }
 
             // Charge-based legacy fixtures keep their old sealed silhouette. Safe House racks never show it.
@@ -681,8 +688,8 @@ namespace UnderStatic.Visuals
 
             var spent = new GameObject("SpentPayloadMarker").transform;
             spent.SetParent(detail, false);
-            CreateMesh("EmptyCradleTag", spent, new Vector3(0f, -0.18f, 0f), Quaternion.identity, Vector3.one,
-                kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.72f, 0.08f, 0.34f), 0.025f)), label);
+            CreateMesh("EmptyCradleTag", spent, new Vector3(0f, -0.02f, -1.62f), Quaternion.identity, Vector3.one,
+                kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.72f, 0.08f, 0.16f), 0.025f)), label);
         }
 
         private static void CreateSealedPayloadVisual(Transform detail, PsxVisualKit kit)
@@ -713,9 +720,12 @@ namespace UnderStatic.Visuals
                     Quaternion.identity, Vector3.one,
                     kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.72f, 0.08f, 0.22f), 0.025f)), rubber);
             }
-            CreateMesh("PayloadHarnessPort", detail, new Vector3(-0.42f, 0.08f, 1.12f),
+            CreateMesh("PayloadHarnessPortFlange", detail, new Vector3(-0.43f, 0.08f, 1.12f),
                 Quaternion.identity, Vector3.one,
-                kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.22f, 0.2f, 0.28f), 0.04f)), metal);
+                kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.14f, 0.3f, 0.42f), 0.035f)), painted);
+            CreateMesh("PayloadHarnessPort", detail, new Vector3(-0.51f, 0.08f, 1.12f),
+                Quaternion.identity, Vector3.one,
+                kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.16f, 0.18f, 0.25f), 0.035f)), rubber);
         }
 
         public static Transform[] CreateSalvageIntakeCrate(Transform parent, PsxVisualKit kit)
