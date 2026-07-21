@@ -124,6 +124,7 @@ namespace UnderStatic.Interaction
         private string previousActionMap;
         private InputAction pointAction;
         private InputAction deltaAction;
+        private InputAction interactAction;
         private InputAction tightenAction;
         private InputAction loosenAction;
         private InputAction orbitAction;
@@ -548,7 +549,12 @@ namespace UnderStatic.Interaction
             draggedPart.SetControlledPhysics();
             dragIsThreeDimensional = true;
             var ray = serviceCamera.ScreenPointToRay(ToScreenPosition(guiPointer));
-            draggedPart.transform.position = ray.GetPoint(serviceDragDistance);
+            var orientationSocket = FindUniqueAvailableSocket(draggedPart);
+            draggedPart.transform.SetPositionAndRotation(
+                ray.GetPoint(serviceDragDistance),
+                orientationSocket != null
+                    ? orientationSocket.transform.rotation
+                    : draggedPart.transform.rotation);
             serviceStatus = $"Guide the 3D {draggedPart.Definition.DisplayName} into a highlighted socket";
             return true;
         }
@@ -947,6 +953,19 @@ namespace UnderStatic.Interaction
                 }
             }
 
+            if (interactAction?.WasPressedThisFrame() == true)
+            {
+                if (hovered is StrikePayloadMountStepTarget payloadStep)
+                {
+                    payloadStep.Activate();
+                    serviceStatus = payloadStep.InteractionPrompt;
+                }
+                else
+                {
+                    BeginWorldAction(ResolveHoveredSocket());
+                }
+            }
+
             if (loosenAction?.WasPressedThisFrame() == true)
             {
                 if (hovered is FastenerTarget fastener)
@@ -1016,7 +1035,10 @@ namespace UnderStatic.Interaction
             }
 
             var part = socket.OccupiedPart;
-            if (part.Runtime.currentState == InteractionState.Seated && socket.ReadyForExtraction)
+            if (part.Runtime.currentState == InteractionState.Seated
+                && socket.ReadyForExtraction
+                && (socket.ProcedureType != InstallationProcedureType.Latch
+                    || socket.LatchOpenedForExtraction))
             {
                 TryExtractPart(part);
                 return;
@@ -1217,6 +1239,29 @@ namespace UnderStatic.Interaction
             }
 
             return nearest;
+        }
+
+        private PartSocket FindUniqueAvailableSocket(InstallablePart part)
+        {
+            PartSocket unique = null;
+            foreach (var candidate in sockets)
+            {
+                if (candidate == null
+                    || !candidate.gameObject.activeInHierarchy
+                    || !candidate.CanAccept(part))
+                {
+                    continue;
+                }
+
+                if (unique != null)
+                {
+                    return null;
+                }
+
+                unique = candidate;
+            }
+
+            return unique;
         }
 
         private void SetHovered(IInteractable next)
@@ -1672,6 +1717,7 @@ namespace UnderStatic.Interaction
             var actions = playerInput?.actions;
             pointAction = actions?.FindAction("Service/Point");
             deltaAction = actions?.FindAction("Service/Delta");
+            interactAction = actions?.FindAction("Service/Interact");
             tightenAction = actions?.FindAction("Service/Tighten");
             loosenAction = actions?.FindAction("Service/Loosen");
             orbitAction = actions?.FindAction("Service/Orbit");

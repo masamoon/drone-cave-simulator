@@ -98,7 +98,13 @@ namespace UnderStatic.Lab
                 readyAnchorObject.transform,
                 scrapRoot.transform);
 
-            foreach (var spareName in new[] { "SpareServiceableMotor", "SpareChargedBattery", "FieldStrikeRack" })
+            foreach (var spareName in new[]
+                     {
+                         "SpareServiceableMotor",
+                         "SpareChargedBattery",
+                         "FieldStrikeRack",
+                         "FieldSealedPayload"
+                     })
             {
                 var spare = parts.FirstOrDefault(part => part != null && part.name == spareName);
                 if (spare != null)

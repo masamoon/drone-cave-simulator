@@ -139,6 +139,76 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(Quaternion.Angle(serviceDrone.rotation, originalRotation), Is.LessThan(0.01f));
         }
 
+        [UnityTest]
+        public IEnumerator PayloadDragAlignsWithRackAndFailedDropReturnsToInventory()
+        {
+            SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var service = Object.FindObjectsByType<DroneServiceModeController>(
+                    FindObjectsInactive.Include, FindObjectsSortMode.None)
+                .Single(controller => controller.CanShowInstalledComponents);
+            var inventory = Object.FindAnyObjectByType<InventorySystem>();
+            var payload = Object.FindObjectsByType<InstallablePart>(
+                    FindObjectsInactive.Include, FindObjectsSortMode.None)
+                .Single(part => part.name == "FieldSealedPayload");
+            var rack = Object.FindObjectsByType<InstallablePart>(
+                    FindObjectsInactive.Include, FindObjectsSortMode.None)
+                .Single(part => part.name == "FieldStrikeRack");
+            var serviceDrone = Object.FindAnyObjectByType<FleetSystem>().ServiceDrone.transform;
+            var rackSocket = serviceDrone.GetComponentsInChildren<PartSocket>(true)
+                .Single(socket => socket.AcceptedPrimaryCategory == PartCategory.StrikeRack);
+            var payloadSocket = rack.GetComponentsInChildren<PartSocket>(true)
+                .Single(socket => socket.AcceptedPrimaryCategory == PartCategory.Payload);
+            var partsStorage = inventory.FindLocation(StorageLocationId.SafeHouseParts);
+
+            Assert.That(partsStorage.Contains(payload), Is.True,
+                $"Payload location: {payload.Runtime.storageLocation}; " +
+                $"stored occupants: {string.Join(", ", partsStorage.Occupants.Where(part => part != null).Select(part => part.name))}");
+            Assert.That(payload.Runtime.storageLocation, Is.EqualTo(StorageLocationId.SafeHouseParts));
+            Assert.That(service.EnterServiceMode(), Is.True, service.ServiceStatus);
+            Assert.That(service.SetPayloadBayView(true), Is.True);
+            Assert.That(service.TryInstallPart(rack, rackSocket), Is.True, service.ServiceStatus);
+            for (var index = 0; index < rackSocket.FastenerProgress.Count; index++)
+            {
+                Assert.That(rackSocket.ApplyTool(
+                    index,
+                    FastenerDriveDirection.Tighten,
+                    100f), Is.True);
+            }
+
+            Assert.That(rack.Runtime.currentState, Is.EqualTo(InteractionState.Installed));
+            Assert.That(payloadSocket.CanAccept(payload), Is.True);
+            var socketScreen = Camera.main.WorldToScreenPoint(payloadSocket.SeatedPosition);
+            var socketPointer = new Vector2(socketScreen.x, Screen.height - socketScreen.y);
+            Assert.That(service.BeginServiceDrag(payload), Is.True);
+            Assert.That(service.PromoteServiceDragToWorld(socketPointer), Is.True);
+            Assert.That(Quaternion.Angle(payload.transform.rotation, payloadSocket.transform.rotation),
+                Is.LessThan(0.01f));
+
+            Assert.That(service.ReleaseServiceDrag(new Vector2(-1000f, -1000f)), Is.False);
+            Assert.That(partsStorage.Contains(payload), Is.True);
+            Assert.That(payload.Runtime.storageLocation, Is.EqualTo(StorageLocationId.SafeHouseParts));
+            Assert.That(payload.Runtime.currentState, Is.EqualTo(InteractionState.Loose));
+
+            Assert.That(service.BeginServiceDrag(payload), Is.True);
+            Assert.That(service.PromoteServiceDragToWorld(socketPointer), Is.True);
+            for (var attempt = 0; attempt < 30 && service.DraggedPart != null; attempt++)
+            {
+                service.UpdateServiceDrag(socketPointer, 0.1f);
+            }
+
+            Assert.That(service.DraggedPart, Is.Null, service.ServiceStatus);
+            Assert.That(payloadSocket.OccupiedPart, Is.SameAs(payload));
+            Assert.That(payload.Runtime.currentState, Is.EqualTo(InteractionState.Installed));
+            Assert.That(payloadSocket.ReleaseChargingDock(), Is.True);
+            Assert.That(service.TryExtractPart(payload), Is.True, service.ServiceStatus);
+            Assert.That(partsStorage.Contains(payload), Is.True);
+            Assert.That(payload.Runtime.storageLocation, Is.EqualTo(StorageLocationId.SafeHouseParts));
+            service.ExitServiceMode();
+        }
+
         private static float ActiveVisualMinimumY(Transform target) =>
             target.GetComponentsInChildren<Renderer>(false)
                 .Where(renderer => renderer.enabled && renderer.gameObject.activeInHierarchy)

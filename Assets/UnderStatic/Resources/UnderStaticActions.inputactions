@@ -547,6 +547,15 @@
                     "initialStateCheck": true
                 },
                 {
+                    "name": "Interact",
+                    "type": "Button",
+                    "id": "39323fa2-418a-45a8-ac8e-ead4baf12d4f",
+                    "expectedControlType": "Button",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
                     "name": "Tighten",
                     "type": "Button",
                     "id": "7b263a2a-97de-4763-b8a1-1f2570667935",
@@ -611,6 +620,17 @@
                 }
             ],
             "bindings": [
+                {
+                    "name": "",
+                    "id": "c8142c96-d8cb-475c-9a84-026736ecee16",
+                    "path": "<Keyboard>/e",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "Keyboard&Mouse",
+                    "action": "Interact",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
                 {
                     "name": "",
                     "id": "90eb2628-6fa9-4222-be31-81840897c533",

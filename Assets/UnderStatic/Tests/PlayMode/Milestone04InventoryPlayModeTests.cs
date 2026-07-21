@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 using UnderStatic.Core;
 using UnderStatic.Fleet;
@@ -247,6 +248,41 @@ namespace UnderStatic.Tests.PlayMode
             strap.Activate();
             Assert.That(socket.LatchClosed, Is.True);
             Assert.That(replacement.Runtime.currentState, Is.EqualTo(InteractionState.Installed));
+        }
+
+        [UnityTest]
+        public IEnumerator FreshlySeatedBatteryWorldActionSecuresBeforeExtraction()
+        {
+            SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var service = GameObject.Find("DroneServiceModeControl").GetComponent<DroneServiceModeController>();
+            var serviceDrone = Object.FindAnyObjectByType<FleetSystem>().ServiceDrone;
+            var socket = serviceDrone.Sockets.Single(candidate =>
+                candidate.AcceptedPrimaryCategory == PartCategory.Battery);
+            var installedBattery = socket.OccupiedPart;
+            var replacement = GameObject.Find("SpareChargedBattery").GetComponent<InstallablePart>();
+
+            Assert.That(socket.ToggleLatch(), Is.True);
+            Assert.That(service.TryExtractPart(installedBattery), Is.True, service.ServiceStatus);
+            Assert.That(service.TryInstallPart(replacement, socket), Is.True, service.ServiceStatus);
+            Assert.That(replacement.Runtime.currentState, Is.EqualTo(InteractionState.Seated));
+            Assert.That(socket.LatchOpenedForExtraction, Is.False);
+            var beginWorldAction = typeof(DroneServiceModeController).GetMethod(
+                "BeginWorldAction",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(beginWorldAction, Is.Not.Null);
+            beginWorldAction.Invoke(service, new object[] { socket });
+            Assert.That(replacement.Runtime.currentState, Is.EqualTo(InteractionState.Installed));
+            Assert.That(socket.LatchClosed, Is.True);
+            Assert.That(socket.OccupiedPart, Is.SameAs(replacement));
+
+            Assert.That(socket.ToggleLatch(), Is.True);
+            beginWorldAction.Invoke(service, new object[] { socket });
+            Assert.That(socket.OccupiedPart, Is.Null);
+            Assert.That(replacement.Runtime.currentState, Is.EqualTo(InteractionState.Loose));
+            yield return null;
         }
 
         [UnityTest]

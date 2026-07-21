@@ -161,6 +161,8 @@ namespace UnderStatic.Tests.EditMode
             Assert.That(actions, Is.Not.Null);
             var service = actions.FindActionMap("Service", true);
 
+            Assert.That(service.FindAction("Interact", true).bindings[0].effectivePath,
+                Is.EqualTo("<Keyboard>/e"));
             Assert.That(service.FindAction("Tighten", true).bindings[0].effectivePath,
                 Is.EqualTo("<Mouse>/leftButton"));
             Assert.That(service.FindAction("Loosen", true).bindings[0].effectivePath,
