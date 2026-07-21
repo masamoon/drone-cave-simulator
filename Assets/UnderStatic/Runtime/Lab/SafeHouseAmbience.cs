@@ -6,27 +6,13 @@ namespace UnderStatic.Lab
     public sealed class SafeHouseAmbience : MonoBehaviour
     {
         private const int SampleRate = 22050;
-        private AudioClip rainClip;
         private AudioClip generatorClip;
-        private AudioSource rainSource;
         private AudioSource generatorSource;
 
-        public bool IsRunning => rainSource != null
-            && rainSource.isPlaying
-            && generatorSource != null
-            && generatorSource.isPlaying;
+        public bool IsRunning => generatorSource != null && generatorSource.isPlaying;
 
         public void Configure(Vector3 generatorPosition)
         {
-            rainSource = gameObject.AddComponent<AudioSource>();
-            rainSource.name = "Rain on concrete";
-            rainSource.loop = true;
-            rainSource.playOnAwake = false;
-            rainSource.spatialBlend = 0f;
-            rainSource.volume = 0.075f;
-            rainClip = CreateRainClip();
-            rainSource.clip = rainClip;
-
             var generatorObject = new GameObject("Generator Hum Source");
             generatorObject.transform.SetParent(transform);
             generatorObject.transform.position = generatorPosition;
@@ -41,45 +27,15 @@ namespace UnderStatic.Lab
             generatorClip = CreateGeneratorClip();
             generatorSource.clip = generatorClip;
 
-            rainSource.Play();
             generatorSource.Play();
         }
 
         private void OnDestroy()
         {
-            if (rainClip != null)
-            {
-                Destroy(rainClip);
-            }
-
             if (generatorClip != null)
             {
                 Destroy(generatorClip);
             }
-        }
-
-        private static AudioClip CreateRainClip()
-        {
-            var samples = new float[SampleRate * 4];
-            var random = new System.Random(7301);
-            var filteredNoise = 0f;
-            var patter = 0f;
-            for (var index = 0; index < samples.Length; index++)
-            {
-                var white = (float)(random.NextDouble() * 2.0 - 1.0);
-                filteredNoise = filteredNoise * 0.86f + white * 0.14f;
-                patter *= 0.93f;
-                if (random.NextDouble() < 0.0018)
-                {
-                    patter += (float)random.NextDouble() * 0.75f;
-                }
-
-                samples[index] = Mathf.Clamp(filteredNoise * 0.34f + patter, -1f, 1f);
-            }
-
-            var clip = AudioClip.Create("Safe house rain", samples.Length, 1, SampleRate, false);
-            clip.SetData(samples, 0);
-            return clip;
         }
 
         private static AudioClip CreateGeneratorClip()

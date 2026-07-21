@@ -378,6 +378,8 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(player.transform.position.z, Is.EqualTo(-2.05f).Within(0.05f));
             Assert.That(ambience, Is.Not.Null);
             Assert.That(ambience.IsRunning, Is.True);
+            Assert.That(ambience.GetComponentsInChildren<AudioSource>()
+                .Any(source => source.name == "Rain on concrete"), Is.False);
             Assert.That(assembly, Is.Not.Null);
             Assert.That(assembly.InstalledPartCount, Is.EqualTo(13));
             Assert.That(Object.FindObjectsByType<InstallablePart>().Length, Is.EqualTo(60));
