@@ -139,6 +139,8 @@ Important resources should have a visible physical presence.
 
 A quantity such as “four motors” should be represented by four motors in a parts tray, with UI used as clarification rather than the primary representation.
 
+Loose recoverable parts in the workshop can be transferred into physical parts storage. The safe-house exchange keeps field-grade basic build components continuously available so a new drone can always be assembled when the player has sufficient funds; higher-grade, damaged, and complete-airframe offers may remain limited or rotating stock.
+
 ---
 
 ### 5.2 Low complexity, high tactility
@@ -973,55 +975,49 @@ The MVP and first vertical slice do not include:
 
 ## 14. Development strategy
 
-Build the game through isolated proof milestones.
+Milestones 1–7 established the current foundation: tactile component service, complete drone assemblies,
+physical ownership and fleet storage, the market, persistent sorties, return consequences, workshop exposure,
+field operations, and the experimental frontline loop. Their documents remain implementation history and
+regression contracts rather than the active forward roadmap.
 
-### Milestone 1
+### Milestone 8 — Sustainable Workshop Economy
 
-One motor can be:
+Tune salvage, market stock, part availability, prices, rewards, and losses until repairing, stripping, buying,
+selling, and holding equipment are all legible decisions. A bad sortie must hurt without creating an
+unrecoverable economic dead end. See `MILESTONE_08.md`.
 
-- picked up;
-- guided into one compatible socket;
-- seated;
-- secured with a floating screwdriver;
-- tested;
-- removed;
-- saved and loaded.
+### Milestone 9 — Discovery and Game Over
 
-### Milestone 2
+Turn the existing workshop-risk endpoint into one authored discovery incident and a complete game-over flow.
+The player receives readable warnings and a final prevention opportunity before failure. See `MILESTONE_09.md`.
 
-Generalize the interaction framework to:
+### Milestone 10 — Functional Hideout Upgrades
 
-- propeller;
-- battery;
-- camera;
-- antenna.
+Let the player spend earned resources on a small set of physically visible workshop improvements that change
+storage, turnaround, or concealment capability. This is functional progression, not freeform decoration. See
+`MILESTONE_10.md`.
 
-### Milestone 3
+### Milestone 11 — Visual Identity and Readability
 
-Create complete drone assembly state and derived statistics.
+Turn the existing grounded low-poly and PSX-inspired foundation into a deliberate, recognizable visual language
+for the workshop, drones, tools, functional props, and interface. Readability of interaction state and material
+function takes priority over decorative detail. See `MILESTONE_11.md`.
 
-### Milestone 4
+### Milestone 12 — Battlefield Presentation
 
-Create visible storage, condition, salvage, and cannibalization.
+Upgrade the tactical map and degraded final-approach feed so terrain, frontline pressure, intelligence age,
+routes, contacts, and outcomes are readable and visually compelling without implying direct flight or hidden
+knowledge. See `MILESTONE_12.md`.
 
-### Milestone 5
+### Milestone 13 — Sleep and Day Transition
 
-Implement the persistent battlefield, player-planned reconnaissance and strike sorties, and degraded
-final-approach live feeds.
+Replace terminal-driven day advancement with an authored return to the living corner. The player ends the day by
+sleeping in the cot, sees a concise transition, and wakes into the deterministically advanced workshop state. See
+`MILESTONE_13.md`.
 
-### Milestone 6
-
-Implement workshop exposure, transmitter tradeoffs, warning states, and one compact remote deployment/salvage excursion loop.
-
-### Milestone 7
-
-Implement one authored discovery sequence.
-
-### Milestone 8
-
-Connect systems into Road Watch.
-
-Do not proceed to a milestone until the previous system is stable and subjectively acceptable.
+The detailed document for the active milestone is binding. Earlier milestone documents provide regression
+coverage but do not authorize additional expansion. Do not proceed until the active milestone is stable,
+validated in Play Mode, and subjectively acceptable.
 
 ---
 

@@ -79,6 +79,28 @@ namespace UnderStatic.Tests.EditMode
         }
 
         [Test]
+        public void WorldLoosePart_CanTransferDirectlyIntoPhysicalInventoryStorage()
+        {
+            var parts = CreateLocation(
+                "Parts",
+                StorageLocationId.SafeHouseParts,
+                StorageLocationKind.Parts,
+                1,
+                PartCategory.Motor);
+            var motor = CreatePart("floor.motor", PartCategory.Motor, 1f, 1f);
+            var inventory = CreateInventory(new[] { motor }, new[] { parts });
+            var interactionObject = CreateObject("Interaction");
+            var interaction = interactionObject.AddComponent<InteractionSystem>();
+            interaction.ConfigureInventory(inventory);
+
+            Assert.That(motor.Runtime.storageLocation, Is.EqualTo(StorageLocationId.WorkshopLoose));
+            Assert.That(interaction.TryTransferPartToInventory(motor), Is.True);
+            Assert.That(parts.Contains(motor), Is.True);
+            Assert.That(motor.Runtime.storageLocation, Is.EqualTo(StorageLocationId.SafeHouseParts));
+            Assert.That(motor.Runtime.currentState, Is.EqualTo(InteractionState.Loose));
+        }
+
+        [Test]
         public void Returns_AcceptsDamagedPartAndDepletedBattery()
         {
             var returns = CreateLocation(

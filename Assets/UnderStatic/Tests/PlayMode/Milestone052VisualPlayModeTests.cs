@@ -260,7 +260,11 @@ namespace UnderStatic.Tests.PlayMode
                 PartCategory.Propeller,
                 PartCategory.Battery,
                 PartCategory.Camera,
-                PartCategory.Antenna
+                PartCategory.Antenna,
+                PartCategory.Esc,
+                PartCategory.FlightController,
+                PartCategory.StrikeRack,
+                PartCategory.Payload
             }));
             Assert.That(parts, Is.Not.Empty);
             foreach (var part in parts)

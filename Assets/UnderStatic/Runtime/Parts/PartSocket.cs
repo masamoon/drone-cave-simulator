@@ -227,6 +227,14 @@ namespace UnderStatic.Parts
             }
         }
 
+        public void RebindAssembly(DroneAssemblyState targetAssembly)
+        {
+            assembly = targetAssembly;
+            runtimeSocketId = targetAssembly?.Runtime == null
+                ? default
+                : SocketRuntimeId.Compose(targetAssembly.Runtime.droneInstanceId, socketId);
+        }
+
         public void SetCompatibilityStandards(params CompatibilityStandardId[] standards)
         {
             acceptedStandards = standards?.Where(item => !item.IsEmpty).Distinct().ToArray()
@@ -297,6 +305,8 @@ namespace UnderStatic.Parts
 
             OccupiedPart = part;
             part.GetComponent<StrikePayloadMountProcedure>()?.RebindSocket(this);
+            part.GetComponent<StrikePayloadRetentionGate>()
+                ?.Configure(GetComponentInParent<StrikePayloadMountProcedure>());
             part.SetAssemblyLocation(PersistenceSocketId, "Guided by socket");
             audioFeedback?.PlayGuidanceEnter();
             return true;
@@ -720,6 +730,8 @@ namespace UnderStatic.Parts
 
             OccupiedPart = part;
             part?.GetComponent<StrikePayloadMountProcedure>()?.RebindSocket(this);
+            part?.GetComponent<StrikePayloadRetentionGate>()
+                ?.Configure(GetComponentInParent<StrikePayloadMountProcedure>());
             EnsureProcedureState();
             InsertionProgress = restored?.insertionProgress ?? 0f;
             LockRotationProgress = restored?.lockRotationProgress ?? 0f;

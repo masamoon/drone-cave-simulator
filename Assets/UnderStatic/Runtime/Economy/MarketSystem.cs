@@ -31,6 +31,7 @@ namespace UnderStatic.Economy
         public string LastStatus { get; private set; } = "Market ready";
 
         public event Action StateChanged;
+        public event Action<InstallablePart> RuntimePartCreated;
 
         public void Configure(
             MarketDefinition marketDefinition,
@@ -92,6 +93,17 @@ namespace UnderStatic.Economy
 
         public int ReputationRequiredFor(MarketAccessTier tier) => definition.ReputationRequiredFor(tier);
 
+        public void RegisterKnownPart(InstallablePart part)
+        {
+            if (part?.Runtime == null)
+            {
+                return;
+            }
+
+            knownParts[part.Runtime.uniqueInstanceId] = part;
+            inventory?.RegisterKnownPart(part);
+        }
+
         public MarketTransactionResult TryBuy(string listingId)
         {
             var listing = FindListing(listingId);
@@ -115,19 +127,27 @@ namespace UnderStatic.Economy
 
             if (listing.category == MarketListingCategory.Part)
             {
-                var part = ResolvePart(listing);
-                if (part == null)
+                var stockPart = ResolvePart(listing);
+                if (stockPart == null)
                 {
                     return Reject(MarketTransactionFailure.IdentityConflict, "Market part identity is unavailable");
                 }
 
-                if (!inventory.HasCapacityFor(part, out _))
+                if (inventory == null || !inventory.HasCapacityFor(stockPart, out _))
                 {
                     return Reject(MarketTransactionFailure.StorageFull, "No suitable part-storage slot available");
                 }
 
-                if (!inventory.TryAcquirePart(part))
+                var acquiredPart = listing.isRenewable
+                    ? CreateRenewablePartInstance(listing, stockPart)
+                    : stockPart;
+                if (acquiredPart == null || !inventory.TryAcquirePart(acquiredPart))
                 {
+                    if (listing.isRenewable && acquiredPart != null)
+                    {
+                        knownParts.Remove(acquiredPart.Runtime.uniqueInstanceId);
+                        Destroy(acquiredPart.gameObject);
+                    }
                     return Reject(MarketTransactionFailure.StorageFull, inventory.LastStatus);
                 }
             }
@@ -164,7 +184,7 @@ namespace UnderStatic.Economy
             }
 
             runtime.funds -= Mathf.Max(0, listing.askingPrice);
-            listing.isAvailable = false;
+            listing.isAvailable = listing.isRenewable;
             SyncRuntimeListings();
             return Accept($"Purchased {DisplayName(listing)} for {listing.askingPrice}");
         }
@@ -216,9 +236,11 @@ namespace UnderStatic.Economy
             listings.Add(new MarketListingRuntimeData
             {
                 listingId = $"resale.drone.{actor.Runtime.droneInstanceId}",
-                category = actor.IsExpendableStrikeDrone
-                    ? MarketListingCategory.StrikeDrone
-                    : MarketListingCategory.SalvageDrone,
+                category = actor.InstalledParts.Count == 0
+                    ? MarketListingCategory.EmptyFrame
+                    : actor.IsExpendableStrikeDrone
+                        ? MarketListingCategory.StrikeDrone
+                        : MarketListingCategory.SalvageDrone,
                 askingPrice = Mathf.Max(value + 1, CalculateWholeDroneMarketValue(actor)),
                 isAvailable = true,
                 originatedFromPlayer = true,
@@ -264,6 +286,45 @@ namespace UnderStatic.Economy
             LastStatus = $"Received {amount} funds · {source} · broker reputation {runtime.reputation}";
             StateChanged?.Invoke();
             return amount;
+        }
+
+        public int GrantDailyPayloads(int quantity)
+        {
+            quantity = Mathf.Max(0, quantity);
+            var listing = listings.FirstOrDefault(item => item.isAvailable
+                && item.isRenewable
+                && item.category == MarketListingCategory.Part
+                && ResolvePart(item)?.Definition?.Category == PartCategory.Payload);
+            var stockPart = ResolvePart(listing);
+            if (quantity == 0 || listing == null || stockPart == null || inventory == null)
+            {
+                LastStatus = quantity == 0
+                    ? "No payload allowance scheduled"
+                    : "Daily payload stock is unavailable";
+                return 0;
+            }
+
+            var granted = 0;
+            while (granted < quantity && inventory.HasCapacityFor(stockPart, out _))
+            {
+                var payload = CreateRenewablePartInstance(listing, stockPart);
+                if (payload == null || !inventory.TryAcquirePart(payload))
+                {
+                    if (payload != null)
+                    {
+                        knownParts.Remove(payload.Runtime.uniqueInstanceId);
+                        Destroy(payload.gameObject);
+                    }
+                    break;
+                }
+                granted++;
+            }
+
+            LastStatus = granted == quantity
+                ? $"Daily allowance delivered · {granted} sealed payload{(granted == 1 ? string.Empty : "s")}"
+                : $"Daily allowance delivered · {granted}/{quantity}; clear serviceable-parts storage for the remainder";
+            StateChanged?.Invoke();
+            return granted;
         }
 
         public void AdvanceMarketCycle(int seed)
@@ -427,7 +488,9 @@ namespace UnderStatic.Economy
 
         private void RefreshRotatingStock(int seed)
         {
-            foreach (var listing in listings.Where(item => item.rotatesWithMarket && IsMarketOwned(item)))
+            foreach (var listing in listings.Where(item => item.rotatesWithMarket
+                         && !item.isRenewable
+                         && IsMarketOwned(item)))
             {
                 listing.isAvailable = false;
             }
@@ -442,6 +505,7 @@ namespace UnderStatic.Economy
         {
             foreach (var listing in listings
                          .Where(item => item.rotatesWithMarket
+                             && !item.isRenewable
                              && item.category == category
                              && IsUnlocked(item)
                              && IsMarketOwned(item))
@@ -468,6 +532,52 @@ namespace UnderStatic.Economy
             return drone != null
                 && (listing.category != MarketListingCategory.StrikeDrone || HasArmedStrikePayload(drone))
                 && (fleet == null || !fleet.ContainsActor(drone));
+        }
+
+        private InstallablePart CreateRenewablePartInstance(
+            MarketListingRuntimeData listing,
+            InstallablePart stockPart)
+        {
+            var sequence = 1;
+            string instanceId;
+            do
+            {
+                instanceId = $"market.purchase.{listing.listingId}.{sequence:0000}";
+                sequence++;
+            } while (knownParts.ContainsKey(instanceId));
+
+            var cloneObject = Instantiate(stockPart.gameObject);
+            cloneObject.name = $"{stockPart.name}_Purchased_{sequence - 1:0000}";
+            cloneObject.transform.SetParent(null, true);
+            var clone = cloneObject.GetComponent<InstallablePart>();
+            if (clone == null)
+            {
+                Destroy(cloneObject);
+                return null;
+            }
+
+            clone.Initialize(stockPart.Definition, instanceId);
+            var runtimePart = stockPart.Runtime.Copy();
+            runtimePart.uniqueInstanceId = instanceId;
+            runtimePart.currentState = InteractionState.Loose;
+            runtimePart.lastStableState = InteractionState.Loose;
+            runtimePart.currentOwner = "Workshop";
+            runtimePart.storageLocation = StorageLocationId.WorkshopLoose;
+            runtimePart.installedSocketId = string.Empty;
+            runtimePart.tested = false;
+            runtimePart.isSalvaged = false;
+            runtimePart.auxiliaryProcedureMask = 0;
+            clone.RestoreRuntime(runtimePart);
+            clone.SetControlledPhysics();
+            foreach (var childSocket in clone.GetComponentsInChildren<PartSocket>(true))
+            {
+                childSocket.ClearForRestore();
+                childSocket.BindRuntimeIdentity(instanceId);
+            }
+
+            RegisterKnownPart(clone);
+            RuntimePartCreated?.Invoke(clone);
+            return clone;
         }
 
         private void RepairOwnedMarketStrikeDrones()

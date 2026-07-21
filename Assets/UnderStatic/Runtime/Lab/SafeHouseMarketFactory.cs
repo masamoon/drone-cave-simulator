@@ -24,6 +24,7 @@ namespace UnderStatic.Lab
             IList<InstallablePart> allParts,
             IReadOnlyList<DroneActor> playerActors,
             DroneActor salvageActor,
+            DroneActor emptyFrameActor,
             PsxVisualKit visualKit)
         {
             var stockMaterial = InteractionLabFactory.CreateMaterial(
@@ -80,9 +81,23 @@ namespace UnderStatic.Lab
             };
             var marketParts = new List<InstallablePart> { motor, battery };
             AddPartStock(marketParts, listings, allParts, stockMaterial, visualKit);
+            AddScratchBuildStock(marketParts, listings, allParts);
 
             var marketActors = new List<DroneActor>();
             var marketSockets = new List<PartSocket>();
+            if (emptyFrameActor != null)
+            {
+                listings.Add(DroneListing(
+                    "market.stock.empty-strike-frame",
+                    emptyFrameActor,
+                    100,
+                    MarketListingCategory.EmptyFrame,
+                    MarketAccessTier.Field,
+                    true,
+                    false));
+                marketActors.Add(emptyFrameActor);
+                marketSockets.AddRange(emptyFrameActor.Sockets);
+            }
             if (salvageActor != null)
             {
                 listings.Add(DroneListing(
@@ -137,6 +152,20 @@ namespace UnderStatic.Lab
                 allParts,
                 playerActors.Concat(marketActors).Where(actor => actor != null),
                 listings);
+            market.RuntimePartCreated += part =>
+            {
+                if (part == null)
+                {
+                    return;
+                }
+
+                if (!allParts.Contains(part))
+                {
+                    allParts.Add(part);
+                }
+                saveSystem.RegisterParts(new[] { part });
+                saveSystem.RegisterSockets(part.GetComponentsInChildren<PartSocket>(true));
+            };
             saveSystem.ConfigureMarket(market);
 
             var terminalMaterial = InteractionLabFactory.CreateMaterial(
@@ -181,7 +210,8 @@ namespace UnderStatic.Lab
             string id,
             InstallablePart part,
             int price,
-            MarketAccessTier tier) => new()
+            MarketAccessTier tier,
+            bool renewable = false) => new()
         {
             listingId = id,
             category = MarketListingCategory.Part,
@@ -191,7 +221,8 @@ namespace UnderStatic.Lab
             visibleConditionBand = MarketSystem.ConditionBand(part.Runtime.condition),
             exactFaultsDisclosed = true,
             minimumAccessTier = tier,
-            rotatesWithMarket = true
+            rotatesWithMarket = !renewable,
+            isRenewable = renewable
         };
 
         private static MarketListingRuntimeData DroneListing(
@@ -200,7 +231,8 @@ namespace UnderStatic.Lab
             int price,
             MarketListingCategory category,
             MarketAccessTier tier,
-            bool initiallyAvailable) => new()
+            bool initiallyAvailable,
+            bool rotatesWithMarket = true) => new()
         {
             listingId = id,
             category = category,
@@ -211,7 +243,7 @@ namespace UnderStatic.Lab
             exactFaultsDisclosed = category is MarketListingCategory.CompleteDrone
                 or MarketListingCategory.StrikeDrone,
             minimumAccessTier = tier,
-            rotatesWithMarket = true
+            rotatesWithMarket = rotatesWithMarket
         };
 
         private static void AddPartStock(
@@ -228,6 +260,8 @@ namespace UnderStatic.Lab
                 new PartStockSpec(PartCategory.Battery, "Compact Field Battery", CompatibilityStandardId.CompactBattery, EquipmentGrade.Field, 180, MarketAccessTier.Field),
                 new PartStockSpec(PartCategory.Camera, "Shared Field Camera", CompatibilityStandardId.SharedCamera, EquipmentGrade.Field, 160, MarketAccessTier.Field),
                 new PartStockSpec(PartCategory.Antenna, "Shared Field Antenna", CompatibilityStandardId.SharedAntenna, EquipmentGrade.Field, 90, MarketAccessTier.Field),
+                new PartStockSpec(PartCategory.Esc, "Shared Field ESC", CompatibilityStandardId.SharedEsc, EquipmentGrade.Field, 170, MarketAccessTier.Field),
+                new PartStockSpec(PartCategory.FlightController, "Shared Field Flight Controller", CompatibilityStandardId.SharedFlightController, EquipmentGrade.Field, 210, MarketAccessTier.Field),
                 new PartStockSpec(PartCategory.Propeller, "Compact Professional Propeller", CompatibilityStandardId.CompactPropeller, EquipmentGrade.Professional, 105, MarketAccessTier.Trusted),
                 new PartStockSpec(PartCategory.Camera, "Shared Professional Camera", CompatibilityStandardId.SharedCamera, EquipmentGrade.Professional, 330, MarketAccessTier.Trusted),
                 new PartStockSpec(PartCategory.Antenna, "Shared Professional Antenna", CompatibilityStandardId.SharedAntenna, EquipmentGrade.Professional, 190, MarketAccessTier.Trusted),
@@ -259,8 +293,83 @@ namespace UnderStatic.Lab
                 part.gameObject.SetActive(false);
                 marketParts.Add(part);
                 allParts.Add(part);
-                listings.Add(PartListing($"market.stock.{slug}", part, spec.Value, spec.Tier));
+                listings.Add(PartListing(
+                    $"market.stock.{slug}",
+                    part,
+                    spec.Value,
+                    spec.Tier,
+                    spec.Tier == MarketAccessTier.Field));
             }
+        }
+
+        private static void AddScratchBuildStock(
+            ICollection<InstallablePart> marketParts,
+            ICollection<MarketListingRuntimeData> listings,
+            ICollection<InstallablePart> allParts)
+        {
+            var templates = allParts.Where(part => part != null).ToArray();
+            AddRenewableTemplate(
+                templates.FirstOrDefault(part => part.name == "FieldStrikeRack"),
+                "Market_EmptyStrikeRack",
+                "market-part-empty-strike-rack-stock",
+                "market.stock.empty-strike-rack",
+                120,
+                marketParts,
+                listings,
+                allParts);
+            AddRenewableTemplate(
+                templates.FirstOrDefault(part => part.name == "FieldSealedPayload"),
+                "Market_SealedStrikePayload",
+                "market-part-sealed-strike-payload-stock",
+                "market.stock.sealed-strike-payload",
+                160,
+                marketParts,
+                listings,
+                allParts);
+        }
+
+        private static void AddRenewableTemplate(
+            InstallablePart template,
+            string objectName,
+            string instanceId,
+            string listingId,
+            int price,
+            ICollection<InstallablePart> marketParts,
+            ICollection<MarketListingRuntimeData> listings,
+            ICollection<InstallablePart> allParts)
+        {
+            if (template == null)
+            {
+                return;
+            }
+
+            var cloneObject = UnityEngine.Object.Instantiate(template.gameObject);
+            cloneObject.name = objectName;
+            cloneObject.transform.SetParent(null, true);
+            var stock = cloneObject.GetComponent<InstallablePart>();
+            stock.Initialize(template.Definition, instanceId);
+            var runtime = template.Runtime.Copy();
+            runtime.uniqueInstanceId = instanceId;
+            runtime.currentState = InteractionState.Loose;
+            runtime.lastStableState = InteractionState.Loose;
+            runtime.currentOwner = "Market stock";
+            runtime.storageLocation = StorageLocationId.MarketStock;
+            runtime.installedSocketId = string.Empty;
+            runtime.tested = false;
+            runtime.isSalvaged = false;
+            runtime.auxiliaryProcedureMask = 0;
+            stock.RestoreRuntime(runtime);
+            stock.GetComponent<StrikePayloadMountProcedure>()?.RebindSocket(null);
+            stock.SetControlledPhysics();
+            foreach (var socket in stock.GetComponentsInChildren<PartSocket>(true))
+            {
+                socket.ClearForRestore();
+                socket.BindRuntimeIdentity(instanceId);
+            }
+            stock.gameObject.SetActive(false);
+            marketParts.Add(stock);
+            allParts.Add(stock);
+            listings.Add(PartListing(listingId, stock, price, MarketAccessTier.Field, true));
         }
 
         private static PartDefinition CreateStockPartDefinition(PartStockSpec spec)

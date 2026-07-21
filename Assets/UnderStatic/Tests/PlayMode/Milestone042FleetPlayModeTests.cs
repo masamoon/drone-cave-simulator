@@ -1,9 +1,13 @@
 using System.Collections;
 using System.Linq;
 using NUnit.Framework;
+using UnderStatic.Core;
+using UnderStatic.Economy;
 using UnderStatic.Fleet;
 using UnderStatic.Interaction;
+using UnderStatic.Inventory;
 using UnderStatic.Lab;
+using UnderStatic.Missions;
 using UnderStatic.Parts;
 using UnderStatic.Persistence;
 using UnderStatic.UI;
@@ -89,6 +93,85 @@ namespace UnderStatic.Tests.PlayMode
             yield return PressKey(Key.Tab);
             Assert.That(tablet.IsOpen, Is.False);
             Assert.That(controller.enabled, Is.True);
+        }
+
+        [UnityTest]
+        public IEnumerator PurchasedEmptyFrame_CanBecomeMissionEligibleStrikeDroneFromPurchasedParts()
+        {
+            SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var fleet = Object.FindAnyObjectByType<FleetSystem>();
+            var inventory = Object.FindAnyObjectByType<InventorySystem>();
+            var market = Object.FindAnyObjectByType<MarketSystem>();
+            var diagnostic = Object.FindAnyObjectByType<DroneDiagnosticSwitch>();
+            var originalService = fleet.ServiceDrone;
+
+            var frameListing = market.Listings.Single(item =>
+                item.category == MarketListingCategory.EmptyFrame && item.isAvailable);
+            Assert.That(frameListing.askingPrice, Is.LessThan(200));
+            Assert.That(market.TryBuy(frameListing.listingId).Succeeded, Is.True, market.LastStatus);
+            var scratch = market.ResolveDrone(frameListing);
+            var frameLocker = fleet.Locker.ToList().IndexOf(scratch);
+            Assert.That(frameLocker, Is.GreaterThanOrEqualTo(0));
+            Assert.That(fleet.TrySwapLockerIntoService(frameLocker, false), Is.True, fleet.LastStatus);
+            Assert.That(scratch, Is.Not.SameAs(originalService));
+            Assert.That(scratch.FrameDefinition.DisplayName, Is.EqualTo("Empty FPV Strike Frame"));
+            Assert.That(scratch.InstalledParts, Is.Empty);
+            Assert.That(scratch.Readiness.InstalledCount, Is.Zero);
+            Assert.That(fleet.ServiceDrone, Is.SameAs(scratch));
+            Assert.That(fleet.Locker, Does.Contain(originalService));
+
+            market.AwardFunds(10000, "scratch-build acceptance test");
+            foreach (var socket in scratch.Sockets
+                         .OrderBy(item => item.InstallationPrerequisite == null ? 0 : 1)
+                         .ThenBy(item => item.LocalSocketId))
+            {
+                var listing = market.Listings.FirstOrDefault(item => item.isRenewable
+                    && item.category == MarketListingCategory.Part
+                    && market.ResolvePart(item)?.Definition.Category == socket.AcceptedPrimaryCategory
+                    && socket.CanAccept(market.ResolvePart(item)));
+                Assert.That(listing, Is.Not.Null, $"Missing renewable stock for {socket.PersistenceSocketId}");
+                var before = inventory.Parts.Select(part => part.Runtime.uniqueInstanceId).ToHashSet();
+                Assert.That(market.TryBuy(listing.listingId).Succeeded, Is.True, market.LastStatus);
+                var purchased = inventory.Parts.Single(part => part != null
+                    && !before.Contains(part.Runtime.uniqueInstanceId));
+                InstallForAcceptance(inventory, purchased, socket);
+            }
+
+            var rack = scratch.InstalledParts.Single(part =>
+                part.Definition.Category == PartCategory.StrikeRack);
+            var payloadSocket = rack.GetComponentsInChildren<PartSocket>(true)
+                .Single(socket => socket.AcceptedPrimaryCategory == PartCategory.Payload);
+            var payloadListing = market.Listings.Single(item => item.isRenewable
+                && item.category == MarketListingCategory.Part
+                && market.ResolvePart(item)?.Definition.Category == PartCategory.Payload);
+            var payloadBefore = inventory.Parts.Select(part => part.Runtime.uniqueInstanceId).ToHashSet();
+            Assert.That(market.TryBuy(payloadListing.listingId).Succeeded, Is.True, market.LastStatus);
+            var payload = inventory.Parts.Single(part => part != null
+                && !payloadBefore.Contains(part.Runtime.uniqueInstanceId));
+            InstallForAcceptance(inventory, payload, payloadSocket);
+            rack.SetAuxiliaryProcedureStep((int)StrikePayloadMountStep.ForwardStrap, true);
+            rack.SetAuxiliaryProcedureStep((int)StrikePayloadMountStep.RearStrap, true);
+            rack.SetAuxiliaryProcedureStep((int)StrikePayloadMountStep.ControlHarness, true);
+
+            Assert.That(rack.GetComponent<StrikePayloadMountProcedure>().IsComplete, Is.True);
+            Assert.That((payload.Definition.MissionCapabilities & PartMissionCapability.KamikazeWarhead) != 0,
+                Is.True);
+            Assert.That(scratch.Readiness.IsMissionReady, Is.True, scratch.Readiness.MaintenanceSummary);
+            diagnostic.Activate();
+            Assert.That(scratch.IsReadyForShelf, Is.True, scratch.Readiness.MaintenanceSummary);
+            Assert.That(fleet.TryMoveServiceToReady(false), Is.True, fleet.LastStatus);
+
+            var missions = Object.FindAnyObjectByType<MissionSystem>();
+            var frontline = Object.FindAnyObjectByType<FrontlineSystem>();
+            Assert.That(missions.SetDraftType(SortieType.KamikazeStrike), Is.True);
+            var eligible = frontline.Runtime.activities
+                .Where(item => item.active && item.pressure > 0)
+                .Any(target => missions.SelectTarget(target.activityId)
+                    && missions.EvaluateDraft().Eligible);
+            Assert.That(eligible, Is.True, missions.EvaluateDraft().Reason);
         }
 
         [UnityTest]
@@ -183,6 +266,33 @@ namespace UnderStatic.Tests.PlayMode
             yield return null;
             InputSystem.QueueStateEvent(keyboard, new KeyboardState());
             yield return null;
+        }
+
+        private static void InstallForAcceptance(
+            InventorySystem inventory,
+            InstallablePart part,
+            PartSocket socket)
+        {
+            inventory.ReleasePart(part);
+            var runtime = part.Runtime.Copy();
+            runtime.currentState = InteractionState.Installed;
+            runtime.lastStableState = InteractionState.Installed;
+            runtime.installedSocketId = socket.PersistenceSocketId;
+            runtime.condition = Mathf.Max(0.9f, runtime.condition);
+            if (part.Definition.Category == PartCategory.Battery)
+            {
+                runtime.chargeLevel = 1f;
+            }
+            part.RestoreRuntime(runtime);
+            socket.RestorePart(part, new SocketRuntimeState
+            {
+                socketId = socket.PersistenceSocketId,
+                occupiedPartInstanceId = runtime.uniqueInstanceId,
+                insertionProgress = 1f,
+                lockRotationProgress = 1f,
+                latchClosed = true,
+                fastenerProgress = Enumerable.Repeat(1f, socket.FastenerProgress.Count).ToArray()
+            });
         }
 
         private static IEnumerator PressKey(Key key)

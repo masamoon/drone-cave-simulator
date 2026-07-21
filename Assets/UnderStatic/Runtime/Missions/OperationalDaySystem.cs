@@ -12,6 +12,7 @@ namespace UnderStatic.Missions
         [SerializeField] private BattlefieldSystem battlefieldSystem;
         [SerializeField] private MarketSystem marketSystem;
         [SerializeField] private FleetSystem fleetSystem;
+        [SerializeField, Min(0)] private int dailyPayloadAllowance = 1;
         [SerializeField] private OperationalDayRuntimeData runtime = new();
 
         public OperationalDayRuntimeData Runtime => runtime;
@@ -24,7 +25,8 @@ namespace UnderStatic.Missions
             int seed = 1701,
             MarketSystem market = null,
             FleetSystem fleet = null,
-            BattlefieldSystem battlefield = null)
+            BattlefieldSystem battlefield = null,
+            int payloadAllowance = 1)
         {
             if (missionSystem != null)
             {
@@ -34,6 +36,7 @@ namespace UnderStatic.Missions
             marketSystem = market;
             fleetSystem = fleet;
             battlefieldSystem = battlefield;
+            dailyPayloadAllowance = Mathf.Max(0, payloadAllowance);
             runtime = new OperationalDayRuntimeData
             {
                 dayIndex = Mathf.Max(1, dayIndex),
@@ -72,9 +75,11 @@ namespace UnderStatic.Missions
             runtime.operationsEnded = false;
             fleetSystem?.PrepareForNextOperationalDay();
             marketSystem?.AdvanceMarketCycle(seed);
+            var payloadsGranted = marketSystem?.GrantDailyPayloads(dailyPayloadAllowance) ?? 0;
             battlefieldSystem?.AdvanceDay(runtime.dayIndex, seed);
             DayBegan?.Invoke(runtime.dayIndex);
-            LastStatus = $"Day {runtime.dayIndex} operations available";
+            LastStatus = $"Day {runtime.dayIndex} operations available · {payloadsGranted} daily payload" +
+                         (payloadsGranted == 1 ? string.Empty : "s");
             return true;
         }
 

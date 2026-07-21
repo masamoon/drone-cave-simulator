@@ -41,6 +41,7 @@ namespace UnderStatic.Interaction
         private InputAction lookAction;
         private InputAction saveAction;
         private InputAction loadAction;
+        private InputAction storeItemAction;
         private IInteractable focused;
         private InstallablePart heldPart;
         private PartSocket activeSocket;
@@ -178,6 +179,11 @@ namespace UnderStatic.Interaction
 
         private void HandleCommands()
         {
+            if (storeItemAction?.WasPressedThisFrame() == true)
+            {
+                TryTransferFocusedPartToInventory();
+            }
+
             if (interactAction?.WasPressedThisFrame() == true)
             {
                 Interact();
@@ -197,6 +203,39 @@ namespace UnderStatic.Interaction
                 screwdriver?.Deactivate();
                 saveSystem?.Load();
             }
+        }
+
+        public bool TryTransferFocusedPartToInventory()
+        {
+            var part = heldPart ?? focused as InstallablePart;
+            return TryTransferPartToInventory(part);
+        }
+
+        public bool TryTransferPartToInventory(InstallablePart part)
+        {
+            if (inventorySystem == null
+                || part?.Runtime == null
+                || part.Runtime.currentState is not (InteractionState.Loose or InteractionState.Held)
+                || part.Runtime.storageLocation != StorageLocationId.WorkshopLoose
+                    && part.Runtime.storageLocation != StorageLocationId.PlayerHeld)
+            {
+                return false;
+            }
+
+            if (!inventorySystem.TryAcquirePart(part))
+            {
+                return false;
+            }
+
+            if (part == heldPart)
+            {
+                heldPart = null;
+                activeSocket = null;
+                guidanceRecaptureBlocker = null;
+                guidedInsertionCommitted = false;
+            }
+            audioFeedback?.PlayDrop();
+            return true;
         }
 
         public void Interact()
@@ -640,6 +679,7 @@ namespace UnderStatic.Interaction
             lookAction = actions?.FindAction("Player/Look");
             saveAction = actions?.FindAction("Player/Previous");
             loadAction = actions?.FindAction("Player/Next");
+            storeItemAction = actions?.FindAction("Player/Store Item");
         }
 
         private void OnGUI()
@@ -656,7 +696,7 @@ namespace UnderStatic.Interaction
                         ? guidedInsertionCommitted
                             ? "Sliding into tray..."
                             : "E: slide into tray  |  Move away: cancel"
-                        : "E: drop  |  Hold LMB + mouse: rotate"
+                        : $"E: drop  |  {StoreItemBinding}: inventory  |  Hold LMB + mouse: rotate"
                 : ResolveFocusedPrompt();
             if (!string.IsNullOrEmpty(prompt))
             {
@@ -667,6 +707,8 @@ namespace UnderStatic.Interaction
                 new Rect(12f, Screen.height - 52f, 760f, 24f),
                 "WASD move · mouse look · E interact/latch · LMB spawn tool and drive/twist · 1 save · 2 load");
         }
+
+        private string StoreItemBinding => storeItemAction?.GetBindingDisplayString() ?? "F";
 
         private string ResolveFocusedPrompt()
         {
@@ -679,7 +721,15 @@ namespace UnderStatic.Interaction
                 }
             }
 
-            return focused?.InteractionPrompt;
+            var prompt = focused?.InteractionPrompt;
+            if (focused is InstallablePart loose
+                && loose.Runtime.currentState == InteractionState.Loose
+                && loose.Runtime.storageLocation == StorageLocationId.WorkshopLoose)
+            {
+                return $"{prompt}  |  {StoreItemBinding}: inventory";
+            }
+
+            return prompt;
         }
     }
 }

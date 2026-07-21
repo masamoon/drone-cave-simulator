@@ -85,17 +85,25 @@ namespace UnderStatic.Tests.PlayMode
             var market = Object.FindAnyObjectByType<MarketSystem>();
             var inventory = Object.FindAnyObjectByType<InventorySystem>();
             var listing = market.FindListing("market.stock.compact-field-motor");
-            var part = market.ResolvePart(listing);
-            var identity = part.Runtime.uniqueInstanceId;
+            var stock = market.ResolvePart(listing);
+            var knownIdentities = inventory.Parts
+                .Where(part => part != null)
+                .Select(part => part.Runtime.uniqueInstanceId)
+                .ToHashSet();
 
             var result = market.TryBuy(listing.listingId);
+            var purchased = inventory.Parts.Single(part => part != null
+                && !knownIdentities.Contains(part.Runtime.uniqueInstanceId));
 
             Assert.That(result.Succeeded, Is.True, result.Message);
             Assert.That(market.Funds, Is.EqualTo(460));
-            Assert.That(part.Runtime.uniqueInstanceId, Is.EqualTo(identity));
-            Assert.That(part.Runtime.storageLocation, Is.EqualTo(StorageLocationId.SafeHouseParts));
-            Assert.That(inventory.FindLocation(StorageLocationId.SafeHouseParts).Contains(part), Is.True);
-            Assert.That(part.gameObject.activeInHierarchy, Is.True);
+            Assert.That(purchased.Definition, Is.SameAs(stock.Definition));
+            Assert.That(purchased.Runtime.uniqueInstanceId, Is.Not.EqualTo(stock.Runtime.uniqueInstanceId));
+            Assert.That(purchased.Runtime.storageLocation, Is.EqualTo(StorageLocationId.SafeHouseParts));
+            Assert.That(inventory.FindLocation(StorageLocationId.SafeHouseParts).Contains(purchased), Is.True);
+            Assert.That(purchased.gameObject.activeInHierarchy, Is.True);
+            Assert.That(stock.Runtime.storageLocation, Is.EqualTo(StorageLocationId.MarketStock));
+            Assert.That(listing.isAvailable, Is.True);
         }
 
         [UnityTest]

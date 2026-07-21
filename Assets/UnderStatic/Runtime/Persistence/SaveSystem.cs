@@ -402,7 +402,14 @@ namespace UnderStatic.Persistence
 
             try
             {
-                var restored = RestoreAllFromJson(File.ReadAllText(SavePath), parts, sockets);
+                var json = File.ReadAllText(SavePath);
+                if (!HydrateRuntimePurchasedParts(json))
+                {
+                    SetStatus(LastStatus);
+                    return false;
+                }
+
+                var restored = RestoreAllFromJson(json, parts, sockets);
                 SetStatus(restored ? $"Game loaded · {parts.Length} components" : LastStatus);
                 return restored;
             }
@@ -414,6 +421,71 @@ namespace UnderStatic.Persistence
                 Debug.LogException(exception, this);
                 return false;
             }
+        }
+
+        private bool HydrateRuntimePurchasedParts(string json)
+        {
+            var data = JsonUtility.FromJson<MilestoneSaveData>(json);
+            if (data?.parts == null)
+            {
+                LastStatus = "Load failed: invalid part data";
+                return false;
+            }
+
+            var known = parts.Where(part => part?.Runtime != null)
+                .ToDictionary(part => part.Runtime.uniqueInstanceId, part => part, StringComparer.Ordinal);
+            foreach (var record in data.parts.Where(record => record?.runtime != null))
+            {
+                if (known.ContainsKey(record.runtime.uniqueInstanceId))
+                {
+                    continue;
+                }
+
+                var prototype = parts.FirstOrDefault(part => part?.Definition != null
+                    && string.Equals(
+                        part.Definition.Id,
+                        record.runtime.definitionId,
+                        StringComparison.Ordinal));
+                if (prototype == null)
+                {
+                    LastStatus = $"Load failed: no prototype for {record.runtime.definitionId}";
+                    return false;
+                }
+
+                var cloneObject = Instantiate(prototype.gameObject);
+                cloneObject.name = $"Restored_{prototype.name}_{record.runtime.uniqueInstanceId}";
+                cloneObject.transform.SetParent(null, true);
+                cloneObject.SetActive(true);
+                var clone = cloneObject.GetComponent<InstallablePart>();
+                clone.Initialize(prototype.Definition, record.runtime.uniqueInstanceId);
+                clone.RestoreRuntime(record.runtime);
+
+                var socketOwner = record.runtime.uniqueInstanceId;
+                if (record.runtime.currentState != InteractionState.Loose
+                    && !string.IsNullOrWhiteSpace(record.runtime.installedSocketId))
+                {
+                    var separator = record.runtime.installedSocketId.IndexOf("::", StringComparison.Ordinal);
+                    if (separator > 0)
+                    {
+                        socketOwner = record.runtime.installedSocketId[..separator];
+                    }
+                }
+
+                var childSockets = clone.GetComponentsInChildren<PartSocket>(true);
+                foreach (var childSocket in childSockets)
+                {
+                    childSocket.ClearForRestore();
+                    childSocket.BindRuntimeIdentity(socketOwner);
+                }
+
+                RegisterParts(new[] { clone });
+                RegisterSockets(childSockets);
+                inventorySystem?.RegisterKnownPart(clone);
+                marketSystem?.RegisterKnownPart(clone);
+                known[record.runtime.uniqueInstanceId] = clone;
+            }
+
+            return true;
         }
 
         private void SetStatus(string status)

@@ -13,6 +13,7 @@ namespace UnderStatic.UI
     public enum MarketTerminalView
     {
         Parts,
+        Frames,
         StrikeDrones,
         CompleteDrones,
         DamagedDrones,
@@ -27,6 +28,7 @@ namespace UnderStatic.UI
         [SerializeField] private InventorySystem inventory;
         [SerializeField] private FleetSystem fleet;
         [SerializeField] private FirstPersonController firstPersonController;
+        [SerializeField] private InteractionSystem interactionSystem;
         [SerializeField] private Renderer focusRenderer;
 
         private readonly Dictionary<string, Texture2D> thumbnails = new(StringComparer.Ordinal);
@@ -34,6 +36,7 @@ namespace UnderStatic.UI
         private string selectedListingId = string.Empty;
         private Vector2 scrollPosition;
         private MaterialPropertyBlock propertyBlock;
+        private bool interactionSystemWasEnabled;
 
         public bool IsOpen { get; private set; }
         public bool IsDetailOpen => !string.IsNullOrEmpty(selectedListingId);
@@ -53,6 +56,9 @@ namespace UnderStatic.UI
             inventory = inventorySystem;
             fleet = fleetSystem;
             firstPersonController = controller;
+            interactionSystem = controller != null
+                ? controller.GetComponentInChildren<InteractionSystem>(true)
+                : null;
             focusRenderer = terminalRenderer ?? GetComponent<Renderer>();
         }
 
@@ -61,6 +67,8 @@ namespace UnderStatic.UI
             if (IsOpen) return;
             IsOpen = true;
             if (firstPersonController != null) firstPersonController.enabled = false;
+            interactionSystemWasEnabled = interactionSystem != null && interactionSystem.enabled;
+            if (interactionSystem != null) interactionSystem.enabled = false;
             Cursor.lockState = CursorLockMode.Confined;
             Cursor.visible = true;
         }
@@ -70,6 +78,7 @@ namespace UnderStatic.UI
             IsOpen = false;
             selectedListingId = string.Empty;
             if (firstPersonController != null) firstPersonController.enabled = true;
+            if (interactionSystem != null && interactionSystemWasEnabled) interactionSystem.enabled = true;
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
         }
@@ -150,9 +159,14 @@ namespace UnderStatic.UI
             var tabCount = Enum.GetValues(typeof(MarketTerminalView)).Length;
             var tabWidth = (panel.width - 44f - (tabCount - 1) * 8f) / tabCount;
             var tabX = panel.x + 22f;
+            var tabStyle = new GUIStyle(GUI.skin.button)
+            {
+                fontSize = tabWidth < 145f ? 11 : GUI.skin.button.fontSize,
+                clipping = TextClipping.Clip
+            };
             foreach (var tab in Enum.GetValues(typeof(MarketTerminalView)).Cast<MarketTerminalView>())
             {
-                if (GUI.Button(new Rect(tabX, panel.y + 56f, tabWidth, 34f), ViewLabel(tab))) SelectView(tab);
+                if (GUI.Button(new Rect(tabX, panel.y + 56f, tabWidth, 34f), ViewLabel(tab), tabStyle)) SelectView(tab);
                 tabX += tabWidth + 8f;
             }
 
@@ -163,6 +177,9 @@ namespace UnderStatic.UI
             {
                 case MarketTerminalView.Parts:
                     DrawListings(panel, MarketListingCategory.Part);
+                    break;
+                case MarketTerminalView.Frames:
+                    DrawListings(panel, MarketListingCategory.EmptyFrame);
                     break;
                 case MarketTerminalView.StrikeDrones:
                     DrawListings(panel, MarketListingCategory.StrikeDrone);
@@ -219,7 +236,9 @@ namespace UnderStatic.UI
             GUI.Label(new Rect(card.x + 10f, card.y + 105f, card.width - 20f, 38f), name);
             GUI.Label(new Rect(card.x + 10f, card.y + 144f, card.width - 20f, 22f),
                 market.IsUnlocked(listing)
-                    ? $"{listing.askingPrice} funds · {listing.visibleConditionBand}"
+                    ? listing.isRenewable
+                        ? $"{listing.askingPrice} funds · RESTOCKED"
+                        : $"{listing.askingPrice} funds · {listing.visibleConditionBand}"
                     : $"LOCKED · {listing.minimumAccessTier.ToString().ToUpperInvariant()}");
             if (GUI.Button(new Rect(card.x + 10f, card.yMax - 26f, card.width - 20f, 22f), "OPEN DETAILS"))
             {
@@ -331,7 +350,9 @@ namespace UnderStatic.UI
                 : "Visual inspection only. Exact component faults remain hidden until workshop diagnosis.";
             var role = actor.IsExpendableStrikeDrone
                 ? "EXPENDABLE STRIKE · Armed rack with one sortie charge\n"
-                : string.Empty;
+                : listing.category == MarketListingCategory.EmptyFrame
+                    ? "EMPTY FRAME · No components included\n"
+                    : string.Empty;
             return $"{actor.FrameDefinition.Family} · {actor.FrameDefinition.Grade}\n" +
                    role +
                    $"Frame {actor.Runtime.frameCondition:P0} · {actor.Readiness.InstalledCount}/{actor.Readiness.RequiredCount} components\n" +
@@ -346,6 +367,8 @@ namespace UnderStatic.UI
             {
                 return listing.category == MarketListingCategory.SalvageDrone
                     ? "DAMAGED STOCK · Contents and faults vary. Purchased aircraft is delivered to an empty drone locker."
+                    : listing.category == MarketListingCategory.EmptyFrame
+                        ? "EMPTY FRAME STOCK · Cheap bare chassis delivered to an empty drone locker for workshop assembly."
                     : listing.category == MarketListingCategory.StrikeDrone
                         ? "ONE-WAY STRIKE STOCK · Complete, tested, charged, and armed. Consumed only when assigned to an armed sortie."
                     : "AVAILABLE THROUGH CURRENT BROKER ACCESS · Purchase requires suitable physical storage.";
@@ -376,6 +399,8 @@ namespace UnderStatic.UI
             };
             var background = listing.category == MarketListingCategory.SalvageDrone
                 ? new Color(0.16f, 0.12f, 0.085f)
+                : listing.category == MarketListingCategory.EmptyFrame
+                    ? new Color(0.11f, 0.13f, 0.12f)
                 : listing.category == MarketListingCategory.StrikeDrone
                     ? new Color(0.2f, 0.085f, 0.055f)
                 : listing.category == MarketListingCategory.CompleteDrone

@@ -1,6 +1,6 @@
 # MILESTONE 05.3 — Daily Continuity and Sortie Economy
 
-> Historical scope note: Milestone 05.4 supersedes daily request replacement and extends the saved mission state with a persistent battlefield, planning draft, active progress, and contact history. Economy and continuity decisions not explicitly changed by 05.4 remain applicable.
+> Historical scope note: Milestone 05.4 supersedes daily request replacement and extends the saved mission state with a persistent battlefield, planning draft, active progress, and contact history. Milestone 13 supersedes the player-facing terminal day-advance flow with cot-based sleep. Economy and continuity decisions not explicitly changed by those documents remain applicable.
 
 ## Objective
 

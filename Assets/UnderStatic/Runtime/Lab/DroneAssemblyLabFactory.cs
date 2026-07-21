@@ -357,6 +357,7 @@ namespace UnderStatic.Lab
             var fleetActors = new List<DroneActor>();
             DroneActor marketSalvageActor = null;
             DroneActor legacySurveyActor = null;
+            DroneActor marketFrameActor = null;
             if (createSafeHouse)
             {
                 var scoutActor = drone.AddComponent<DroneActor>();
@@ -369,6 +370,11 @@ namespace UnderStatic.Lab
                     "Original workshop issue");
                 drone.AddComponent<DroneFrameInspectionTarget>().Configure(scoutActor);
                 fleetActors.Add(scoutActor);
+
+                marketFrameActor = CreateMarketEmptyFrameActor(
+                    drone,
+                    out var marketFrameSockets);
+                allSockets.AddRange(marketFrameSockets);
 
                 legacySurveyActor = CreateSurveyProfessionalActor(
                     drone,
@@ -473,6 +479,7 @@ namespace UnderStatic.Lab
                     allParts,
                     fleetActors,
                     marketSalvageActor,
+                    marketFrameActor,
                     psxVisualKit);
                 SafeHouseMissionFactory.Build(
                     fleet,
@@ -1401,6 +1408,71 @@ namespace UnderStatic.Lab
             actor.Runtime.diagnosticFaultsDisclosed = true;
             actor.Assembly.RecordDiagnostic(true);
             createdParts = kept;
+            createdSockets = sockets;
+            return actor;
+        }
+
+        private static DroneActor CreateMarketEmptyFrameActor(
+            GameObject sourceDrone,
+            out IReadOnlyList<PartSocket> createdSockets)
+        {
+            var clone = UnityEngine.Object.Instantiate(sourceDrone);
+            clone.name = "MarketEmptyStrikeFrame";
+            clone.SetActive(false);
+
+            var assembly = clone.GetComponent<DroneAssemblyState>();
+            assembly.ClearAll();
+            assembly.ConfigureRequirements(4, 4, 1, 1, 1, 1, 1, 1);
+
+            foreach (var part in clone.GetComponentsInChildren<InstallablePart>(true))
+            {
+                part.transform.SetParent(null, true);
+                UnityEngine.Object.Destroy(part.gameObject);
+            }
+
+            var sockets = clone.GetComponentsInChildren<PartSocket>(true)
+                .OrderBy(socket => socket.LocalSocketId, StringComparer.Ordinal)
+                .ToArray();
+            foreach (var socket in sockets)
+            {
+                socket.ClearForRestore();
+            }
+
+            var baseFrame = DroneFrameCatalog.Load("ScoutField");
+            var requirements = DroneFrameDefinition.DefaultRequirements(DroneFrameFamily.Scout)
+                .Concat(new[]
+                {
+                    new DroneSocketRequirement
+                    {
+                        category = PartCategory.StrikeRack,
+                        count = 1,
+                        standard = CompatibilityStandardId.SharedStrikeRack
+                    }
+                })
+                .ToArray();
+            var frame = DroneFrameDefinition.CreateTransient(
+                "frame.scratch-strike.field",
+                "Empty FPV Strike Frame",
+                DroneFrameFamily.Scout,
+                EquipmentGrade.Field,
+                baseFrame.BaseStats,
+                100,
+                baseFrame.ScrapYield,
+                requirements);
+            var actor = clone.GetComponent<DroneActor>();
+            actor.Configure(
+                frame,
+                assembly,
+                sockets,
+                "drone.market.empty-strike-frame.01",
+                new DroneStorageLocation(DroneStorageLocationKind.External),
+                "Safe-house exchange frame");
+            actor.Runtime.frameCondition = 1f;
+            actor.Runtime.hasDiagnosticResult = false;
+            actor.Runtime.latestDiagnosticPassed = false;
+            actor.Runtime.diagnosticFaultsDisclosed = true;
+            actor.Runtime.isExpendableStrikeDrone = false;
+            clone.GetComponent<DroneFrameInspectionTarget>()?.Configure(actor);
             createdSockets = sockets;
             return actor;
         }

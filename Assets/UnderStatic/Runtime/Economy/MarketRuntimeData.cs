@@ -16,7 +16,8 @@ namespace UnderStatic.Economy
         Part,
         SalvageDrone,
         CompleteDrone,
-        StrikeDrone
+        StrikeDrone,
+        EmptyFrame
     }
 
     public enum MarketTransactionFailure
@@ -65,6 +66,7 @@ namespace UnderStatic.Economy
         public bool exactFaultsDisclosed;
         public MarketAccessTier minimumAccessTier;
         public bool rotatesWithMarket;
+        public bool isRenewable;
 
         public MarketListingRuntimeData Copy()
         {
@@ -80,7 +82,8 @@ namespace UnderStatic.Economy
                 visibleConditionBand = visibleConditionBand,
                 exactFaultsDisclosed = exactFaultsDisclosed,
                 minimumAccessTier = minimumAccessTier,
-                rotatesWithMarket = rotatesWithMarket
+                rotatesWithMarket = rotatesWithMarket,
+                isRenewable = isRenewable
             };
         }
     }

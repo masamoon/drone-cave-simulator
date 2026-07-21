@@ -124,6 +124,11 @@ namespace UnderStatic.Parts
         public void RebindSocket(PartSocket targetSocket)
         {
             socket = targetSocket;
+            if (payloadSocket != null)
+            {
+                payloadSocket.SetInstallationPrerequisite(targetSocket);
+                payloadSocket.RebindAssembly(targetSocket?.Assembly);
+            }
             RefreshVisuals(true);
         }
 

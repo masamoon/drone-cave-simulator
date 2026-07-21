@@ -15,6 +15,7 @@ namespace UnderStatic.UI
 
         [SerializeField] private FleetSystem fleet;
         [SerializeField] private FirstPersonController controller;
+        [SerializeField] private InteractionSystem interactionSystem;
         [SerializeField] private PlayerInput playerInput;
         [SerializeField] private DroneServiceModeController serviceMode;
         [SerializeField] private DroneServiceModeController[] serviceModes = System.Array.Empty<DroneServiceModeController>();
@@ -22,6 +23,7 @@ namespace UnderStatic.UI
         private readonly Dictionary<string, Texture2D> thumbnails = new();
         private InputAction tabletAction;
         private bool controllerWasEnabled;
+        private bool interactionSystemWasEnabled;
 
         public bool IsOpen { get; private set; }
         public bool ShouldShow => fleet != null
@@ -33,6 +35,9 @@ namespace UnderStatic.UI
         {
             fleet = fleetSystem;
             controller = firstPersonController;
+            interactionSystem = controller != null
+                ? controller.GetComponentInChildren<InteractionSystem>(true)
+                : null;
             playerInput = controller != null ? controller.GetComponent<PlayerInput>() : null;
             tabletAction = playerInput?.actions?.FindAction("Player/Fleet Tablet");
         }
@@ -65,6 +70,11 @@ namespace UnderStatic.UI
             {
                 controller.enabled = false;
             }
+            interactionSystemWasEnabled = interactionSystem != null && interactionSystem.enabled;
+            if (interactionSystem != null)
+            {
+                interactionSystem.enabled = false;
+            }
             Cursor.lockState = CursorLockMode.Confined;
             Cursor.visible = true;
         }
@@ -80,6 +90,10 @@ namespace UnderStatic.UI
             if (controller != null && controllerWasEnabled)
             {
                 controller.enabled = true;
+            }
+            if (interactionSystem != null && interactionSystemWasEnabled)
+            {
+                interactionSystem.enabled = true;
             }
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
@@ -156,7 +170,7 @@ namespace UnderStatic.UI
 
             if (!IsOpen)
             {
-                GUI.Box(new Rect(16f, Screen.height - 48f, 210f, 32f), $"{InputBinding.ToUpperInvariant()}  FLEET TABLET");
+                GUI.Box(new Rect(16f, Screen.height - 84f, 210f, 32f), $"{InputBinding.ToUpperInvariant()}  FLEET TABLET");
                 return;
             }
 
@@ -175,22 +189,26 @@ namespace UnderStatic.UI
 
             var contentY = panel.y + 84f;
             var serviceWidth = 300f;
+            var sectionGap = 12f;
+            var cardsAvailable = panel.yMax - 16f - contentY - 28f - sectionGap - 28f;
+            var serviceCardHeight = Mathf.Clamp(cardsAvailable * 0.52f, 150f, 232f);
+            var lockerCardHeight = Mathf.Clamp(cardsAvailable - serviceCardHeight, 138f, 226f);
             GUI.Label(new Rect(panel.x + 24f, contentY, serviceWidth, 24f), "SERVICE BAY");
-            DrawServiceCard(new Rect(panel.x + 24f, contentY + 28f, serviceWidth, 232f));
+            DrawServiceCard(new Rect(panel.x + 24f, contentY + 28f, serviceWidth, serviceCardHeight));
 
             var rightX = panel.x + 348f;
             var rightWidth = panel.xMax - rightX - 24f;
             GUI.Label(new Rect(rightX, contentY, rightWidth, 24f), "READY SHELF  /  DEPLOYMENT STAGING");
-            DrawReadyCard(new Rect(rightX, contentY + 28f, rightWidth, 232f));
+            DrawReadyCard(new Rect(rightX, contentY + 28f, rightWidth, serviceCardHeight));
 
-            var lockerY = contentY + 288f;
+            var lockerY = contentY + 28f + serviceCardHeight + sectionGap;
             GUI.Label(new Rect(panel.x + 24f, lockerY, width - 48f, 24f), "DRONE LOCKER  /  GENERAL STORAGE");
             var gap = 12f;
             var cardWidth = (width - 48f - gap * 2f) / 3f;
             for (var index = 0; index < FleetSystem.LockerCapacity; index++)
             {
                 DrawLockerCard(
-                    new Rect(panel.x + 24f + index * (cardWidth + gap), lockerY + 28f, cardWidth, 226f),
+                    new Rect(panel.x + 24f + index * (cardWidth + gap), lockerY + 28f, cardWidth, lockerCardHeight),
                     index);
             }
         }
@@ -252,6 +270,7 @@ namespace UnderStatic.UI
 
         private void DrawDroneCard(Rect rect, string location, DroneActor actor)
         {
+            var compact = rect.height < 205f;
             GUI.Box(rect, string.Empty);
             GUI.Label(new Rect(rect.x + 10f, rect.y + 8f, rect.width - 20f, 22f), location);
             if (actor == null)
@@ -263,21 +282,28 @@ namespace UnderStatic.UI
             var thumbnail = ThumbnailFor(actor);
             if (thumbnail != null)
             {
-                GUI.DrawTexture(new Rect(rect.x + 10f, rect.y + 36f, ThumbnailWidth, ThumbnailHeight),
+                GUI.DrawTexture(new Rect(
+                        rect.x + 10f,
+                        rect.y + 36f,
+                        compact ? 64f : ThumbnailWidth,
+                        compact ? 44f : ThumbnailHeight),
                     thumbnail, ScaleMode.ScaleToFit, true);
             }
 
             var readiness = actor.Readiness;
             var stats = actor.Stats;
-            var textX = rect.x + 116f;
-            var textWidth = rect.width - 126f;
+            var textX = rect.x + (compact ? 84f : 116f);
+            var textWidth = rect.width - (compact ? 94f : 126f);
             GUI.Label(new Rect(textX, rect.y + 34f, textWidth, 68f),
                 $"{actor.FrameDefinition.DisplayName}\n" +
                 $"{readiness.InstalledCount}/{readiness.RequiredCount} COMPONENTS\n" +
                 $"FRAME {actor.Runtime.frameCondition:P0}");
-            GUI.Label(new Rect(rect.x + 10f, rect.y + 108f, rect.width - 20f, 54f),
-                $"{ReadinessLabel(actor)}\n" +
-                $"SPD {stats.Speed:0.00}   END {stats.Endurance:0.00}   OBS {stats.Observation:0.00}   CTL {stats.Control:0.00}");
+            if (!compact)
+            {
+                GUI.Label(new Rect(rect.x + 10f, rect.y + 108f, rect.width - 20f, 54f),
+                    $"{ReadinessLabel(actor)}\n" +
+                    $"SPD {stats.Speed:0.00}   END {stats.Endurance:0.00}   OBS {stats.Observation:0.00}   CTL {stats.Control:0.00}");
+            }
         }
 
         private static string ReadinessLabel(DroneActor actor)

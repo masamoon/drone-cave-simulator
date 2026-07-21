@@ -11,6 +11,8 @@ The Safe House exchange now supports four buy-side catalogs:
 
 Listings are presented as thumbnail cards. Opening a card shows the full available specification, condition disclosure, price, storage requirement, and access requirement before purchase. Fleet and sell views remain part of the same in-world terminal.
 
+Empty scratch-build aircraft are no longer created from the fleet tablet. A bare Field FPV frame is instead sold through the exchange's Frames catalog for 100 funds and is delivered to a free drone locker. Field payload mounts and sealed payloads are continuously restocked in the Parts catalog. Each new operational day also delivers one sealed payload to serviceable-parts storage at no cost; additional payloads remain purchasable.
+
 ## Advanced-stock access
 
 Advanced equipment uses broker reputation rather than a conventional character level:

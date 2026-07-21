@@ -816,6 +816,7 @@ namespace UnderStatic.Interaction
                 return;
             }
 
+            RefreshServiceSockets();
             UpdateUiRects();
             var guiPointer = GetGuiPointer();
             if (cancelAction?.WasPressedThisFrame() == true)
@@ -1753,11 +1754,36 @@ namespace UnderStatic.Interaction
             }
 
             droneTransform = actor?.transform;
-            sockets = actor?.Sockets.Where(socket => socket != null).ToArray()
-                ?? Array.Empty<PartSocket>();
+            RefreshServiceSockets();
             serviceStatus = actor == null
                 ? "Move a drone into the service bay"
                 : $"Service target: {actor.FrameDefinition.DisplayName}";
+        }
+
+        private void RefreshServiceSockets()
+        {
+            if (droneTransform == null)
+            {
+                sockets = Array.Empty<PartSocket>();
+                return;
+            }
+
+            var actor = droneTransform.GetComponent<DroneActor>();
+            var actorSockets = actor?.Sockets ?? Array.Empty<PartSocket>();
+            var installedPartSockets = actor?.InstalledParts
+                .Where(part => part != null)
+                .SelectMany(part => part.GetComponentsInChildren<PartSocket>(true))
+                ?? Enumerable.Empty<PartSocket>();
+
+            // Installed parts are tracked by explicit assembly state and need not be
+            // transform children of the frame. Keep authored actor sockets and discover
+            // nested sockets contributed by runtime-installed parts such as strike racks.
+            sockets = droneTransform.GetComponentsInChildren<PartSocket>(true)
+                .Concat(actorSockets)
+                .Concat(installedPartSockets)
+                .Where(socket => socket != null)
+                .Distinct()
+                .ToArray();
         }
     }
 }

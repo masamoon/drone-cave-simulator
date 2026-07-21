@@ -6,6 +6,7 @@ using UnderStatic.Core;
 using UnderStatic.Economy;
 using UnderStatic.Fleet;
 using UnderStatic.Inventory;
+using UnderStatic.Missions;
 using UnderStatic.Parts;
 using UnderStatic.Persistence;
 using UnityEngine;
@@ -49,6 +50,56 @@ namespace UnderStatic.Tests.EditMode
             Assert.That(market.TryBuy("listing.motor").Failure,
                 Is.EqualTo(MarketTransactionFailure.ListingUnavailable));
             Assert.That(market.Funds, Is.EqualTo(480));
+        }
+
+        [Test]
+        public void RenewableBasicPart_CanBePurchasedRepeatedlyWithUniqueRuntimeIdentity()
+        {
+            var inventory = CreateInventory(3);
+            var stock = CreatePart("stock.basic.motor", 0.95f, 140);
+            var listing = PartListing("listing.basic.motor", stock, 100);
+            listing.isRenewable = true;
+            listing.rotatesWithMarket = false;
+            var market = CreateMarket(inventory, CreateFleet(), new[] { stock }, null, listing);
+
+            Assert.That(market.TryBuy(listing.listingId).Succeeded, Is.True);
+            Assert.That(market.TryBuy(listing.listingId).Succeeded, Is.True);
+
+            var purchased = inventory.Parts.Where(part => part != null
+                    && part.Runtime.storageLocation == StorageLocationId.SafeHouseParts)
+                .ToArray();
+            Assert.That(purchased.Length, Is.EqualTo(2));
+            Assert.That(purchased.Select(part => part.Runtime.uniqueInstanceId).Distinct().Count(), Is.EqualTo(2));
+            Assert.That(purchased.All(part => part.Definition == stock.Definition), Is.True);
+            Assert.That(stock.Runtime.storageLocation, Is.EqualTo(StorageLocationId.MarketStock));
+            Assert.That(market.FindListing(listing.listingId).isAvailable, Is.True);
+            Assert.That(market.Funds, Is.EqualTo(400));
+        }
+
+        [Test]
+        public void BeginningEachDay_GrantsOnePhysicalPayloadWithoutSpendingFunds()
+        {
+            var inventory = CreateInventory(3, PartCategory.Payload);
+            var stock = CreatePart("stock.daily.payload", 0.95f, 40, PartCategory.Payload);
+            var listing = PartListing("listing.daily.payload", stock, 160);
+            listing.isRenewable = true;
+            listing.rotatesWithMarket = false;
+            var market = CreateMarket(inventory, CreateFleet(), new[] { stock }, null, listing);
+            var day = Track(new GameObject("OperationalDay")).AddComponent<OperationalDaySystem>();
+            day.Configure(null, market: market, payloadAllowance: 1);
+            var startingFunds = market.Funds;
+
+            Assert.That(day.TryEndOperations(), Is.True);
+            Assert.That(day.TryBeginNextDay(42), Is.True, day.LastStatus);
+            Assert.That(day.TryEndOperations(), Is.True);
+            Assert.That(day.TryBeginNextDay(43), Is.True, day.LastStatus);
+
+            var payloads = inventory.Parts.Where(part => part != null
+                && part.Definition.Category == PartCategory.Payload
+                && part.Runtime.storageLocation == StorageLocationId.SafeHouseParts).ToArray();
+            Assert.That(payloads.Length, Is.EqualTo(2));
+            Assert.That(payloads.Select(part => part.Runtime.uniqueInstanceId).Distinct().Count(), Is.EqualTo(2));
+            Assert.That(market.Funds, Is.EqualTo(startingFunds));
         }
 
         [Test]
@@ -270,7 +321,7 @@ namespace UnderStatic.Tests.EditMode
             Assert.That(stock.Runtime.uniqueInstanceId, Is.EqualTo("schema.stock"));
         }
 
-        private InventorySystem CreateInventory(int capacity)
+        private InventorySystem CreateInventory(int capacity, params PartCategory[] acceptedCategories)
         {
             var root = Track(new GameObject($"Inventory.{created.Count}"));
             var system = root.AddComponent<InventorySystem>();
@@ -284,7 +335,9 @@ namespace UnderStatic.Tests.EditMode
                 "Parts",
                 StorageLocationKind.Parts,
                 capacity,
-                PartCategory.Motor)), slots);
+                acceptedCategories is { Length: > 0 }
+                    ? acceptedCategories
+                    : new[] { PartCategory.Motor })), slots);
             system.Configure(Array.Empty<InstallablePart>(), new[] { location }, null, null, null, null, null);
             return system;
         }
@@ -302,10 +355,18 @@ namespace UnderStatic.Tests.EditMode
             return fleet;
         }
 
-        private InstallablePart CreatePart(string id, float condition, int value)
+        private InstallablePart CreatePart(
+            string id,
+            float condition,
+            int value,
+            PartCategory category = PartCategory.Motor)
         {
             var definition = Track(PartDefinition.CreateTransient(
-                $"definition.{id}", id, PartCategory.Motor, new[] { "motor.standard" }, value: value));
+                $"definition.{id}",
+                id,
+                category,
+                new[] { category == PartCategory.Payload ? "payload.sealed" : "motor.standard" },
+                value: value));
             var root = Track(new GameObject(id));
             root.AddComponent<Rigidbody>();
             var part = root.AddComponent<InstallablePart>();
