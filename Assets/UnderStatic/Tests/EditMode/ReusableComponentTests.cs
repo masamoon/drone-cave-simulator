@@ -219,6 +219,27 @@ namespace UnderStatic.Tests
         }
 
         [Test]
+        public void ScrewdriverVisual_UsesAHeadSizedBladeAtTheAuthoredContactPoint()
+        {
+            var tool = Track(new GameObject("FloatingScrewdriverVisual"));
+            var rotatingDriver = FloatingScrewdriverVisualFactory.Build(tool.transform, null, null);
+            var blade = rotatingDriver.Find("DriverBlade");
+
+            Assert.That(blade, Is.Not.Null);
+            Assert.That(tool.transform.Find("HandleGrip"), Is.Not.Null);
+            Assert.That(tool.transform.Find("HandleEndCap"), Is.Not.Null);
+            Assert.That(rotatingDriver.Find("DriverShaft"), Is.Not.Null);
+            Assert.That(tool.GetComponentsInChildren<Collider>(true), Is.Empty);
+
+            var bladeSize = blade.GetComponent<MeshFilter>().sharedMesh.bounds.size;
+            Assert.That(bladeSize.x, Is.EqualTo(0.014f).Within(0.0001f));
+            Assert.That(bladeSize.z, Is.EqualTo(0.003f).Within(0.0001f));
+            Assert.That(
+                blade.localPosition.y - bladeSize.y * 0.5f,
+                Is.EqualTo(-FloatingScrewdriverVisualFactory.BladeInsertionDepth).Within(0.0001f));
+        }
+
+        [Test]
         public void MultiPartPersistence_RebuildsStableOccupancyByInstanceId()
         {
             var twistSocket = CreateSocket(

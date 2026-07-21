@@ -104,19 +104,28 @@ namespace UnderStatic.Lab
             for (var index = 0; index < fastenerTargets.Length; index++)
             {
                 var x = index == 0 ? -0.19f : 0.19f;
+                var fastenerPosition = new Vector3(x, 1.225f, 0.72f);
                 var head = CreatePrimitive(
                     $"Fastener_{index + 1}",
                     PrimitiveType.Cylinder,
                     fixture.transform,
-                    new Vector3(x, 1.225f, 0.72f),
+                    fastenerPosition,
                     new Vector3(0.035f, 0.012f, 0.035f),
                     metal);
                 DisableCollider(head);
+                var driveSlot = CreatePrimitive(
+                    $"FastenerSlot_{index + 1}",
+                    PrimitiveType.Cube,
+                    head.transform,
+                    fastenerPosition + Vector3.up * 0.0125f,
+                    new Vector3(0.018f, 0.0015f, 0.004f),
+                    darkMetal);
+                DisableCollider(driveSlot);
                 fastenerVisuals[index] = head.transform;
 
                 var target = new GameObject($"FastenerTarget_{index + 1}");
                 target.transform.SetParent(fixture.transform);
-                target.transform.position = new Vector3(x, 1.43f, 0.72f);
+                target.transform.position = driveSlot.transform.position + Vector3.up * 0.00075f;
                 target.transform.rotation = Quaternion.identity;
                 fastenerTargets[index] = target.transform;
             }
@@ -294,42 +303,12 @@ namespace UnderStatic.Lab
             toolAnchor.transform.localRotation = Quaternion.Euler(0f, 0f, -12f);
 
             var screwdriverObject = new GameObject("FloatingScrewdriver");
-            var rotatingDriver = new GameObject("RotatingDriver");
-            rotatingDriver.transform.SetParent(screwdriverObject.transform);
-            rotatingDriver.transform.localPosition = Vector3.zero;
-            rotatingDriver.transform.localRotation = Quaternion.identity;
-            var handle = CreatePrimitive(
-                "Handle",
-                PrimitiveType.Cylinder,
+            var rotatingDriver = FloatingScrewdriverVisualFactory.Build(
                 screwdriverObject.transform,
-                Vector3.zero,
-                new Vector3(0.055f, 0.11f, 0.055f),
                 toolMaterial,
-                true);
-            var shaft = CreatePrimitive(
-                "Shaft",
-                PrimitiveType.Cylinder,
-                rotatingDriver.transform,
-                Vector3.zero,
-                new Vector3(0.018f, 0.12f, 0.018f),
-                metal,
-                true);
-            var driverBit = CreatePrimitive(
-                "DriverBit",
-                PrimitiveType.Cube,
-                rotatingDriver.transform,
-                Vector3.zero,
-                new Vector3(0.038f, 0.018f, 0.012f),
-                metal,
-                true);
-            handle.transform.localPosition = new Vector3(0f, 0.09f, 0f);
-            shaft.transform.localPosition = new Vector3(0f, -0.12f, 0f);
-            driverBit.transform.localPosition = new Vector3(0f, -0.249f, 0f);
-            DisableCollider(handle);
-            DisableCollider(shaft);
-            DisableCollider(driverBit);
+                metal);
             var screwdriver = screwdriverObject.AddComponent<FloatingScrewdriver>();
-            screwdriver.Configure(toolAnchor.transform, rotatingDriver.transform, audioFeedback);
+            screwdriver.Configure(toolAnchor.transform, rotatingDriver, audioFeedback);
 
             var lampObject = CreatePrimitive(
                 "DiagnosticLamp",
@@ -509,19 +488,28 @@ namespace UnderStatic.Lab
                 for (var index = 0; index < fastenerTargets.Length; index++)
                 {
                     var x = index == 0 ? -0.105f : 0.105f;
+                    var fastenerPosition = new Vector3(x, 0.18f, 0f);
                     var head = CreatePrimitive(
                         $"Fastener_{index + 1}",
                         PrimitiveType.Cylinder,
                         station.transform,
-                        new Vector3(x, 0.18f, 0f),
+                        fastenerPosition,
                         new Vector3(0.028f, 0.012f, 0.028f),
                         partMaterial,
                         true);
                     DisableCollider(head);
+                    var driveSlot = CreatePrimitive(
+                        $"FastenerSlot_{index + 1}",
+                        PrimitiveType.Cube,
+                        head.transform,
+                        station.transform.TransformPoint(fastenerPosition + Vector3.up * 0.0125f),
+                        new Vector3(0.016f, 0.0015f, 0.004f),
+                        fixtureMaterial);
+                    DisableCollider(driveSlot);
                     fastenerVisuals[index] = head.transform;
                     var target = new GameObject($"FastenerTarget_{index + 1}");
                     target.transform.SetParent(station.transform, false);
-                    target.transform.localPosition = new Vector3(x, 0.36f, 0f);
+                    target.transform.position = driveSlot.transform.position + station.transform.up * 0.00075f;
                     fastenerTargets[index] = target.transform;
                 }
             }

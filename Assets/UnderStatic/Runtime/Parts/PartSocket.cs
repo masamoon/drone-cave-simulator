@@ -55,6 +55,8 @@ namespace UnderStatic.Parts
         public float LockRotationProgress { get; private set; }
         public bool LatchClosed { get; private set; }
         public bool LatchOpenedForExtraction { get; private set; }
+        public bool TwistLockOpenedForExtraction => ProcedureType == InstallationProcedureType.TwistLock
+            && procedureOpenedForExtraction;
         public bool ReadyForExtraction => OccupiedPart?.Runtime.currentState == InteractionState.Seated
             && ProcedureIsUnlocked();
         public bool GuidanceActive => OccupiedPart != null
@@ -1072,7 +1074,7 @@ namespace UnderStatic.Parts
                     index,
                     drivePose,
                     visual,
-                    Vector3.up,
+                    drivePose != null ? drivePose.localRotation * Vector3.up : Vector3.up,
                     0.012f,
                     2f);
                 fastenerBindings[index] = binding;

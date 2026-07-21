@@ -1038,7 +1038,9 @@ namespace UnderStatic.Interaction
             if (part.Runtime.currentState == InteractionState.Seated
                 && socket.ReadyForExtraction
                 && (socket.ProcedureType != InstallationProcedureType.Latch
-                    || socket.LatchOpenedForExtraction))
+                    || socket.LatchOpenedForExtraction)
+                && (socket.ProcedureType != InstallationProcedureType.TwistLock
+                    || socket.TwistLockOpenedForExtraction))
             {
                 TryExtractPart(part);
                 return;

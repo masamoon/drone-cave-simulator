@@ -1,8 +1,12 @@
 using System.Collections;
 using System.Linq;
 using NUnit.Framework;
+using UnderStatic.Core;
+using UnderStatic.Economy;
 using UnderStatic.Missions;
+using UnderStatic.Parts;
 using UnderStatic.Replays;
+using UnderStatic.Tools;
 using UnderStatic.Visuals;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -234,6 +238,83 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(detail, Is.Not.Null);
             Assert.That(detail.GetComponentsInChildren<Collider>(true), Is.Empty);
             Assert.That(motor.GetComponent<Rigidbody>(), Is.Not.Null);
+        }
+
+        [UnityTest]
+        public IEnumerator MarketLoosePartsUseTheSamePsxPresentationAsWorkshopParts()
+        {
+            SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var market = Object.FindAnyObjectByType<MarketSystem>();
+            var parts = market.Listings
+                .Where(listing => listing.category == MarketListingCategory.Part)
+                .Select(market.ResolvePart)
+                .Where(part => part != null)
+                .ToArray();
+
+            Assert.That(parts.Select(part => part.Definition.Category).Distinct(), Is.EquivalentTo(new[]
+            {
+                PartCategory.Motor,
+                PartCategory.Propeller,
+                PartCategory.Battery,
+                PartCategory.Camera,
+                PartCategory.Antenna
+            }));
+            Assert.That(parts, Is.Not.Empty);
+            foreach (var part in parts)
+            {
+                var detail = part.transform.Find("PSX_PartDetail");
+                Assert.That(detail, Is.Not.Null, $"{part.name} retained its unfinished primitive presentation.");
+                Assert.That(detail.GetComponentsInChildren<Collider>(true), Is.Empty,
+                    $"Presentation meshes on {part.name} must not alter interaction geometry.");
+                if (part.Definition.Category != PartCategory.Camera)
+                {
+                    Assert.That(part.GetComponent<Renderer>().enabled, Is.False,
+                        $"The primitive renderer on {part.name} should be replaced by the PSX detail child.");
+                }
+            }
+
+            Assert.That(parts.First(part => part.Definition.Category == PartCategory.Motor)
+                .transform.Find("PSX_PartDetail/MotorBell"), Is.Not.Null);
+            Assert.That(parts.First(part => part.Definition.Category == PartCategory.Battery)
+                .transform.Find("PSX_PartDetail/BatteryShrinkWrap"), Is.Not.Null);
+            Assert.That(parts.First(part => part.Definition.Category == PartCategory.Camera)
+                .transform.Find("PSX_PartDetail/CameraGlass"), Is.Not.Null);
+            Assert.That(parts.First(part => part.Definition.Category == PartCategory.Antenna)
+                .transform.Find("PSX_PartDetail/AntennaWhip"), Is.Not.Null);
+            Assert.That(parts.First(part => part.Definition.Category == PartCategory.Propeller)
+                .transform.Find("PSX_PartDetail/PropellerBlade.2"), Is.Not.Null);
+        }
+
+        [UnityTest]
+        public IEnumerator ScrewdriverBladeSeatsInTheFastenerSlotWithoutPiercingTheHead()
+        {
+            SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var screwdriver = Object.FindAnyObjectByType<FloatingScrewdriver>(FindObjectsInactive.Include);
+            var socket = GameObject.Find("CameraBracketSocket").GetComponent<PartSocket>();
+            var fastener = socket.Fasteners[0];
+            var screwHead = GameObject.Find("CameraBracketSocket_Fastener_1").GetComponent<Renderer>();
+            var driveSlot = GameObject.Find("CameraBracketSocket_FastenerSlot_1").GetComponent<Renderer>();
+
+            Assert.That(screwdriver.Activate(fastener, FastenerDriveDirection.Loosen), Is.True);
+            yield return null;
+
+            var blade = screwdriver.transform.Find("RotatingDriver/DriverBlade").GetComponent<Renderer>();
+            Assert.That(Mathf.Abs(blade.bounds.center.x - driveSlot.bounds.center.x), Is.LessThan(0.001f));
+            Assert.That(Mathf.Abs(blade.bounds.center.z - driveSlot.bounds.center.z), Is.LessThan(0.001f));
+            Assert.That(blade.bounds.size.x, Is.LessThanOrEqualTo(driveSlot.bounds.size.x + 0.0001f));
+            Assert.That(blade.bounds.size.z, Is.LessThanOrEqualTo(driveSlot.bounds.size.z + 0.0001f));
+            Assert.That(
+                blade.bounds.min.y,
+                Is.GreaterThanOrEqualTo(screwHead.bounds.max.y - FloatingScrewdriverVisualFactory.BladeInsertionDepth - 0.0001f));
+            Assert.That(blade.bounds.min.y, Is.LessThan(driveSlot.bounds.max.y));
+
+            screwdriver.Deactivate();
         }
 
         private static MissionRuntimeData Runtime(SortieType type, BattlefieldContactType targetType) => new()

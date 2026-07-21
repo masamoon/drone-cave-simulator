@@ -23,7 +23,8 @@ namespace UnderStatic.Lab
             FirstPersonController controller,
             IList<InstallablePart> allParts,
             IReadOnlyList<DroneActor> playerActors,
-            DroneActor salvageActor)
+            DroneActor salvageActor,
+            PsxVisualKit visualKit)
         {
             var stockMaterial = InteractionLabFactory.CreateMaterial(
                 "Market Stock Blue",
@@ -58,6 +59,8 @@ namespace UnderStatic.Lab
                 batteryDefinition,
                 stockMaterial,
                 "market-part-scout-battery-01");
+            PsxVisualFactory.EnhancePart(motor, visualKit);
+            PsxVisualFactory.EnhancePart(battery, visualKit);
             motor.SetCondition(0.96f);
             battery.SetCondition(0.93f);
             motor.SetControlledPhysics();
@@ -76,7 +79,7 @@ namespace UnderStatic.Lab
                 PartListing("market.initial.scout-battery-upgrade", battery, 250, MarketAccessTier.Trusted)
             };
             var marketParts = new List<InstallablePart> { motor, battery };
-            AddPartStock(marketParts, listings, allParts, stockMaterial);
+            AddPartStock(marketParts, listings, allParts, stockMaterial, visualKit);
 
             var marketActors = new List<DroneActor>();
             var marketSockets = new List<PartSocket>();
@@ -215,7 +218,8 @@ namespace UnderStatic.Lab
             ICollection<InstallablePart> marketParts,
             ICollection<MarketListingRuntimeData> listings,
             ICollection<InstallablePart> allParts,
-            Material material)
+            Material material,
+            PsxVisualKit visualKit)
         {
             var specs = new[]
             {
@@ -248,6 +252,7 @@ namespace UnderStatic.Lab
                     definition,
                     material,
                     $"market-part-{slug}-01");
+                PsxVisualFactory.EnhancePart(part, visualKit);
                 part.SetCondition(0.88f + (index % 4) * 0.03f);
                 part.SetControlledPhysics();
                 part.SetLocation(StorageLocationId.MarketStock, "Market stock");

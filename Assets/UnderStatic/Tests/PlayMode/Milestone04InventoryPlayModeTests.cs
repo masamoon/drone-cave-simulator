@@ -286,6 +286,47 @@ namespace UnderStatic.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator FreshlySeatedPropellerWorldActionSecuresBeforeExtraction()
+        {
+            SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var service = GameObject.Find("DroneServiceModeControl").GetComponent<DroneServiceModeController>();
+            var inventory = Object.FindAnyObjectByType<InventorySystem>();
+            var socket = GameObject.Find("PropellerSocket_front-left").GetComponent<PartSocket>();
+            var propeller = socket.OccupiedPart;
+            var partsStorage = inventory.FindLocation(StorageLocationId.SafeHouseParts);
+            var beginWorldAction = typeof(DroneServiceModeController).GetMethod(
+                "BeginWorldAction",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+
+            Assert.That(beginWorldAction, Is.Not.Null);
+            Assert.That(service.EnterServiceMode(), Is.True, service.ServiceStatus);
+            yield return new WaitForSeconds(0.4f);
+            Assert.That(socket.ApplyLockRotation(100f), Is.True);
+            Assert.That(service.TryExtractPart(propeller), Is.True, service.ServiceStatus);
+            Assert.That(partsStorage.Contains(propeller), Is.True);
+            Assert.That(service.TryInstallPart(propeller, socket), Is.True, service.ServiceStatus);
+            Assert.That(propeller.Runtime.currentState, Is.EqualTo(InteractionState.Seated));
+
+            beginWorldAction.Invoke(service, new object[] { socket });
+            Assert.That(socket.OccupiedPart, Is.SameAs(propeller));
+            Assert.That(partsStorage.Contains(propeller), Is.False);
+            Assert.That(propeller.Runtime.currentState, Is.EqualTo(InteractionState.Seated));
+            Assert.That(socket.ApplyLockRotation(100f), Is.True);
+            Assert.That(propeller.Runtime.currentState, Is.EqualTo(InteractionState.Installed));
+            Assert.That(partsStorage.Contains(propeller), Is.False);
+
+            beginWorldAction.Invoke(service, new object[] { socket });
+            Assert.That(socket.ApplyLockRotation(100f), Is.True);
+            beginWorldAction.Invoke(service, new object[] { socket });
+            Assert.That(socket.OccupiedPart, Is.Null);
+            Assert.That(partsStorage.Contains(propeller), Is.True);
+            service.ExitServiceMode();
+        }
+
+        [UnityTest]
         public IEnumerator ServiceFocusCleanupIgnoresRenderersRemovedDuringSalvageOrTeardown()
         {
             SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);

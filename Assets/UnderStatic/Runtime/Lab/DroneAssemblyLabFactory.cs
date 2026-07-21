@@ -396,6 +396,7 @@ namespace UnderStatic.Lab
                 saveSystem,
                 audioFeedback,
                 toolMaterial,
+                serviceableMaterial,
                 createSafeHouse ? new Vector3(0f, 0.02f, -2.05f) : new Vector3(0f, 0.02f, -0.82f),
                 out var interactions,
                 out var playerCamera,
@@ -471,7 +472,8 @@ namespace UnderStatic.Lab
                     playerController,
                     allParts,
                     fleetActors,
-                    marketSalvageActor);
+                    marketSalvageActor,
+                    psxVisualKit);
                 SafeHouseMissionFactory.Build(
                     fleet,
                     saveSystem,
@@ -664,7 +666,8 @@ namespace UnderStatic.Lab
             Material socketMaterial,
             Material fastenerMaterial,
             Transform parent,
-            float fastenerHeightOffset = 0.022f)
+            float fastenerHeightOffset = 0.022f,
+            bool underside = false)
         {
             var socketObject = InteractionLabFactory.CreatePrimitive(
                 name,
@@ -683,6 +686,7 @@ namespace UnderStatic.Lab
                 new Vector3(-0.06f, 0f, 0.06f),
                 new Vector3(0.06f, 0f, 0.06f)
             };
+            var driveDirection = underside ? Vector3.down : Vector3.up;
             for (var index = 0; index < targets.Length; index++)
             {
                 var fastenerPosition = position + fastenerOffsets[index] + Vector3.up * fastenerHeightOffset;
@@ -698,14 +702,17 @@ namespace UnderStatic.Lab
                     $"{name}_FastenerSlot_{index + 1}",
                     PrimitiveType.Cube,
                     head.transform,
-                    fastenerPosition + Vector3.up * 0.0045f,
+                    fastenerPosition + driveDirection * 0.0045f,
                     new Vector3(0.016f, 0.0015f, 0.004f),
                     socketMaterial);
                 InteractionLabFactory.DisableCollider(driveSlot);
                 fastenerVisuals[index] = head.transform;
                 var target = new GameObject($"{name}_FastenerTarget_{index + 1}");
                 target.transform.SetParent(parent);
-                target.transform.position = fastenerPosition + Vector3.up * 0.158f;
+                target.transform.position = driveSlot.transform.position + driveDirection * 0.00075f;
+                target.transform.rotation = underside
+                    ? Quaternion.Euler(180f, 0f, 0f)
+                    : Quaternion.identity;
                 targets[index] = target.transform;
             }
 
@@ -1220,6 +1227,7 @@ namespace UnderStatic.Lab
             SaveSystem saveSystem,
             AudioFeedbackSystem audioFeedback,
             Material toolMaterial,
+            Material toolMetalMaterial,
             Vector3 playerStart,
             out InteractionSystem interactions,
             out Camera playerCamera,
@@ -1263,42 +1271,12 @@ namespace UnderStatic.Lab
             toolAnchor.transform.localPosition = new Vector3(0.48f, 1.28f, 0.58f);
             toolAnchor.transform.localRotation = Quaternion.Euler(0f, 0f, -12f);
             var screwdriverObject = new GameObject("FloatingScrewdriver");
-            var rotatingDriver = new GameObject("RotatingDriver");
-            rotatingDriver.transform.SetParent(screwdriverObject.transform);
-            rotatingDriver.transform.localPosition = Vector3.zero;
-            rotatingDriver.transform.localRotation = Quaternion.identity;
-            var handle = InteractionLabFactory.CreatePrimitive(
-                "Handle",
-                PrimitiveType.Cylinder,
+            var rotatingDriver = FloatingScrewdriverVisualFactory.Build(
                 screwdriverObject.transform,
-                Vector3.zero,
-                new Vector3(0.055f, 0.11f, 0.055f),
                 toolMaterial,
-                true);
-            var shaft = InteractionLabFactory.CreatePrimitive(
-                "Shaft",
-                PrimitiveType.Cylinder,
-                rotatingDriver.transform,
-                Vector3.zero,
-                new Vector3(0.018f, 0.12f, 0.018f),
-                toolMaterial,
-                true);
-            var driverBit = InteractionLabFactory.CreatePrimitive(
-                "DriverBit",
-                PrimitiveType.Cube,
-                rotatingDriver.transform,
-                Vector3.zero,
-                new Vector3(0.038f, 0.018f, 0.012f),
-                toolMaterial,
-                true);
-            handle.transform.localPosition = new Vector3(0f, 0.09f, 0f);
-            shaft.transform.localPosition = new Vector3(0f, -0.12f, 0f);
-            driverBit.transform.localPosition = new Vector3(0f, -0.249f, 0f);
-            InteractionLabFactory.DisableCollider(handle);
-            InteractionLabFactory.DisableCollider(shaft);
-            InteractionLabFactory.DisableCollider(driverBit);
+                toolMetalMaterial);
             screwdriver = screwdriverObject.AddComponent<FloatingScrewdriver>();
-            screwdriver.Configure(toolAnchor.transform, rotatingDriver.transform, audioFeedback);
+            screwdriver.Configure(toolAnchor.transform, rotatingDriver, audioFeedback);
 
             interactions.Configure(playerCamera, playerInput, sockets, screwdriver, saveSystem, audioFeedback);
             controller.Configure(cameraObject.transform, interactions);
@@ -1905,15 +1883,11 @@ namespace UnderStatic.Lab
                 socketMaterial,
                 rackMaterial,
                 drone,
-                -0.045f);
+                -0.045f,
+                true);
             socket.SetCompatibilityStandards(CompatibilityStandardId.SharedStrikeRack);
             socket.SetInsertionAxis(Vector3.down);
             socket.SetSeatedOffset(Vector3.down * 0.075f);
-            foreach (var target in socket.FastenerTargets)
-            {
-                target.position += Vector3.down * 0.28f;
-                target.rotation = Quaternion.Euler(180f, 0f, 0f);
-            }
             allSockets.Add(socket);
 
             var definition = PartDefinition.CreateTransient(
