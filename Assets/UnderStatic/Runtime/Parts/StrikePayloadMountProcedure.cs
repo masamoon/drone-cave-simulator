@@ -230,6 +230,11 @@ namespace UnderStatic.Parts
             SetEnabled(rearLoose, !mounted || !IsSet(StrikePayloadMountStep.RearStrap));
             SetEnabled(harnessConnected, mounted && IsSet(StrikePayloadMountStep.ControlHarness));
             SetEnabled(harnessLoose, !mounted || !IsSet(StrikePayloadMountStep.ControlHarness));
+            var payloadCollider = payloadSocket != null ? payloadSocket.GetComponent<Collider>() : null;
+            if (payloadCollider != null)
+            {
+                payloadCollider.enabled = mounted;
+            }
             foreach (var target in targets)
             {
                 target.SetInteractionEnabled(mounted && (!UsesPhysicalPayload || HasPayload));

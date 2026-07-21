@@ -80,6 +80,10 @@ namespace UnderStatic.Interaction
         [SerializeField, Min(0.1f)] private float serviceDragDistance = 1.35f;
         [SerializeField, Min(20f)] private float dragCapturePixels = 92f;
         [SerializeField, Min(0.01f)] private float dragPositionSharpness = 18f;
+        [SerializeField] private Vector3 payloadBayFocusOffset = new(0f, 1.05f, 0.86f);
+        [SerializeField, Min(0.5f)] private float payloadBayDistance = 1.35f;
+        [SerializeField, Range(-20f, 20f)] private float payloadBayPitch;
+        [SerializeField, Min(0f)] private float payloadBayBenchClearance = 0.06f;
         [SerializeField] private string serviceTitle = "DRONE SERVICE";
         [SerializeField] private string activationPrompt = "E: enter drone service mode";
         [SerializeField] private bool requiresServiceBayDrone = true;
@@ -95,6 +99,11 @@ namespace UnderStatic.Interaction
         private float originalFieldOfView;
         private Vector3 cameraBlendStartPosition;
         private Quaternion cameraBlendStartRotation;
+        private Transform serviceDroneOriginalParent;
+        private Vector3 serviceDroneOriginalPosition;
+        private Quaternion serviceDroneOriginalRotation;
+        private float serviceDroneOriginalVisualMinimumY;
+        private bool serviceDronePoseCaptured;
         private float cameraBlendElapsed;
         private float yaw;
         private float pitch = 26f;
@@ -105,6 +114,11 @@ namespace UnderStatic.Interaction
         private bool dragIsThreeDimensional;
         private StorageLocationId dragOriginLocation;
         private int dragOriginSlot = -1;
+        private Transform dragOriginParent;
+        private Vector3 dragOriginWorldPosition;
+        private Quaternion dragOriginWorldRotation;
+        private string dragOriginOwner;
+        private bool dragOriginWasWorldLoose;
         private PartSocket dragGuidanceSocket;
         private PartSocket dragHighlightedSocket;
         private string previousActionMap;
@@ -125,10 +139,12 @@ namespace UnderStatic.Interaction
         private Rect inventoryPanelRect;
         private Rect scrapRect;
         private Rect diagnosticRect;
+        private Rect payloadBayRect;
         private Rect exitRect;
         private float PartsRowStartY => CanShowInstalledComponents ? 126f : 92f;
 
         public bool IsActive { get; private set; }
+        public bool PayloadBayViewActive { get; private set; }
         public bool IsDraggingPartInWorld => dragIsThreeDimensional;
         public InstallablePart DraggedPart => draggedPart;
         public Transform InteractionTransform => transform;
@@ -140,6 +156,8 @@ namespace UnderStatic.Interaction
         public string ServiceStatus => serviceStatus;
         public ServicePartsTab SelectedPartsTab => selectedPartsTab;
         public bool CanShowInstalledComponents => requiresServiceBayDrone && sockets.Any(socket => socket != null);
+        public bool HasPayloadBay => sockets.Any(socket => socket != null
+            && socket.AcceptedPrimaryCategory is PartCategory.StrikeRack or PartCategory.Payload);
         public ServiceInspectionSnapshot CurrentInspection => draggedPart != null
             ? default
             : ServiceInspectionPresenter.ForTarget(hovered, fleetSystem?.ServiceDrone);
@@ -273,12 +291,18 @@ namespace UnderStatic.Interaction
             originalCameraLocalPosition = serviceCamera.transform.localPosition;
             originalCameraLocalRotation = serviceCamera.transform.localRotation;
             originalFieldOfView = serviceCamera.fieldOfView;
+            serviceDroneOriginalParent = droneTransform.parent;
+            serviceDroneOriginalPosition = droneTransform.position;
+            serviceDroneOriginalRotation = droneTransform.rotation;
+            serviceDroneOriginalVisualMinimumY = ActiveDroneVisualMinimumY();
+            serviceDronePoseCaptured = true;
             cameraBlendStartPosition = serviceCamera.transform.position;
             cameraBlendStartRotation = serviceCamera.transform.rotation;
             cameraBlendElapsed = 0f;
             distance = Mathf.Clamp(initialDistance, minimumDistance, maximumDistance);
             yaw = 0f;
             pitch = 26f;
+            PayloadBayViewActive = false;
 
             interactionSystem.SuspendForServiceMode();
             interactionSystem.enabled = false;
@@ -295,6 +319,78 @@ namespace UnderStatic.Interaction
                 ? $"Drag a {inventoryCategoryFilter.ToString().ToLowerInvariant()} from inventory into the station"
                 : "Drag a replacement from inventory or click an installed component";
             return true;
+        }
+
+        public bool SetPayloadBayView(bool active)
+        {
+            if (!IsActive || active && !HasPayloadBay)
+            {
+                return false;
+            }
+
+            if (PayloadBayViewActive == active)
+            {
+                return true;
+            }
+
+            PayloadBayViewActive = active;
+            ApplyPayloadInspectionPose(active);
+            cameraBlendStartPosition = serviceCamera.transform.position;
+            cameraBlendStartRotation = serviceCamera.transform.rotation;
+            cameraBlendElapsed = 0f;
+            yaw = 0f;
+            pitch = active ? payloadBayPitch : 26f;
+            distance = active
+                ? Mathf.Clamp(payloadBayDistance, minimumDistance, maximumDistance)
+                : Mathf.Clamp(initialDistance, minimumDistance, maximumDistance);
+            serviceStatus = active
+                ? "Payload bay view · install the rack, seat the sealed payload, then secure straps and harness"
+                : "General service view";
+            return true;
+        }
+
+        private void ApplyPayloadInspectionPose(bool active)
+        {
+            if (droneTransform == null || !serviceDronePoseCaptured)
+            {
+                return;
+            }
+
+            if (!active)
+            {
+                droneTransform.SetParent(serviceDroneOriginalParent, true);
+                droneTransform.SetPositionAndRotation(
+                    serviceDroneOriginalPosition,
+                    serviceDroneOriginalRotation);
+                return;
+            }
+
+            var localPivot = payloadBayFocusOffset;
+            var worldPivot = serviceDroneOriginalPosition + serviceDroneOriginalRotation * localPivot;
+            var inspectionRotation = serviceDroneOriginalRotation * Quaternion.Euler(90f, 0f, 0f);
+            var inspectionPosition = worldPivot - inspectionRotation * localPivot;
+            droneTransform.SetPositionAndRotation(inspectionPosition, inspectionRotation);
+            var clearanceFloor = serviceDroneOriginalVisualMinimumY + payloadBayBenchClearance;
+            var inspectionMinimumY = ActiveDroneVisualMinimumY();
+            if (inspectionMinimumY < clearanceFloor)
+            {
+                droneTransform.position += Vector3.up * (clearanceFloor - inspectionMinimumY);
+            }
+        }
+
+        private float ActiveDroneVisualMinimumY()
+        {
+            if (droneTransform == null)
+            {
+                return 0f;
+            }
+
+            var renderers = droneTransform.GetComponentsInChildren<Renderer>(false)
+                .Where(renderer => renderer != null && renderer.enabled && renderer.gameObject.activeInHierarchy)
+                .ToArray();
+            return renderers.Length == 0
+                ? droneTransform.position.y
+                : renderers.Min(renderer => renderer.bounds.min.y);
         }
 
         public bool RunDiagnostic()
@@ -334,6 +430,9 @@ namespace UnderStatic.Interaction
             }
             activeTwistSocket = null;
             CancelServiceDrag();
+            ApplyPayloadInspectionPose(false);
+            PayloadBayViewActive = false;
+            serviceDronePoseCaptured = false;
 
             if (serviceCamera != null)
             {
@@ -417,8 +516,17 @@ namespace UnderStatic.Interaction
             dragOriginLocation = part.Runtime.storageLocation;
             var location = inventory.FindLocation(dragOriginLocation);
             dragOriginSlot = location?.IndexOf(part) ?? -1;
+            dragOriginParent = part.transform.parent;
+            dragOriginWorldPosition = part.transform.position;
+            dragOriginWorldRotation = part.transform.rotation;
+            dragOriginOwner = part.Runtime.currentOwner;
+            dragOriginWasWorldLoose = location == null;
             dragIsThreeDimensional = false;
             dragGuidanceSocket = null;
+            if (part.Definition?.Category is PartCategory.StrikeRack or PartCategory.Payload)
+            {
+                SetPayloadBayView(true);
+            }
             serviceStatus = $"Drag {part.Definition?.DisplayName ?? part.name} out of the panel";
             return true;
         }
@@ -485,9 +593,9 @@ namespace UnderStatic.Interaction
                     draggedPart = null;
                     dragIsThreeDimensional = false;
                     dragOriginSlot = -1;
-                    serviceStatus = completedSocket.ProcedureType == InstallationProcedureType.ChargingDock
-                        ? $"{seatedName} connected · charging started"
-                        : $"{seatedName} seated · secure it to finish installation";
+                    serviceStatus = ResolveInstalledPartStatus(
+                        completedSocket.OccupiedPart,
+                        completedSocket);
                 }
 
                 return true;
@@ -614,7 +722,23 @@ namespace UnderStatic.Interaction
             dragGuidanceSocket = null;
             dragHighlightedSocket?.SetFocused(false);
             dragHighlightedSocket = null;
-            if (dragIsThreeDimensional)
+            var cancellationStatus = "Part drag cancelled without changing ownership";
+            if (dragIsThreeDimensional && dragOriginWasWorldLoose)
+            {
+                if (draggedPart.Runtime.currentState == InteractionState.Held)
+                {
+                    draggedPart.TryTransition(InteractionState.Loose);
+                }
+                draggedPart.transform.SetParent(dragOriginParent, true);
+                draggedPart.transform.SetPositionAndRotation(
+                    dragOriginWorldPosition,
+                    dragOriginWorldRotation);
+                draggedPart.SetControlledPhysics();
+                draggedPart.SetLocation(dragOriginLocation, dragOriginOwner);
+                draggedPart.RememberRecoveryPose();
+                cancellationStatus = $"Returned {draggedPart.Definition.DisplayName} to its original position";
+            }
+            else if (dragIsThreeDimensional)
             {
                 inventory?.TryRestoreServiceDrag(
                     draggedPart,
@@ -625,7 +749,9 @@ namespace UnderStatic.Interaction
             draggedPart = null;
             dragIsThreeDimensional = false;
             dragOriginSlot = -1;
-            serviceStatus = "Part drag cancelled without changing ownership";
+            dragOriginParent = null;
+            dragOriginWasWorldLoose = false;
+            serviceStatus = cancellationStatus;
         }
 
         public bool TryExtractPart(InstallablePart part)
@@ -734,7 +860,10 @@ namespace UnderStatic.Interaction
             {
                 var delta = deltaAction?.ReadValue<Vector2>() ?? Vector2.zero;
                 yaw += delta.x * orbitSensitivity;
-                pitch = Mathf.Clamp(pitch - delta.y * orbitSensitivity, -8f, 78f);
+                pitch = Mathf.Clamp(
+                    pitch - delta.y * orbitSensitivity,
+                    PayloadBayViewActive ? -68f : -8f,
+                    PayloadBayViewActive ? 18f : 78f);
             }
 
             var scroll = zoomAction?.ReadValue<Vector2>().y ?? 0f;
@@ -749,7 +878,8 @@ namespace UnderStatic.Interaction
 
         private void ApplyServiceCamera()
         {
-            var focus = droneTransform.position + droneFocusOffset;
+            var focus = droneTransform.TransformPoint(
+                PayloadBayViewActive ? payloadBayFocusOffset : droneFocusOffset);
             var orbit = Quaternion.Euler(pitch, yaw, 0f);
             var targetPosition = focus + orbit * (Vector3.back * distance);
             var targetRotation = Quaternion.LookRotation(focus - targetPosition, Vector3.up);
@@ -760,7 +890,10 @@ namespace UnderStatic.Interaction
             serviceCamera.transform.SetPositionAndRotation(
                 Vector3.Lerp(cameraBlendStartPosition, targetPosition, blend),
                 Quaternion.Slerp(cameraBlendStartRotation, targetRotation, blend));
-            serviceCamera.fieldOfView = Mathf.Lerp(originalFieldOfView, 48f, blend);
+            serviceCamera.fieldOfView = Mathf.Lerp(
+                originalFieldOfView,
+                PayloadBayViewActive ? 42f : 48f,
+                blend);
         }
 
         private void UpdatePointerHover(Vector2 guiPointer)
@@ -799,7 +932,12 @@ namespace UnderStatic.Interaction
 
             if (tightenAction?.WasPressedThisFrame() == true)
             {
-                if (hovered is FastenerTarget fastener)
+                if (hovered is StrikePayloadMountStepTarget payloadStep)
+                {
+                    payloadStep.Activate();
+                    serviceStatus = payloadStep.InteractionPrompt;
+                }
+                else if (hovered is FastenerTarget fastener)
                 {
                     BeginFastenerAction(fastener, FastenerDriveDirection.Tighten);
                 }
@@ -887,7 +1025,9 @@ namespace UnderStatic.Interaction
             switch (socket.ProcedureType)
             {
                 case InstallationProcedureType.Fasteners:
-                    serviceStatus = "Point at a screw head · LMB tighten · RMB loosen";
+                    serviceStatus = part.Definition?.Category == PartCategory.StrikeRack
+                        ? "Empty rack seated · hold LMB on each highlighted captive screw · click the rack body to remove it while all screws are loose"
+                        : "Point at a screw head · LMB tighten · RMB loosen";
                     break;
                 case InstallationProcedureType.TwistLock:
                     activeTwistSocket = socket.BeginLockGesture() ? socket : null;
@@ -931,11 +1071,28 @@ namespace UnderStatic.Interaction
                 QueryTriggerInteraction.Collide);
             IInteractable closest = null;
             var closestDistance = float.PositiveInfinity;
+            FastenerTarget closestFastener = null;
+            var closestFastenerDistance = float.PositiveInfinity;
+            StrikePayloadMountStepTarget closestPayloadStep = null;
+            var closestPayloadStepDistance = float.PositiveInfinity;
             for (var index = 0; index < hitCount; index++)
             {
                 var hit = pointerHits[index];
-                IInteractable candidate = hit.collider?.GetComponentInParent<FastenerTarget>();
-                candidate ??= hit.collider?.GetComponentInParent<LatchTarget>();
+                var fastener = hit.collider?.GetComponentInParent<FastenerTarget>();
+                if (fastener != null && hit.distance < closestFastenerDistance)
+                {
+                    closestFastener = fastener;
+                    closestFastenerDistance = hit.distance;
+                    continue;
+                }
+                var payloadStep = hit.collider?.GetComponentInParent<StrikePayloadMountStepTarget>();
+                if (payloadStep != null && hit.distance < closestPayloadStepDistance)
+                {
+                    closestPayloadStep = payloadStep;
+                    closestPayloadStepDistance = hit.distance;
+                    continue;
+                }
+                IInteractable candidate = hit.collider?.GetComponentInParent<LatchTarget>();
                 candidate ??= hit.collider?.GetComponentInParent<InstallablePart>();
                 candidate ??= hit.collider?.GetComponentInParent<PartSocket>();
                 candidate ??= hit.collider?.GetComponentInParent<DroneFrameInspectionTarget>();
@@ -948,7 +1105,7 @@ namespace UnderStatic.Interaction
                 closestDistance = hit.distance;
             }
 
-            return closest;
+            return closestFastener ?? (IInteractable)closestPayloadStep ?? closest;
         }
 
         private PartSocket FindPointerSocket(Vector2 guiPointer)
@@ -1022,7 +1179,9 @@ namespace UnderStatic.Interaction
         private static string ResolveInstalledPartStatus(InstallablePart part, PartSocket socket)
         {
             var displayName = part?.Definition?.DisplayName ?? part?.name ?? "Part";
-            return socket?.ProcedureType == InstallationProcedureType.ChargingDock
+            return part?.Definition?.Category == PartCategory.Payload
+                ? $"{displayName} seated · secure the forward and rear straps, then connect the harness"
+                : socket?.ProcedureType == InstallationProcedureType.ChargingDock
                 ? $"{displayName} connected · charging started"
                 : $"{displayName} seated · {socket?.InteractionPrompt}";
         }
@@ -1036,7 +1195,9 @@ namespace UnderStatic.Interaction
             nearestDistance = float.PositiveInfinity;
             foreach (var candidate in sockets)
             {
-                if (candidate == null || !candidate.CanAccept(part))
+                if (candidate == null
+                    || !candidate.gameObject.activeInHierarchy
+                    || !candidate.CanAccept(part))
                 {
                     continue;
                 }
@@ -1084,10 +1245,21 @@ namespace UnderStatic.Interaction
             inventoryPanelRect.Contains(guiPointer)
             || supportsSalvage && scrapRect.Contains(guiPointer)
             || supportsDiagnostic && diagnosticRect.Contains(guiPointer)
+            || HasPayloadBay && payloadBayRect.Contains(guiPointer)
             || exitRect.Contains(guiPointer);
 
         private bool UpdateDragInput(Vector2 guiPointer)
         {
+            if (draggedPart == null
+                && tightenAction?.WasPressedThisFrame() == true
+                && !PointerOverUi(guiPointer)
+                && hovered is InstallablePart worldPart
+                && worldPart.Runtime.currentState == InteractionState.Loose
+                && BeginServiceDrag(worldPart))
+            {
+                PromoteServiceDragToWorld(guiPointer);
+            }
+
             if (draggedPart == null
                 && tightenAction?.WasPressedThisFrame() == true
                 && selectedPartsTab == ServicePartsTab.Inventory
@@ -1172,6 +1344,9 @@ namespace UnderStatic.Interaction
             diagnosticRect = supportsDiagnostic
                 ? new Rect(Screen.width - 304f, 18f, 136f, 34f)
                 : Rect.zero;
+            payloadBayRect = HasPayloadBay
+                ? new Rect(Screen.width - 460f, 18f, 142f, 34f)
+                : Rect.zero;
             exitRect = new Rect(Screen.width - 154f, 18f, 136f, 34f);
         }
 
@@ -1229,6 +1404,11 @@ namespace UnderStatic.Interaction
             if (supportsDiagnostic && GUI.Button(diagnosticRect, "RUN DIAGNOSTIC"))
             {
                 RunDiagnostic();
+            }
+            if (HasPayloadBay
+                && GUI.Button(payloadBayRect, PayloadBayViewActive ? "GENERAL VIEW" : "PAYLOAD BAY"))
+            {
+                SetPayloadBayView(!PayloadBayViewActive);
             }
             if (GUI.Button(exitRect, "EXIT SERVICE"))
             {

@@ -4,6 +4,7 @@ using NUnit.Framework;
 using UnderStatic.Core;
 using UnderStatic.Fleet;
 using UnderStatic.Inventory;
+using UnderStatic.Interaction;
 using UnderStatic.Missions;
 using UnderStatic.Parts;
 using UnderStatic.Persistence;
@@ -64,6 +65,65 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(GameObject.Find("PSX_PayloadStorageCradle"), Is.Not.Null);
             Assert.That(GameObject.Find("PSX_SalvageIntakeCrate"), Is.Not.Null);
         }
+
+        [UnityTest]
+        public IEnumerator PayloadBayViewCanPickPhysicalPayloadAndRequiresInstalledRack()
+        {
+            SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var service = Object.FindObjectsByType<DroneServiceModeController>(
+                    FindObjectsInactive.Include, FindObjectsSortMode.None)
+                .Single(controller => controller.CanShowInstalledComponents);
+            var payload = Object.FindObjectsByType<InstallablePart>(
+                    FindObjectsInactive.Include, FindObjectsSortMode.None)
+                .Single(part => part.name == "FieldSealedPayload");
+            var rack = Object.FindObjectsByType<InstallablePart>(
+                    FindObjectsInactive.Include, FindObjectsSortMode.None)
+                .Single(part => part.name == "FieldStrikeRack");
+            var payloadSocket = rack.GetComponentsInChildren<PartSocket>(true)
+                .Single(socket => socket.AcceptedPrimaryCategory == PartCategory.Payload);
+
+            Assert.That(payloadSocket.InstallationPrerequisite?.AcceptedPrimaryCategory,
+                Is.EqualTo(PartCategory.StrikeRack));
+            var serviceDrone = Object.FindAnyObjectByType<FleetSystem>().ServiceDrone.transform;
+            var originalPosition = serviceDrone.position;
+            var originalRotation = serviceDrone.rotation;
+            var originalVisualMinimumY = ActiveVisualMinimumY(serviceDrone);
+            Assert.That(service.EnterServiceMode(), Is.True, service.ServiceStatus);
+            Assert.That(service.SetPayloadBayView(true), Is.True);
+            Assert.That(service.PayloadBayViewActive, Is.True);
+            Assert.That(Quaternion.Angle(serviceDrone.rotation, originalRotation), Is.GreaterThan(80f));
+            Assert.That(ActiveVisualMinimumY(serviceDrone),
+                Is.GreaterThanOrEqualTo(originalVisualMinimumY + 0.05f));
+            var payloadOriginPosition = payload.transform.position;
+            var payloadOriginRotation = payload.transform.rotation;
+            Assert.That(service.BeginServiceDrag(payload), Is.True);
+            Assert.That(service.PromoteServiceDragToWorld(
+                new Vector2(Screen.width * 0.5f, Screen.height * 0.5f)), Is.True);
+            service.CancelServiceDrag();
+            Assert.That(Vector3.Distance(payload.transform.position, payloadOriginPosition), Is.LessThan(0.001f));
+            Assert.That(Quaternion.Angle(payload.transform.rotation, payloadOriginRotation), Is.LessThan(0.01f));
+            Assert.That(payload.GetComponent<Rigidbody>().isKinematic, Is.True);
+
+            var rackSocket = serviceDrone.GetComponentsInChildren<PartSocket>(true)
+                .Single(socket => socket.AcceptedPrimaryCategory == PartCategory.StrikeRack);
+            Assert.That(service.TryInstallPart(rack, rackSocket), Is.True, service.ServiceStatus);
+            Assert.That(rack.Runtime.currentState, Is.EqualTo(InteractionState.Seated));
+            Assert.That(rackSocket.ReadyForExtraction, Is.True);
+            Assert.That(payloadSocket.InstallationPrerequisiteMet, Is.False);
+            Assert.That(service.TryExtractPart(rack), Is.True, service.ServiceStatus);
+            Assert.That(rackSocket.OccupiedPart, Is.Null);
+            service.ExitServiceMode();
+            Assert.That(Vector3.Distance(serviceDrone.position, originalPosition), Is.LessThan(0.001f));
+            Assert.That(Quaternion.Angle(serviceDrone.rotation, originalRotation), Is.LessThan(0.01f));
+        }
+
+        private static float ActiveVisualMinimumY(Transform target) =>
+            target.GetComponentsInChildren<Renderer>(false)
+                .Where(renderer => renderer.enabled && renderer.gameObject.activeInHierarchy)
+                .Min(renderer => renderer.bounds.min.y);
 
         [UnityTest]
         public IEnumerator FrontlineClockContinuesWhileTacticalMapIsOpen()

@@ -1918,7 +1918,7 @@ namespace UnderStatic.Lab
 
             var definition = PartDefinition.CreateTransient(
                 "strike-rack.field.single",
-                "Field Underslung Strike Payload Mount",
+                "Empty Underslung Payload Rack",
                 PartCategory.StrikeRack,
                 new[] { "strike-rack.rail" },
                 reliability: 0.9f,
@@ -2019,6 +2019,7 @@ namespace UnderStatic.Lab
                     feedback: audioFeedback,
                     standards: new[] { CompatibilityStandardId.SharedPayload });
                 payloadSocket.SetInsertionAxis(Vector3.down);
+                payloadSocket.SetInstallationPrerequisite(socket);
                 allSockets.Add(payloadSocket);
             }
 

@@ -145,6 +145,7 @@ For each implementation task:
    - Known limitations
    - Tunable parameters requiring subjective feedback
 8. Update documentation only where the implementation changed a settled decision.
+9. For every player-facing visual change, perform a final visual QA pass in Game View after implementation and tests. Capture the representative final states and explicitly inspect framing, clipping, occlusion, scale, material consistency, interaction-target readability, and state-to-state continuity. A screenshot containing an obvious visual defect is a failed validation result and must be corrected before reporting completion.
 
 Do not claim an interaction feels good merely because it compiles. Report objective validation and identify what requires human play-testing.
 

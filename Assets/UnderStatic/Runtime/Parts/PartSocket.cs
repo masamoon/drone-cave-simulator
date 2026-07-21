@@ -55,7 +55,8 @@ namespace UnderStatic.Parts
         public float LockRotationProgress { get; private set; }
         public bool LatchClosed { get; private set; }
         public bool LatchOpenedForExtraction { get; private set; }
-        public bool ReadyForExtraction => procedureOpenedForExtraction;
+        public bool ReadyForExtraction => OccupiedPart?.Runtime.currentState == InteractionState.Seated
+            && ProcedureIsUnlocked();
         public bool GuidanceActive => OccupiedPart != null
             && OccupiedPart.Runtime.currentState == InteractionState.Guided;
         public InstallablePart OccupiedPart { get; protected set; }
@@ -89,14 +90,19 @@ namespace UnderStatic.Parts
                 : LatchClosed
                     ? $"E: open empty {LatchNoun}"
                     : $"OPEN - {LatchPlacementPrompt} - E: secure {LatchNoun}";
-        private string PrerequisitePrompt => installationPrerequisite?.AcceptedPrimaryCategory == PartCategory.Motor
-            ? "Install and secure the matching motor first"
-            : IsFlightControllerConnector
-                ? "Install and secure the ESC first"
-                : "Install and secure the prerequisite component first";
+        private string PrerequisitePrompt => AcceptedPrimaryCategory == PartCategory.Payload
+            && installationPrerequisite?.AcceptedPrimaryCategory == PartCategory.StrikeRack
+                ? "Seat and tighten all four empty-rack fasteners first"
+                : installationPrerequisite?.AcceptedPrimaryCategory == PartCategory.Motor
+                    ? "Install and secure the matching motor first"
+                    : IsFlightControllerConnector
+                        ? "Install and secure the ESC first"
+                        : "Install and secure the prerequisite component first";
         public string InteractionPrompt => OccupiedPart == null
             ? !InstallationPrerequisiteMet
                 ? PrerequisitePrompt
+                : AcceptedPrimaryCategory == PartCategory.Payload
+                    ? "Drag a sealed payload into the secured empty rack"
                 : ProcedureType == InstallationProcedureType.Latch
                     ? EmptyRetentionPrompt
                     : ProcedureType == InstallationProcedureType.ChargingDock
@@ -115,8 +121,9 @@ namespace UnderStatic.Parts
                     : LatchOpenedForExtraction
                         ? $"OPEN - E: {LatchRemovalPrompt}"
                         : $"OPEN - E: secure {LatchNoun}",
-                InstallationProcedureType.ChargingDock =>
-                    "LMB: lift battery from charging dock",
+                InstallationProcedureType.ChargingDock => AcceptedPrimaryCategory == PartCategory.Payload
+                    ? "LMB: lift unsecured payload from rack"
+                    : "LMB: lift battery from charging dock",
                 _ => OccupiedPart.Runtime.currentState is InteractionState.Installed or InteractionState.Tested
                     ? "Use screwdriver to remove"
                     : "Use screwdriver to secure"

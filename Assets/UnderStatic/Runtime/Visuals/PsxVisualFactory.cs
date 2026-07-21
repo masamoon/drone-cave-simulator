@@ -886,6 +886,10 @@ namespace UnderStatic.Visuals
             {
                 SetRendererEnabled(part.transform, false);
             }
+            else if (category is PartCategory.StrikeRack or PartCategory.Payload)
+            {
+                SetRendererEnabled(part.transform, false);
+            }
             else if (category is PartCategory.Esc or PartCategory.FlightController)
             {
                 SetRendererEnabled(part.transform, false);
