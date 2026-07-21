@@ -22,6 +22,8 @@ namespace UnderStatic.Persistence
         public BattlefieldRuntimeData battlefield;
         public WorkshopRiskRuntimeData workshopRisk;
         public FieldOperationsRuntimeData fieldOperations;
+        public FrontlineRuntimeData frontline;
+        public SalvageFlowRuntimeData salvageFlow;
 
         // Version 1 fields remain readable for Milestone 1 saves.
         public PartRuntimeData part;

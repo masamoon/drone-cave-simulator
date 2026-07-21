@@ -165,6 +165,28 @@ namespace UnderStatic.Fleet
                     part.Definition.BaseReliability * Mathf.Clamp01(part.Runtime.condition));
             }
 
+            foreach (var part in parts)
+            {
+                var compromise = part.Runtime.compromise;
+                if (compromise == null || !compromise.IsPresent)
+                {
+                    continue;
+                }
+                switch (compromise.type)
+                {
+                    case PartCompromiseType.EffectPenalty:
+                        payload = Mathf.Max(0f, payload - compromise.amount * 0.1f);
+                        observation = Mathf.Max(0f, observation - compromise.amount * 0.1f);
+                        break;
+                    case PartCompromiseType.ReliabilityPenalty:
+                        reliability = Mathf.Max(0f, reliability - compromise.amount / 100f);
+                        break;
+                    case PartCompromiseType.ReliabilityCap:
+                        reliability = Mathf.Min(reliability, compromise.amount / 100f);
+                        break;
+                }
+            }
+
             return new DroneStatsSnapshot(
                 speed,
                 endurance,

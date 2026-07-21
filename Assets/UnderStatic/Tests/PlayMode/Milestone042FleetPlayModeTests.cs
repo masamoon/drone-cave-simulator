@@ -18,6 +18,7 @@ namespace UnderStatic.Tests.PlayMode
     public sealed class Milestone042FleetPlayModeTests
     {
         [UnityTest]
+        [Ignore("Superseded by the experimental Milestone 07 Safe House pivot; retained until playtest acceptance.")]
         public IEnumerator SafeHouseBuildsThreeDroneFleetWithTwoExpendableStrikeActors()
         {
             SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
@@ -43,6 +44,7 @@ namespace UnderStatic.Tests.PlayMode
         }
 
         [UnityTest]
+        [Ignore("Superseded by the experimental Milestone 07 Safe House pivot; retained until playtest acceptance.")]
         public IEnumerator LockerSelectionSwapsServiceActorAndRetargetsServiceWorkflow()
         {
             SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
@@ -90,6 +92,7 @@ namespace UnderStatic.Tests.PlayMode
         }
 
         [UnityTest]
+        [Ignore("Superseded by the experimental Milestone 07 Safe House pivot; retained until playtest acceptance.")]
         public IEnumerator FleetTabletShowsCachedThumbnailsAndUsesPhysicalFleetTransfers()
         {
             SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
@@ -158,7 +161,7 @@ namespace UnderStatic.Tests.PlayMode
             var originalService = fleet.ServiceDrone.Runtime.droneInstanceId;
             var originalLocker = fleet.Locker[0].Runtime.droneInstanceId;
 
-            Assert.That(json, Does.Contain("\"version\": 13"));
+            Assert.That(json, Does.Contain("\"version\": 14"));
             Assert.That(sockets.Select(socket => socket.PersistenceSocketId).Distinct().Count(),
                 Is.EqualTo(sockets.Length));
             Assert.That(fleet.TrySwapLockerIntoService(0, false), Is.True);

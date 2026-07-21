@@ -25,6 +25,7 @@ namespace UnderStatic.UI
         [SerializeField] private MissionReplayDirector replayDirector;
         [SerializeField] private WorkshopRiskSystem workshopRisk;
         [SerializeField] private FieldOperationsSystem fieldOperations;
+        [SerializeField] private FrontlineSystem frontline;
 
         private MaterialPropertyBlock propertyBlock;
         private Texture2D mapPreview;
@@ -49,7 +50,8 @@ namespace UnderStatic.UI
             Renderer mapRenderer = null,
             MissionReplayDirector reconstructionDirector = null,
             WorkshopRiskSystem riskSystem = null,
-            FieldOperationsSystem operations = null)
+            FieldOperationsSystem operations = null,
+            FrontlineSystem frontlineSystem = null)
         {
             missions = missionSystem;
             battlefield = battlefieldSystem;
@@ -62,6 +64,7 @@ namespace UnderStatic.UI
             replayDirector = reconstructionDirector;
             workshopRisk = riskSystem;
             fieldOperations = operations;
+            frontline = frontlineSystem;
         }
 
         public void Activate()
@@ -176,11 +179,9 @@ namespace UnderStatic.UI
                 panelHeight);
             GUI.Box(panel, string.Empty);
             GUI.Label(new Rect(panel.x + 18f, panel.y + 14f, panel.width - 140f, 28f),
-                $"PERSISTENT BATTLEFIELD · DAY {operationalDay.Runtime.dayIndex} · " +
-                $"SORTIES {operationalDay.Runtime.completedSorties} · FUNDS {market?.Funds ?? 0} · " +
-                $"SALVAGE {inventory?.ScrapCount ?? 0} · " +
-                $"RISK {workshopRisk?.Runtime.state.ToString().ToUpperInvariant() ?? "UNAVAILABLE"} · " +
-                $"TX {(workshopRisk?.IsTransmitterPowered == false ? "OFF" : "ON")}");
+                $"FRONTLINE · EVACUATION {frontline?.Runtime.completedPulses ?? 0}/" +
+                $"{frontline?.Definition.ObjectivePulseCount ?? 0} · NEXT ADVANCE {frontline?.SecondsUntilAdvance ?? 0:0}s · " +
+                $"FUNDS {market?.Funds ?? 0} · SALVAGE {inventory?.ScrapCount ?? 0}");
             if (GUI.Button(new Rect(panel.xMax - 104f, panel.y + 10f, 86f, 32f), "CLOSE"))
             {
                 Close();
@@ -199,7 +200,7 @@ namespace UnderStatic.UI
         private void DrawSortieTypeButtons(Rect panel)
         {
             var x = panel.x + 18f;
-            foreach (var type in new[] { SortieType.Recon, SortieType.KamikazeStrike, SortieType.GrenadeDrop })
+            foreach (var type in new[] { SortieType.Recon, SortieType.KamikazeStrike })
             {
                 var selected = missions.Draft.sortieType == type;
                 if (GUI.Button(new Rect(x, panel.y + 48f, 184f, 30f),
@@ -220,8 +221,12 @@ namespace UnderStatic.UI
                 GUI.DrawTexture(new Rect(mapRect.x + 4f, mapRect.y + 4f,
                     mapRect.width - 8f, mapRect.height - 8f), preview, ScaleMode.StretchToFill, false);
             }
+            if (frontline != null)
+            {
+                DrawFrontline(mapRect);
+            }
 
-            var active = missions.ActiveMission;
+            var active = missions.ActiveTask;
             if (active == null && missions.Draft.sortieType == SortieType.Recon)
             {
                 DrawReconRangeEnvelope(mapRect, fleet.ReadyDrone);
@@ -231,8 +236,11 @@ namespace UnderStatic.UI
             {
                 DrawRoute(mapRect, plan, active?.pathProgress ?? 0f, active != null);
             }
-            DrawContactMarker(mapRect, BattlefieldSystem.WorkshopPosition,
-                new Color(0.2f, 0.9f, 1f), "WORKSHOP", false);
+            if (frontline == null)
+            {
+                DrawContactMarker(mapRect, BattlefieldSystem.WorkshopPosition,
+                    new Color(0.2f, 0.9f, 1f), "WORKSHOP", false);
+            }
             if (fieldOperations != null)
             {
                 DrawContactMarker(mapRect, fieldOperations.RemoteSite.position.ToVector2(),
@@ -243,7 +251,7 @@ namespace UnderStatic.UI
                         new Color(0.86f, 0.64f, 0.18f), $"SALVAGE {cache.remainingTokens}", false);
                 }
             }
-            foreach (var contact in battlefield.VisibleContacts)
+            foreach (var contact in frontline == null ? battlefield.VisibleContacts : Array.Empty<BattlefieldContactView>())
             {
                 DrawContact(mapRect, contact);
             }
@@ -253,7 +261,10 @@ namespace UnderStatic.UI
                     Color.white, "DRONE", false);
             }
             GUI.Label(new Rect(mapRect.x + 8f, mapRect.yMax - 24f, mapRect.width - 16f, 20f),
-                $"4 × 4 KM · {battlefield.VisibleContacts.Count} KNOWN CONTACTS");
+                frontline == null
+                    ? $"4 × 4 KM · {battlefield.VisibleContacts.Count} KNOWN CONTACTS"
+                    : $"ADVANCE IN {frontline.SecondsUntilAdvance:0}s · HOLD WORKSHOP FOR " +
+                      $"{frontline.Definition.ObjectivePulseCount - frontline.Runtime.completedPulses} PULSES");
         }
 
         private void DrawReconRangeEnvelope(Rect mapRect, DroneActor actor)
@@ -286,6 +297,109 @@ namespace UnderStatic.UI
             GUI.Label(new Rect(mapRect.x + 8f, mapRect.y + 8f, 320f, 20f),
                 $"RECON CONTACT REACH {contactReach:0.00} KM · ROUTE {routeRange:0.00} KM");
         }
+
+        private void DrawFrontline(Rect mapRect)
+        {
+            var sectors = frontline.Definition.Sectors.ToDictionary(item => item.id, StringComparer.Ordinal);
+            foreach (var sector in frontline.Definition.Sectors)
+            {
+                foreach (var connection in sector.connections ?? Array.Empty<string>())
+                {
+                    if (string.CompareOrdinal(sector.id, connection) >= 0 || !sectors.TryGetValue(connection, out var other))
+                    {
+                        continue;
+                    }
+                    DrawLine(MapToGui(mapRect, sector.position.ToVector2()),
+                        MapToGui(mapRect, other.position.ToVector2()), new Color(0.38f, 0.36f, 0.3f, 0.75f), 4f);
+                }
+            }
+
+            foreach (var sector in frontline.Runtime.sectors)
+            {
+                var definition = sectors[sector.sectorId];
+                var point = MapToGui(mapRect, definition.position.ToVector2());
+                var colour = sector.control switch
+                {
+                    FrontlineSectorControl.Friendly => new Color(0.1f, 0.55f, 0.62f, 0.65f),
+                    FrontlineSectorControl.Contested => new Color(0.72f, 0.55f, 0.12f, 0.65f),
+                    _ => new Color(0.68f, 0.16f, 0.12f, 0.65f)
+                };
+                var previous = GUI.color;
+                GUI.color = colour;
+                GUI.Box(new Rect(point.x - 24f, point.y - 15f, 48f, 30f), string.Empty);
+                GUI.color = previous;
+                GUI.Label(new Rect(point.x - 48f, point.y + 15f, 120f, 20f),
+                    $"{definition.displayName} {(sector.defense > 0 ? new string('◆', sector.defense) : string.Empty)}");
+            }
+
+            foreach (var sector in frontline.Runtime.sectors.Where(item => item.control == FrontlineSectorControl.Enemy))
+            {
+                var from = sectors[sector.sectorId];
+                foreach (var connection in from.connections ?? Array.Empty<string>())
+                {
+                    var other = frontline.Runtime.sectors.First(item => item.sectorId == connection);
+                    if (other.control == FrontlineSectorControl.Enemy) continue;
+                    var a = MapToGui(mapRect, from.position.ToVector2());
+                    var b = MapToGui(mapRect, sectors[connection].position.ToVector2());
+                    DrawLine(Vector2.Lerp(a, b, 0.42f), Vector2.Lerp(a, b, 0.58f),
+                        new Color(1f, 0.18f, 0.1f), 5f);
+                }
+            }
+
+            foreach (var activity in frontline.Runtime.activities.Where(item => item.active && item.pressure > 0))
+            {
+                var position = sectors[activity.currentSectorId].position.ToVector2();
+                var point = MapToGui(mapRect, position);
+                if (!activity.typeIdentified)
+                {
+                    var pulse = 22f + Mathf.Sin(Time.unscaledTime * 4f) * 4f;
+                    for (var index = 0; index < 16; index += 2)
+                    {
+                        var a = index / 16f * Mathf.PI * 2f;
+                        var b = (index + 1f) / 16f * Mathf.PI * 2f;
+                        DrawLine(point + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * pulse,
+                            point + new Vector2(Mathf.Cos(b), Mathf.Sin(b)) * pulse,
+                            new Color(1f, 0.7f, 0.15f), 2f);
+                    }
+                    GUI.Box(new Rect(point.x - 12f, point.y - 14f, 24f, 26f), "?");
+                    GUI.Label(new Rect(point.x - 35f, point.y + 26f, 100f, 20f), "△  ▣  ✹  ⬟");
+                }
+                else
+                {
+                    GUI.Box(new Rect(point.x - 15f, point.y - 15f, 30f, 30f), ActivityGlyph(activity.actualType));
+                    GUI.Label(new Rect(point.x + 18f, point.y - 16f, 145f, 40f),
+                        $"{activity.actualType.ToString().ToUpperInvariant()}\n{new string('■', activity.pressure)}");
+                    if (activity.intentKnown && sectors.TryGetValue(activity.nextSectorId, out var target))
+                    {
+                        DrawLine(point, MapToGui(mapRect, target.position.ToVector2()),
+                            new Color(1f, 0.48f, 0.12f, 0.9f), 3f);
+                    }
+                }
+                DrawTimerRing(point, Mathf.Clamp01(frontline.SecondsUntilAdvance
+                    / frontline.Definition.AdvanceIntervalSeconds));
+            }
+        }
+
+        private void DrawTimerRing(Vector2 center, float remaining)
+        {
+            const int segments = 12;
+            var visible = Mathf.CeilToInt(remaining * segments);
+            for (var index = 0; index < visible; index++)
+            {
+                var a = (index / (float)segments - 0.25f) * Mathf.PI * 2f;
+                var b = ((index + 0.7f) / segments - 0.25f) * Mathf.PI * 2f;
+                DrawLine(center + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * 19f,
+                    center + new Vector2(Mathf.Cos(b), Mathf.Sin(b)) * 19f, Color.white, 2f);
+            }
+        }
+
+        private static string ActivityGlyph(EnemyActivityType type) => type switch
+        {
+            EnemyActivityType.Tank => "▣",
+            EnemyActivityType.Artillery => "✹",
+            EnemyActivityType.EnemyBase => "⬟",
+            _ => "△"
+        };
 
         private void DrawRoute(Rect mapRect, SortiePlanData plan, float progress, bool active)
         {
@@ -354,7 +468,7 @@ namespace UnderStatic.UI
         private void DrawPlannerPanel(Rect rect)
         {
             GUI.Box(rect, string.Empty);
-            var active = missions.ActiveMission;
+            var active = missions.ActiveTask;
             if (active != null)
             {
                 DrawActiveMissionPanel(rect, active);
@@ -366,32 +480,15 @@ namespace UnderStatic.UI
             var y = rect.y + 12f;
             GUI.Label(new Rect(rect.x + 12f, y, rect.width - 24f, 24f), LabelFor(missions.Draft.sortieType));
             y += 28f;
-            if (workshopRisk != null)
-            {
-                GUI.Label(new Rect(rect.x + 12f, y, rect.width - 24f, 20f),
-                    workshopRisk.LastStatus.ToUpperInvariant());
-                y += 20f;
-            }
-            if (GUI.Button(new Rect(rect.x + 12f, y, (rect.width - 30f) * 0.5f, 26f),
-                    missions.Draft.launchSiteId == FieldOperationsSystem.WorkshopSiteId ? "> WORKSHOP" : "WORKSHOP"))
-                missions.SetDraftLaunchSite(FieldOperationsSystem.WorkshopSiteId);
-            if (GUI.Button(new Rect(rect.x + 18f + (rect.width - 30f) * 0.5f, y,
-                    (rect.width - 30f) * 0.5f, 26f),
-                    missions.Draft.launchSiteId == FieldOperationsSystem.RemoteSiteId ? "> REMOTE" : "REMOTE"))
-                missions.SetDraftLaunchSite(FieldOperationsSystem.RemoteSiteId);
-            y += 32f;
-            if (missions.Draft.launchSiteId == FieldOperationsSystem.RemoteSiteId && fieldOperations != null)
-            {
-                GUI.Label(new Rect(rect.x + 12f, y, rect.width - 24f, 22f),
-                    $"SITE FORECAST: {fieldOperations.ForecastAttentionState(FieldOperationsSystem.RemoteSiteId)}");
-                y += 22f;
-            }
+            GUI.Label(new Rect(rect.x + 12f, y, rect.width - 24f, 20f), "WORKSHOP COMMAND CHANNEL");
+            y += 24f;
             GUI.Label(new Rect(rect.x + 12f, y, rect.width - 24f, 88f), actor == null
                 ? "READY SHELF: EMPTY"
                 : $"READY: {actor.FrameDefinition.DisplayName}\n" +
                   $"END {actor.Stats.Endurance:0.00} OBS {actor.Stats.Observation:0.00} " +
                   $"CTL {actor.Stats.Control:0.00} PAY {actor.Stats.Payload:0.00}\n" +
-                  (actor.IsExpendableStrikeDrone ? "EXPENDABLE AIRFRAME\n" : "RECOVERABLE AIRFRAME\n") +
+                  (actor.InstalledParts.Any(part => part.Definition.Category == UnderStatic.Core.PartCategory.Payload)
+                      ? "ONE-WAY PAYLOAD FITTED\n" : "REUSABLE CONFIGURATION\n") +
                   eligibility.Reason);
             y += 94f;
             if (plan != null)
@@ -408,8 +505,22 @@ namespace UnderStatic.UI
                     $"RETURN COST · BAT {maintenance.BatteryUse:P0} · FRAME {maintenance.FrameWear:P0}\n" +
                     $"{maintenance.Severity} WEAR · {maintenance.LikelySystems}\n" +
                     $"ROUTE SIGNATURE · {routeRisk.Label.ToString().ToUpperInvariant()}");
+                if (frontline != null)
+                {
+                    var activity = frontline.Runtime.activities.FirstOrDefault(item =>
+                        string.Equals(item.activityId, plan.targetContactId, StringComparison.Ordinal));
+                    var forecast = MissionForecastCalculator.Build(actor, plan.sortieType, activity,
+                        plan.routeDistanceKilometres, frontline.SecondsUntilAdvance, frontline.Economy);
+                    y += 52f;
+                    GUI.Label(new Rect(rect.x + 12f, y, rect.width - 24f, 72f),
+                        $"REACH {forecast.Reach} · EFFECT {forecast.Effect} · REL {forecast.Reliability:P0}\n" +
+                        $"ARRIVAL {forecast.ArrivalSeconds:0}s " +
+                        $"{(forecast.ArrivesBeforeAdvance ? "BEFORE ADVANCE" : "TOO LATE")}\n" +
+                        $"REWARD {forecast.Reward} · COMMIT {forecast.CommittedValue + forecast.PayloadValue} · " +
+                        $"MARGIN {forecast.SuccessfulMargin:+#;-#;0}");
+                }
             }
-            y += 58f;
+            y += 82f;
             if (missions.Draft.sortieType == SortieType.Recon)
             {
                 if (GUI.Button(new Rect(rect.x + 12f, y, 90f, 30f), "UNDO")) missions.UndoWaypoint();
@@ -422,18 +533,14 @@ namespace UnderStatic.UI
             else
             {
                 GUI.Label(new Rect(rect.x + 12f, y, rect.width - 24f, 48f),
-                    "Select a CURRENT or STALE contact icon.\nStale infantry may no longer be present.");
+                    "Select any activity marker. Blind strikes are legal; arrival identifies the target.");
                 y += 56f;
             }
 
-            var transmitterAllowsLaunch = workshopRisk?.IsTransmitterPowered != false
-                || !string.Equals(plan?.launchSiteId, "workshop", System.StringComparison.Ordinal);
-            var remoteAvailable = missions.Draft.launchSiteId != FieldOperationsSystem.RemoteSiteId
-                || fieldOperations?.CanUseRemoteSite == true;
-            GUI.enabled = eligibility.Eligible && transmitterAllowsLaunch && remoteAvailable;
-            var launchLabel = missions.Draft.launchSiteId == FieldOperationsSystem.RemoteSiteId
-                ? "STAGE REMOTE DEPLOYMENT"
-                : "LAUNCH PLANNED SORTIE";
+            var transmitterAllowsLaunch = true;
+            var remoteAvailable = true;
+            GUI.enabled = eligibility.Eligible;
+            var launchLabel = "LAUNCH PLANNED SORTIE";
             if (GUI.Button(new Rect(rect.x + 12f, y, rect.width - 24f, 36f), launchLabel))
             {
                 LaunchDraft();
@@ -577,7 +684,7 @@ namespace UnderStatic.UI
 
         private void HandleMapInput(Rect mapRect)
         {
-            if (missions.ActiveMission != null || !mapRect.Contains(Event.current.mousePosition))
+            if (missions.ActiveTask != null || !mapRect.Contains(Event.current.mousePosition))
             {
                 if (Event.current.type == EventType.MouseUp)
                 {
@@ -619,6 +726,26 @@ namespace UnderStatic.UI
             }
             if (Event.current.type == EventType.MouseDown && Event.current.button == 0)
             {
+                if (frontline != null)
+                {
+                    var targetActivity = frontline.Runtime.activities
+                        .Where(item => item.active && item.pressure > 0)
+                        .Select(item => new
+                        {
+                            Activity = item,
+                            Position = frontline.Definition.Sectors.First(sector =>
+                                string.Equals(sector.id, item.currentSectorId, StringComparison.Ordinal)).position.ToVector2()
+                        })
+                        .OrderBy(item => Vector2.Distance(MapToGui(mapRect, item.Position), Event.current.mousePosition))
+                        .FirstOrDefault();
+                    if (targetActivity != null
+                        && Vector2.Distance(MapToGui(mapRect, targetActivity.Position), Event.current.mousePosition) <= 28f)
+                    {
+                        missions.SelectTarget(targetActivity.Activity.activityId);
+                        Event.current.Use();
+                    }
+                    return;
+                }
                 var target = battlefield.VisibleContacts
                     .Where(item => item.IsTargetable)
                     .OrderBy(item => Vector2.Distance(MapToGui(mapRect, item.Position), Event.current.mousePosition))

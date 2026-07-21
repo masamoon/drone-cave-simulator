@@ -27,6 +27,8 @@ namespace UnderStatic.Persistence
         [SerializeField] private BattlefieldSystem battlefieldSystem;
         [SerializeField] private WorkshopRiskSystem workshopRiskSystem;
         [SerializeField] private FieldOperationsSystem fieldOperationsSystem;
+        [SerializeField] private FrontlineSystem frontlineSystem;
+        [SerializeField] private SalvageFlowSystem salvageFlowSystem;
 
         public string SavePath => Path.Combine(Application.persistentDataPath, fileName);
         public string LastStatus { get; private set; } = "Not saved";
@@ -85,6 +87,12 @@ namespace UnderStatic.Persistence
             fieldOperationsSystem = operations;
         }
 
+        public void ConfigureFrontline(FrontlineSystem frontline, SalvageFlowSystem salvageFlow = null)
+        {
+            frontlineSystem = frontline;
+            salvageFlowSystem = salvageFlow;
+        }
+
         public void RegisterParts(IEnumerable<InstallablePart> additionalParts)
         {
             parts = parts.Concat(additionalParts ?? Enumerable.Empty<InstallablePart>())
@@ -125,7 +133,7 @@ namespace UnderStatic.Persistence
 
             return JsonUtility.ToJson(new MilestoneSaveData
             {
-                version = fieldOperationsSystem != null ? 13 : workshopRiskSystem != null ? 12 : missionSystem != null ? 11 : marketSystem != null ? 9 : fleetSystem == null ? 4 : 5,
+                version = frontlineSystem != null ? 14 : fieldOperationsSystem != null ? 13 : workshopRiskSystem != null ? 12 : missionSystem != null ? 11 : marketSystem != null ? 9 : fleetSystem == null ? 4 : 5,
                 parts = records,
                 sockets = socketRecords,
                 inventory = inventorySystem?.CaptureState(),
@@ -135,7 +143,9 @@ namespace UnderStatic.Persistence
                 operationalDay = operationalDaySystem?.CaptureState(),
                 battlefield = battlefieldSystem?.CaptureState(),
                 workshopRisk = workshopRiskSystem?.CaptureState(),
-                fieldOperations = fieldOperationsSystem?.CaptureState()
+                fieldOperations = fieldOperationsSystem?.CaptureState(),
+                frontline = frontlineSystem?.CaptureState(),
+                salvageFlow = salvageFlowSystem?.CaptureState()
             }, true);
         }
 
@@ -157,7 +167,7 @@ namespace UnderStatic.Persistence
                 return false;
             }
 
-            var requiredSchema = fieldOperationsSystem != null ? 13 : workshopRiskSystem != null ? 12 : missionSystem != null ? 11 : 0;
+            var requiredSchema = frontlineSystem != null ? 14 : fieldOperationsSystem != null ? 13 : workshopRiskSystem != null ? 12 : missionSystem != null ? 11 : 0;
             if (requiredSchema > 0 && data.version < requiredSchema)
             {
                 LastStatus = $"Load failed: schema {requiredSchema} required";
@@ -325,10 +335,14 @@ namespace UnderStatic.Persistence
                 || operationalDaySystem.RestoreState(data.operationalDay);
             var riskValid = workshopRiskSystem == null || workshopRiskSystem.RestoreState(data.workshopRisk);
             var fieldValid = fieldOperationsSystem == null || fieldOperationsSystem.RestoreState(data.fieldOperations);
+            var frontlineValid = frontlineSystem == null || frontlineSystem.RestoreState(data.frontline);
+            var salvageValid = salvageFlowSystem == null || salvageFlowSystem.RestoreState(data.salvageFlow);
             LastStatus = battlefieldValid && missionsValid && dayValid && riskValid && fieldValid
+                         && frontlineValid && salvageValid
                 ? $"Loaded {targetParts.Count} components"
-                : $"Load failed: {(!battlefieldValid ? "battlefield state invalid" : !missionsValid ? missionSystem?.LastStatus : !dayValid ? operationalDaySystem?.LastStatus : workshopRiskSystem?.LastStatus)}";
-            return battlefieldValid && missionsValid && dayValid && riskValid && fieldValid;
+                : $"Load failed: {(!battlefieldValid ? "battlefield state invalid" : !frontlineValid ? "frontline state invalid" : !salvageValid ? "salvage state invalid" : !missionsValid ? missionSystem?.LastStatus : !dayValid ? operationalDaySystem?.LastStatus : workshopRiskSystem?.LastStatus)}";
+            return battlefieldValid && missionsValid && dayValid && riskValid && fieldValid
+                   && frontlineValid && salvageValid;
         }
 
         public string CaptureToJson(MotorPart targetMotor, MotorSocket targetSocket)

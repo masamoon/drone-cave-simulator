@@ -48,14 +48,22 @@ namespace UnderStatic.Parts
             _ => "charged"
         };
 
-        public string ServiceDescription => definition?.Category == PartCategory.Battery
-            ? $"{ChargeLabel} ({Mathf.RoundToInt(runtime.chargeLevel * 100f)}%)"
-            : $"{ConditionLabel} ({Mathf.RoundToInt(runtime.condition * 100f)}%)";
+        public string ServiceDescription
+        {
+            get
+            {
+                var condition = definition?.Category == PartCategory.Battery
+                    ? $"{ChargeLabel} ({Mathf.RoundToInt(runtime.chargeLevel * 100f)}%)"
+                    : $"{ConditionLabel} ({Mathf.RoundToInt(runtime.condition * 100f)}%)";
+                return Compromise.IsPresent ? $"{condition} · {Compromise.ShortLabel}" : condition;
+            }
+        }
 
         public bool IsServiceable => runtime.condition >= 0.45f;
         public bool IsBatteryDepleted => definition?.Category == PartCategory.Battery
             && runtime.chargeLevel <= 0.05f;
         public int AuxiliaryProcedureMask => runtime.auxiliaryProcedureMask;
+        public PartCompromiseRuntimeData Compromise => runtime.compromise ??= new PartCompromiseRuntimeData();
 
         protected virtual void Awake()
         {
@@ -157,6 +165,11 @@ namespace UnderStatic.Parts
             runtime.chargeLevel = Mathf.Clamp01(normalizedCharge);
         }
 
+        public void SetCompromise(PartCompromiseRuntimeData compromise)
+        {
+            runtime.compromise = compromise?.Copy() ?? new PartCompromiseRuntimeData();
+        }
+
         public bool HasAuxiliaryProcedureSteps(int requiredMask) =>
             requiredMask == 0 || (runtime.auxiliaryProcedureMask & requiredMask) == requiredMask;
 
@@ -175,6 +188,7 @@ namespace UnderStatic.Parts
         public void RestoreRuntime(PartRuntimeData restored)
         {
             runtime = restored?.Copy() ?? throw new ArgumentNullException(nameof(restored));
+            runtime.compromise ??= new PartCompromiseRuntimeData();
             if (runtime.storageLocation.IsEmpty)
             {
                 runtime.storageLocation = StorageLocationId.FromLegacyOwner(

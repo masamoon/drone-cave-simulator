@@ -637,7 +637,8 @@ namespace UnderStatic.Parts
         {
             if (ProcedureType != InstallationProcedureType.ChargingDock
                 || OccupiedPart == null
-                || OccupiedPart.Runtime.currentState is not (InteractionState.Installed or InteractionState.Tested))
+                || OccupiedPart.Runtime.currentState is not (InteractionState.Installed or InteractionState.Tested)
+                || RemovalBlocked)
             {
                 return false;
             }

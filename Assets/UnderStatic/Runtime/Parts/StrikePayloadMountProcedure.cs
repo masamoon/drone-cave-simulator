@@ -32,6 +32,7 @@ namespace UnderStatic.Parts
             | StrikePayloadMountStep.ControlHarness);
 
         [SerializeField] private PartSocket socket;
+        [SerializeField] private PartSocket payloadSocket;
         [SerializeField] private AudioFeedbackSystem audioFeedback;
         [SerializeField] private StrikePayloadMountStepTarget[] targets = Array.Empty<StrikePayloadMountStepTarget>();
         [SerializeField] private Renderer[] forwardSecured = Array.Empty<Renderer>();
@@ -44,6 +45,7 @@ namespace UnderStatic.Parts
         private InstallablePart part;
         private int lastVisualMask = int.MinValue;
         private bool lastMounted;
+        private bool lastHasPayload;
 
         public bool IsMounted
         {
@@ -60,11 +62,20 @@ namespace UnderStatic.Parts
                             StringComparison.Ordinal));
             }
         }
-        public bool IsComplete => IsMounted && part.HasAuxiliaryProcedureSteps(CompleteMask);
-        public bool BlocksRemoval => IsMounted && part.AuxiliaryProcedureMask != 0;
+        public bool HasPayload => Payload != null;
+        public bool UsesPhysicalPayload => payloadSocket != null;
+        public InstallablePart Payload => payloadSocket?.OccupiedPart?.Definition?.Category == PartCategory.Payload
+            ? payloadSocket.OccupiedPart
+            : null;
+        public bool IsComplete => IsMounted && (!UsesPhysicalPayload || HasPayload)
+            && part.HasAuxiliaryProcedureSteps(CompleteMask);
+        public bool RequiresCompletion => !UsesPhysicalPayload || HasPayload || part?.AuxiliaryProcedureMask != 0;
+        public bool BlocksRemoval => IsMounted && (HasPayload || part.AuxiliaryProcedureMask != 0);
         public string RemovalBlockPrompt => IsSet(StrikePayloadMountStep.ControlHarness)
             ? "Disconnect the payload control harness first"
-            : "Release both payload retention straps first";
+            : IsSet(StrikePayloadMountStep.ForwardStrap) || IsSet(StrikePayloadMountStep.RearStrap)
+                ? "Release both payload retention straps first"
+                : "Remove the sealed payload from its cradle first";
 
         private void Awake()
         {
@@ -86,7 +97,8 @@ namespace UnderStatic.Parts
             IEnumerable<Renderer> securedRear,
             IEnumerable<Renderer> looseRear,
             IEnumerable<Renderer> connectedHarness,
-            IEnumerable<Renderer> looseHarness)
+            IEnumerable<Renderer> looseHarness,
+            PartSocket sealedPayloadSocket = null)
         {
             part ??= GetComponent<InstallablePart>();
             socket = targetSocket;
@@ -98,6 +110,7 @@ namespace UnderStatic.Parts
             rearLoose = Compact(looseRear);
             harnessConnected = Compact(connectedHarness);
             harnessLoose = Compact(looseHarness);
+            payloadSocket = sealedPayloadSocket;
             foreach (var target in targets)
             {
                 target.Configure(this, target.Step);
@@ -114,11 +127,21 @@ namespace UnderStatic.Parts
             RefreshVisuals(true);
         }
 
+        public void RebindPayloadSocket(PartSocket targetSocket)
+        {
+            payloadSocket = targetSocket;
+            RefreshVisuals(true);
+        }
+
         public string PromptFor(StrikePayloadMountStep step)
         {
             if (!IsMounted)
             {
                 return "Fasten the payload mount to the airframe first";
+            }
+            if (UsesPhysicalPayload && !HasPayload)
+            {
+                return "Seat a sealed payload in the cradle first";
             }
 
             var secured = IsSet(step);
@@ -143,7 +166,7 @@ namespace UnderStatic.Parts
 
         public bool TryToggle(StrikePayloadMountStep step)
         {
-            if (!IsMounted || step == StrikePayloadMountStep.None)
+            if (!IsMounted || UsesPhysicalPayload && !HasPayload || step == StrikePayloadMountStep.None)
             {
                 audioFeedback?.PlayReject(transform.position);
                 return false;
@@ -191,14 +214,16 @@ namespace UnderStatic.Parts
             }
 
             var mounted = IsMounted;
+            var hasPayload = HasPayload;
             var mask = part.AuxiliaryProcedureMask;
-            if (!force && mask == lastVisualMask && mounted == lastMounted)
+            if (!force && mask == lastVisualMask && mounted == lastMounted && hasPayload == lastHasPayload)
             {
                 return;
             }
 
             lastVisualMask = mask;
             lastMounted = mounted;
+            lastHasPayload = hasPayload;
             SetEnabled(forwardSecured, mounted && IsSet(StrikePayloadMountStep.ForwardStrap));
             SetEnabled(forwardLoose, !mounted || !IsSet(StrikePayloadMountStep.ForwardStrap));
             SetEnabled(rearSecured, mounted && IsSet(StrikePayloadMountStep.RearStrap));
@@ -207,7 +232,7 @@ namespace UnderStatic.Parts
             SetEnabled(harnessLoose, !mounted || !IsSet(StrikePayloadMountStep.ControlHarness));
             foreach (var target in targets)
             {
-                target.SetInteractionEnabled(mounted);
+                target.SetInteractionEnabled(mounted && (!UsesPhysicalPayload || HasPayload));
             }
         }
 
@@ -223,6 +248,23 @@ namespace UnderStatic.Parts
                     renderer.enabled = enabled;
                 }
             }
+        }
+    }
+
+    [DisallowMultipleComponent]
+    public sealed class StrikePayloadRetentionGate : MonoBehaviour, IInstallationRemovalGate
+    {
+        [SerializeField] private StrikePayloadMountProcedure procedure;
+
+        public bool BlocksRemoval => procedure != null
+            && procedure.Payload == GetComponent<InstallablePart>()
+            && procedure.GetComponent<InstallablePart>()?.AuxiliaryProcedureMask != 0;
+        public string RemovalBlockPrompt => procedure?.RemovalBlockPrompt
+            ?? "Release the payload retention before extraction";
+
+        public void Configure(StrikePayloadMountProcedure owner)
+        {
+            procedure = owner;
         }
     }
 

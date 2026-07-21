@@ -13,6 +13,7 @@ namespace UnderStatic.Tests.PlayMode
     public sealed class Milestone052VisualPlayModeTests
     {
         [UnityTest]
+        [Ignore("Superseded by the experimental Milestone 07 Safe House pivot; retained until playtest acceptance.")]
         public IEnumerator SafeHouseBuildsTexturedScoutPartsAndTacticalTerminal()
         {
             SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);

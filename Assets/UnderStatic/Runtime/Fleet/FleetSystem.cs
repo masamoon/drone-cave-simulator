@@ -22,13 +22,15 @@ namespace UnderStatic.Fleet
 
         private readonly DroneActor[] locker = new DroneActor[LockerCapacity];
         private readonly Dictionary<DroneActor, Coroutine> moves = new();
+        private readonly List<DroneActor> deployed = new(2);
         private DroneActor[] knownActors = Array.Empty<DroneActor>();
 
         public IReadOnlyList<DroneActor> Actors => actors;
         public IReadOnlyList<DroneActor> Locker => locker;
         public DroneActor ServiceDrone { get; private set; }
         public DroneActor ReadyDrone { get; private set; }
-        public DroneActor DeployedDrone { get; private set; }
+        public DroneActor DeployedDrone => deployed.FirstOrDefault();
+        public IReadOnlyList<DroneActor> DeployedDrones => deployed;
         public IReadOnlyList<DroneActor> FieldDrones => actors.Where(actor =>
             actor?.Runtime.location.ToString().StartsWith("field.", StringComparison.Ordinal) == true).ToArray();
         public string LastStatus { get; private set; } = "Fleet ready";
@@ -81,7 +83,7 @@ namespace UnderStatic.Fleet
             Array.Clear(locker, 0, locker.Length);
             ServiceDrone = null;
             ReadyDrone = null;
-            DeployedDrone = null;
+            deployed.Clear();
 
             foreach (var actor in actors)
             {
@@ -94,9 +96,9 @@ namespace UnderStatic.Fleet
                 {
                     ReadyDrone = actor;
                 }
-                else if (location == StorageLocationId.MissionDeployed && DeployedDrone == null)
+                else if (location == StorageLocationId.MissionDeployed && deployed.Count < 2)
                 {
-                    DeployedDrone = actor;
+                    deployed.Add(actor);
                     actor.gameObject.SetActive(false);
                 }
                 else if (location.ToString().StartsWith("field.", StringComparison.Ordinal))
@@ -170,14 +172,14 @@ namespace UnderStatic.Fleet
 
         public bool TryDeployReady(DroneActor actor)
         {
-            if (actor == null || ReadyDrone != actor || DeployedDrone != null)
+            if (actor == null || ReadyDrone != actor || deployed.Count >= 2)
             {
                 LastStatus = "Only the staged ready drone can deploy";
                 return false;
             }
 
             ReadyDrone = null;
-            DeployedDrone = actor;
+            deployed.Add(actor);
             actor.SetStorageLocation(new DroneStorageLocation(DroneStorageLocationKind.Deployed));
             actor.gameObject.SetActive(false);
             LastStatus = $"Deployed {actor.FrameDefinition.DisplayName}";
@@ -186,7 +188,7 @@ namespace UnderStatic.Fleet
 
         public bool TryRecoverDeployedToService(DroneActor actor, bool animate = true)
         {
-            if (actor == null || DeployedDrone != actor || ServiceDrone != null)
+            if (actor == null || !deployed.Contains(actor) || ServiceDrone != null)
             {
                 LastStatus = ServiceDrone != null
                     ? "Recovery waiting: service bay occupied"
@@ -194,7 +196,7 @@ namespace UnderStatic.Fleet
                 return false;
             }
 
-            DeployedDrone = null;
+            deployed.Remove(actor);
             ServiceDrone = actor;
             actor.gameObject.SetActive(true);
             actor.SetStorageLocation(new DroneStorageLocation(DroneStorageLocationKind.ServiceBay));
@@ -204,14 +206,41 @@ namespace UnderStatic.Fleet
             return true;
         }
 
+        public bool TryRecoverDeployedToWorkshop(DroneActor actor, bool animate = true)
+        {
+            if (actor == null || !deployed.Contains(actor))
+            {
+                LastStatus = "Deployed drone identity mismatch";
+                return false;
+            }
+            if (ServiceDrone == null)
+            {
+                return TryRecoverDeployedToService(actor, animate);
+            }
+
+            var slot = FirstFreeLockerSlot();
+            if (slot < 0)
+            {
+                LastStatus = "Recovery queued: service bay and lockers occupied";
+                return false;
+            }
+            deployed.Remove(actor);
+            locker[slot] = actor;
+            actor.gameObject.SetActive(true);
+            actor.SetStorageLocation(new DroneStorageLocation(DroneStorageLocationKind.Locker, slot));
+            Place(actor, AnchorForLocker(slot), animate);
+            LastStatus = $"Recovered {actor.FrameDefinition.DisplayName} to locker {slot + 1}";
+            return true;
+        }
+
         public bool TryRecoverDeployedToField(DroneActor actor, string siteId)
         {
-            if (actor == null || DeployedDrone != actor || string.IsNullOrWhiteSpace(siteId))
+            if (actor == null || !deployed.Contains(actor) || string.IsNullOrWhiteSpace(siteId))
             {
                 LastStatus = "Field recovery identity mismatch";
                 return false;
             }
-            DeployedDrone = null;
+            deployed.Remove(actor);
             actor.SetStorageLocation(new DroneStorageLocation(DroneStorageLocationKind.FieldSite, fieldSiteId: siteId));
             actor.gameObject.SetActive(false);
             LastStatus = $"{actor.FrameDefinition.DisplayName} cached at {siteId}";
@@ -266,14 +295,23 @@ namespace UnderStatic.Fleet
 
         public bool TryConsumeDeployed(DroneActor actor)
         {
-            if (actor == null || DeployedDrone != actor || !actors.Contains(actor))
+            if (actor == null || !deployed.Contains(actor) || !actors.Contains(actor))
             {
                 LastStatus = "Deployed drone identity mismatch";
                 return false;
             }
 
-            DeployedDrone = null;
+            deployed.Remove(actor);
             actors = actors.Where(item => item != actor).ToArray();
+            var consumedParts = actor.InstalledParts.Where(part => part != null).ToArray();
+            foreach (var socket in actor.Sockets)
+            {
+                socket?.ClearForRestore();
+            }
+            foreach (var part in consumedParts)
+            {
+                part.MarkSalvaged();
+            }
             actor.SetStorageLocation(new DroneStorageLocation(DroneStorageLocationKind.External));
             actor.gameObject.SetActive(false);
             LastStatus = $"{actor.FrameDefinition.DisplayName} expended on sortie";
@@ -283,7 +321,7 @@ namespace UnderStatic.Fleet
         public int PrepareForNextOperationalDay()
         {
             var recharged = 0;
-            foreach (var actor in actors.Where(item => item != null && item != DeployedDrone))
+            foreach (var actor in actors.Where(item => item != null && !deployed.Contains(item)))
             {
                 foreach (var battery in actor.InstalledParts.Where(part =>
                              part?.Definition?.Category == PartCategory.Battery))
@@ -464,6 +502,7 @@ namespace UnderStatic.Fleet
                 serviceDroneId = ServiceDrone?.Runtime.droneInstanceId ?? string.Empty,
                 readyDroneId = ReadyDrone?.Runtime.droneInstanceId ?? string.Empty,
                 deployedDroneId = DeployedDrone?.Runtime.droneInstanceId ?? string.Empty,
+                deployedDroneIds = deployed.Select(actor => actor.Runtime.droneInstanceId).ToArray(),
                 lockerDroneIds = locker.Select(actor => actor?.Runtime.droneInstanceId ?? string.Empty).ToArray(),
                 fieldDrones = FieldDrones.Select(actor => new FieldDroneSaveRecord
                 {
@@ -484,7 +523,13 @@ namespace UnderStatic.Fleet
                 actor => actor.Runtime.droneInstanceId,
                 actor => actor,
                 StringComparer.Ordinal);
-            var referenced = new[] { restored.serviceDroneId, restored.readyDroneId, restored.deployedDroneId }
+            var deployedIds = restored.deployedDroneIds is { Length: > 0 }
+                ? restored.deployedDroneIds
+                : string.IsNullOrWhiteSpace(restored.deployedDroneId)
+                    ? Array.Empty<string>()
+                    : new[] { restored.deployedDroneId };
+            var referenced = new[] { restored.serviceDroneId, restored.readyDroneId }
+                .Concat(deployedIds)
                 .Concat(restored.lockerDroneIds ?? Array.Empty<string>())
                 .Concat(restored.fieldDrones?.Select(item => item?.droneInstanceId) ?? Array.Empty<string>())
                 .Where(id => !string.IsNullOrWhiteSpace(id))
@@ -493,6 +538,7 @@ namespace UnderStatic.Fleet
                 || referenced.Any(id => !actorLookup.ContainsKey(id))
                 || restored.lockerDroneIds == null
                 || restored.lockerDroneIds.Length > LockerCapacity
+                || deployedIds.Length > 2
                 || restored.drones == null
                 || restored.fieldDrones == null
                 || restored.fieldDrones.Any(item => item == null || string.IsNullOrWhiteSpace(item.siteId))
@@ -519,9 +565,8 @@ namespace UnderStatic.Fleet
             ReadyDrone = string.IsNullOrEmpty(restored.readyDroneId)
                 ? null
                 : actorLookup[restored.readyDroneId];
-            DeployedDrone = string.IsNullOrEmpty(restored.deployedDroneId)
-                ? null
-                : actorLookup[restored.deployedDroneId];
+            deployed.Clear();
+            deployed.AddRange(deployedIds.Select(id => actorLookup[id]));
             Array.Clear(locker, 0, locker.Length);
             for (var index = 0; index < restored.lockerDroneIds.Length; index++)
             {
@@ -538,7 +583,7 @@ namespace UnderStatic.Fleet
                 actor.gameObject.SetActive(false);
             }
 
-            foreach (var actor in actors.Except(new[] { ServiceDrone, ReadyDrone, DeployedDrone }.Concat(locker)
+            foreach (var actor in actors.Except(new[] { ServiceDrone, ReadyDrone }.Concat(deployed).Concat(locker)
                          .Concat(fieldActors)
                          .Where(item => item != null)))
             {
@@ -592,7 +637,7 @@ namespace UnderStatic.Fleet
         {
             if (ServiceDrone == actor) ServiceDrone = null;
             if (ReadyDrone == actor) ReadyDrone = null;
-            if (DeployedDrone == actor) DeployedDrone = null;
+            deployed.Remove(actor);
             var slot = FindLockerSlot(actor);
             if (slot >= 0) locker[slot] = null;
         }
@@ -619,7 +664,7 @@ namespace UnderStatic.Fleet
         {
             if (ServiceDrone != null) Place(ServiceDrone, serviceBayAnchor, false);
             if (ReadyDrone != null) Place(ReadyDrone, readyShelfAnchor, false);
-            if (DeployedDrone != null) DeployedDrone.gameObject.SetActive(false);
+            foreach (var actor in deployed) actor.gameObject.SetActive(false);
             for (var index = 0; index < locker.Length; index++)
             {
                 if (locker[index] != null) Place(locker[index], AnchorForLocker(index), false);

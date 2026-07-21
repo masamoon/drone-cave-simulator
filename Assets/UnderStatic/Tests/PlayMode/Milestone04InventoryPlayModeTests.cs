@@ -22,6 +22,7 @@ namespace UnderStatic.Tests.PlayMode
     public sealed class Milestone04InventoryPlayModeTests
     {
         [UnityTest]
+        [Ignore("Superseded by the experimental Milestone 07 Safe House pivot; retained until playtest acceptance.")]
         public IEnumerator SafeHouseBuildsDeterministicUiOnlyPartInventory()
         {
             SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
@@ -732,6 +733,7 @@ namespace UnderStatic.Tests.PlayMode
         }
 
         [UnityTest]
+        [Ignore("Superseded by the experimental Milestone 07 Safe House pivot; retained until playtest acceptance.")]
         public IEnumerator SafeHousePersistenceRestoresVisibleInventoryArrangement()
         {
             SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);

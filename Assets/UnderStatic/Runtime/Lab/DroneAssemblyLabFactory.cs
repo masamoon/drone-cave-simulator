@@ -370,33 +370,15 @@ namespace UnderStatic.Lab
                 drone.AddComponent<DroneFrameInspectionTarget>().Configure(scoutActor);
                 fleetActors.Add(scoutActor);
 
-                var strikeRackTemplate = allParts.First(part =>
-                    part.Definition.Category == PartCategory.StrikeRack);
-                for (var index = 1; index <= 2; index++)
-                {
-                    var expendableActor = CreateExpendableStrikeActor(
-                        drone,
-                        strikeRackTemplate,
-                        index,
-                        out var expendableParts,
-                        out var expendableSockets);
-                    allParts.AddRange(expendableParts);
-                    allSockets.AddRange(expendableSockets);
-                    fleetActors.Add(expendableActor);
-                    if (index == 1)
-                    {
-                        allParts.AddRange(PrepareScratchStrikeInventory(expendableParts));
-                    }
-                }
-
                 legacySurveyActor = CreateSurveyProfessionalActor(
                     drone,
                     allParts,
                     allSockets,
                     out var legacySurveyParts,
                     out var legacySurveySockets);
-                legacySurveyActor.SetStorageLocation(new DroneStorageLocation(DroneStorageLocationKind.External));
-                legacySurveyActor.gameObject.SetActive(false);
+                legacySurveyActor.SetStorageLocation(new DroneStorageLocation(DroneStorageLocationKind.Locker, 0));
+                legacySurveyActor.gameObject.SetActive(true);
+                fleetActors.Add(legacySurveyActor);
                 allParts.AddRange(legacySurveyParts);
                 allSockets.AddRange(legacySurveySockets);
 
@@ -477,7 +459,6 @@ namespace UnderStatic.Lab
                 var fleet = SafeHouseFleetFactory.Build(fleetActors);
                 UnityEngine.Object.FindAnyObjectByType<FleetRosterPanel>()
                     ?.ConfigureServiceModes(UnityEngine.Object.FindObjectsByType<DroneServiceModeController>());
-                fleet.RegisterKnownActor(legacySurveyActor);
                 inventory.ConfigureFleet(fleet);
                 saveSystem.ConfigureFleet(fleet);
                 serviceMode.ConfigureFleet(fleet);
@@ -1948,8 +1929,8 @@ namespace UnderStatic.Lab
                 standards: new[] { CompatibilityStandardId.SharedStrikeRack },
                 equipmentGrade: EquipmentGrade.Field,
                 modifiers: new PartStatModifiers { payload = -0.035f, control = -0.015f, noise = 0.02f },
-                value: 220,
-                capabilities: PartMissionCapability.KamikazeWarhead | PartMissionCapability.GrenadeDrop);
+                value: 40,
+                capabilities: PartMissionCapability.None);
             var rack = InteractionLabFactory.CreateComponentPart(
                 requiredForScratchBuild ? "ScratchStrikePayloadMount" : "FieldStrikeRack",
                 null,
@@ -1963,10 +1944,14 @@ namespace UnderStatic.Lab
                 socket,
                 audioFeedback,
                 socketMaterial,
-                rackMaterial);
+                rackMaterial,
+                assembly,
+                requiredForScratchBuild,
+                allParts,
+                allSockets);
             var runtime = rack.Runtime.Copy();
             runtime.condition = 0.94f;
-            runtime.consumableCharges = 1;
+            runtime.consumableCharges = 0;
             runtime.auxiliaryProcedureMask = 0;
             rack.RestoreRuntime(runtime);
             allParts.Add(rack);
@@ -1977,7 +1962,11 @@ namespace UnderStatic.Lab
             PartSocket socket,
             AudioFeedbackSystem audioFeedback,
             Material structureMaterial,
-            Material retentionMaterial)
+            Material retentionMaterial,
+            DroneAssemblyState assembly,
+            bool scratchBuild,
+            ICollection<InstallablePart> allParts,
+            ICollection<PartSocket> allSockets)
         {
             var root = new GameObject("PayloadMountFunctional");
             root.transform.SetParent(rack.transform, false);
@@ -2006,18 +1995,37 @@ namespace UnderStatic.Lab
                 InteractionLabFactory.DisableCollider(crossbar);
             }
 
-            var inertPayload = InteractionLabFactory.CreatePrimitive(
-                "InertPayloadMass",
-                PrimitiveType.Cylinder,
-                root.transform,
-                new Vector3(0f, -0.58f, 0f),
-                new Vector3(0.7f, 1.5f, 0.7f),
-                structureMaterial,
-                true);
-            inertPayload.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
-            InteractionLabFactory.DisableCollider(inertPayload);
+            PartSocket payloadSocket = null;
+            if (!scratchBuild)
+            {
+                var payloadSocketObject = new GameObject("SealedPayloadSocket");
+                payloadSocketObject.transform.SetParent(root.transform, false);
+                payloadSocketObject.transform.localPosition = new Vector3(0f, -0.58f, 0f);
+                var payloadTrigger = payloadSocketObject.AddComponent<BoxCollider>();
+                payloadTrigger.size = new Vector3(1.15f, 0.75f, 1.9f);
+                payloadTrigger.isTrigger = true;
+                payloadSocket = payloadSocketObject.AddComponent<PartSocket>();
+                payloadSocket.Configure(
+                    "drone.payload.center",
+                    new[] { PartCategory.Payload },
+                    new[] { "payload.sealed" },
+                    InstallationProfile.CreateTransient(
+                        InstallationProcedureType.ChargingDock,
+                        0.26f,
+                        28f,
+                        0.08f,
+                        0.78f),
+                    assembly,
+                    feedback: audioFeedback,
+                    standards: new[] { CompatibilityStandardId.SharedPayload });
+                payloadSocket.SetInsertionAxis(Vector3.down);
+                allSockets.Add(payloadSocket);
+            }
 
             var targets = new List<StrikePayloadMountStepTarget>();
+            var strapMaterial = InteractionLabFactory.CreateMaterial(
+                "Payload Retention Webbing",
+                new Color(0.58f, 0.34f, 0.07f));
             var forwardSecured = new List<Renderer>();
             var forwardLoose = new List<Renderer>();
             var rearSecured = new List<Renderer>();
@@ -2034,7 +2042,7 @@ namespace UnderStatic.Lab
                     root.transform,
                     new Vector3(0f, -0.3f, strap.Z),
                     new Vector3(1.08f, 0.11f, 0.18f),
-                    retentionMaterial,
+                    strapMaterial,
                     true);
                 var loose = InteractionLabFactory.CreatePrimitive(
                     $"Payload{strap.Name}StrapLoose",
@@ -2042,10 +2050,26 @@ namespace UnderStatic.Lab
                     root.transform,
                     new Vector3(0.7f, -0.05f, strap.Z),
                     new Vector3(0.55f, 0.08f, 0.18f),
-                    retentionMaterial,
+                    strapMaterial,
                     true);
                 InteractionLabFactory.DisableCollider(secured);
                 InteractionLabFactory.DisableCollider(loose);
+                var securedRenderers = new List<Renderer> { secured.GetComponent<Renderer>() };
+                foreach (var side in new[] { -1f, 1f })
+                {
+                    var wrap = InteractionLabFactory.CreatePrimitive(
+                        $"Payload{strap.Name}StrapSide.{side}", PrimitiveType.Cube, root.transform,
+                        new Vector3(side * 0.55f, -0.47f, strap.Z), new Vector3(0.1f, 0.38f, 0.18f),
+                        strapMaterial, true);
+                    InteractionLabFactory.DisableCollider(wrap);
+                    securedRenderers.Add(wrap.GetComponent<Renderer>());
+                }
+                var looseTail = InteractionLabFactory.CreatePrimitive(
+                    $"Payload{strap.Name}StrapLooseTail", PrimitiveType.Cube, root.transform,
+                    new Vector3(0.82f, -0.24f, strap.Z), new Vector3(0.09f, 0.46f, 0.18f),
+                    strapMaterial, true);
+                looseTail.transform.localRotation = Quaternion.Euler(0f, 0f, -22f);
+                InteractionLabFactory.DisableCollider(looseTail);
                 var targetObject = new GameObject($"Payload{strap.Name}StrapTarget");
                 targetObject.transform.SetParent(root.transform, false);
                 targetObject.transform.localPosition = new Vector3(0.38f, -0.16f, strap.Z);
@@ -2056,13 +2080,15 @@ namespace UnderStatic.Lab
                 targets.Add(target);
                 if (strap.Step == StrikePayloadMountStep.ForwardStrap)
                 {
-                    forwardSecured.Add(secured.GetComponent<Renderer>());
+                    forwardSecured.AddRange(securedRenderers);
                     forwardLoose.Add(loose.GetComponent<Renderer>());
+                    forwardLoose.Add(looseTail.GetComponent<Renderer>());
                 }
                 else
                 {
-                    rearSecured.Add(secured.GetComponent<Renderer>());
+                    rearSecured.AddRange(securedRenderers);
                     rearLoose.Add(loose.GetComponent<Renderer>());
+                    rearLoose.Add(looseTail.GetComponent<Renderer>());
                 }
             }
 
@@ -2120,7 +2146,41 @@ namespace UnderStatic.Lab
                 rearSecured,
                 rearLoose,
                 new[] { connectedPlug.GetComponent<Renderer>() },
-                new[] { loosePlug.GetComponent<Renderer>() });
+                new[] { loosePlug.GetComponent<Renderer>() },
+                payloadSocket);
+
+            if (scratchBuild)
+            {
+                return;
+            }
+
+            var payloadDefinition = PartDefinition.CreateTransient(
+                "payload.sealed.field",
+                "Sealed Field Payload",
+                PartCategory.Payload,
+                new[] { "payload.sealed" },
+                reliability: 0.92f,
+                partMass: 0.32f,
+                partPowerDraw: 0.02f,
+                partCapability: 0.9f,
+                partSalvageYield: 1,
+                standards: new[] { CompatibilityStandardId.SharedPayload },
+                equipmentGrade: EquipmentGrade.Field,
+                modifiers: new PartStatModifiers { payload = -0.04f, control = -0.02f },
+                value: 40,
+                capabilities: PartMissionCapability.KamikazeWarhead);
+            var payload = InteractionLabFactory.CreateComponentPart(
+                "FieldSealedPayload",
+                null,
+                new Vector3(-0.35f, 1.08f, 0.18f),
+                PartCategory.Payload,
+                payloadDefinition,
+                structureMaterial,
+                "payload-field-01");
+            payload.SetCondition(0.95f);
+            payload.gameObject.AddComponent<StrikePayloadRetentionGate>().Configure(procedure);
+            payload.RememberRecoveryPose();
+            allParts.Add(payload);
         }
 
         private static void InstallInitially(

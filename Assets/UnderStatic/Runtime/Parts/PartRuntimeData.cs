@@ -20,6 +20,7 @@ namespace UnderStatic.Parts
         public bool isSalvaged;
         public int consumableCharges;
         public int auxiliaryProcedureMask;
+        public PartCompromiseRuntimeData compromise = new();
 
         public PartRuntimeData Copy()
         {
@@ -37,7 +38,8 @@ namespace UnderStatic.Parts
                 tested = tested,
                 isSalvaged = isSalvaged,
                 consumableCharges = consumableCharges,
-                auxiliaryProcedureMask = auxiliaryProcedureMask
+                auxiliaryProcedureMask = auxiliaryProcedureMask,
+                compromise = compromise?.Copy() ?? new PartCompromiseRuntimeData()
             };
         }
     }

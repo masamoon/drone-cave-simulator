@@ -201,7 +201,7 @@ namespace UnderStatic.Parts
             var incompletePayloadMounts = parts
                 .Where(part => part.Definition.Category == PartCategory.StrikeRack)
                 .Select(part => part.GetComponent<StrikePayloadMountProcedure>())
-                .Where(procedure => procedure != null && !procedure.IsComplete)
+                .Where(procedure => procedure != null && procedure.RequiresCompletion && !procedure.IsComplete)
                 .ToArray();
             var depleted = battery != null && battery.IsBatteryDepleted;
             var frameFailed = runtime.frameCondition < 0.45f;

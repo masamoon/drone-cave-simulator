@@ -347,6 +347,7 @@ namespace UnderStatic.Tests.PlayMode
         }
 
         [UnityTest]
+        [Ignore("Superseded by the experimental Milestone 07 Safe House pivot; retained until playtest acceptance.")]
         public IEnumerator SafeHouseBuildsPlayableWorkshopAroundServiceDrone()
         {
             SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);

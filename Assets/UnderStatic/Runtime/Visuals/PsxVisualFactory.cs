@@ -237,6 +237,7 @@ namespace UnderStatic.Visuals
                         : kit.MaterialFor(PsxSurface.PaintedMetal),
                     PartCategory.Battery => kit.MaterialFor(PsxSurface.Rubber),
                     PartCategory.Antenna => kit.MaterialFor(PsxSurface.Rubber),
+                    PartCategory.Payload => kit.MaterialFor(PsxSurface.PaintedMetal),
                     PartCategory.Esc or PartCategory.FlightController => kit.MaterialFor(PsxSurface.Electronics),
                     _ => kit.MaterialFor(PsxSurface.PaintedMetal)
                 };
@@ -438,6 +439,9 @@ namespace UnderStatic.Visuals
                 case PartCategory.StrikeRack:
                     CreateStrikeRackVisual(detail, kit);
                     break;
+                case PartCategory.Payload:
+                    CreateSealedPayloadVisual(detail, kit);
+                    break;
                 case PartCategory.Propeller:
                     CreateMesh("PropellerCollet", detail, Vector3.down * 0.32f, Quaternion.identity, Vector3.one,
                         kit.RegisterMesh(PsxMeshFactory.LowPolyCylinder(0.3f, 0.75f, 6)),
@@ -470,11 +474,16 @@ namespace UnderStatic.Visuals
             }
 
             var detail = part.transform.Find("PSX_PartDetail");
-            var payload = detail?.Find("InertPayloadEnvelope");
+            var legacyPayload = detail?.Find("InertPayloadEnvelope");
             var spentMarker = detail?.Find("SpentPayloadMarker");
-            var hasCharge = part.Runtime.consumableCharges > 0;
-            if (payload != null) payload.gameObject.SetActive(hasCharge);
-            if (spentMarker != null) spentMarker.gameObject.SetActive(!hasCharge);
+            var procedure = part.GetComponent<StrikePayloadMountProcedure>();
+            var hasPayload = procedure?.HasPayload == true;
+            if (legacyPayload != null)
+            {
+                legacyPayload.gameObject.SetActive(procedure == null && part.Runtime.consumableCharges > 0);
+            }
+            if (procedure == null) hasPayload = part.Runtime.consumableCharges > 0;
+            if (spentMarker != null) spentMarker.gameObject.SetActive(!hasPayload);
         }
 
         public static void EnhanceTacticalTerminal(Transform control, PsxVisualKit kit)
@@ -655,31 +664,127 @@ namespace UnderStatic.Visuals
                     rubber);
             }
 
-            var payload = new GameObject("InertPayloadEnvelope").transform;
-            payload.SetParent(detail, false);
-            CreateMesh("PayloadBody", payload, new Vector3(0f, -0.46f, 0f), Quaternion.Euler(90f, 0f, 0f), Vector3.one,
+            // Charge-based legacy fixtures keep their old sealed silhouette. Safe House racks never show it.
+            var legacyPayload = new GameObject("InertPayloadEnvelope").transform;
+            legacyPayload.SetParent(detail, false);
+            CreateMesh("PayloadBody", legacyPayload, new Vector3(0f, -0.46f, 0f), Quaternion.Euler(90f, 0f, 0f), Vector3.one,
                 kit.RegisterMesh(PsxMeshFactory.LowPolyCylinder(0.46f, 3.15f, 10)), painted);
             foreach (var end in new[] { -1f, 1f })
             {
-                CreateMesh($"PayloadFlatEnd.{end}", payload, new Vector3(0f, -0.46f, end * 1.58f),
+                CreateMesh($"PayloadFlatEnd.{end}", legacyPayload, new Vector3(0f, -0.46f, end * 1.58f),
                     Quaternion.Euler(90f, 0f, 0f), Vector3.one,
                     kit.RegisterMesh(PsxMeshFactory.LowPolyCylinder(0.49f, 0.12f, 10)), metal);
             }
-            CreateMesh("PayloadIdentificationBand", payload, new Vector3(0f, -0.46f, -0.72f),
+            CreateMesh("PayloadIdentificationBand", legacyPayload, new Vector3(0f, -0.46f, -0.72f),
                 Quaternion.Euler(90f, 0f, 0f), Vector3.one,
                 kit.RegisterMesh(PsxMeshFactory.LowPolyCylinder(0.485f, 0.18f, 10)), label);
-            for (var strap = -1; strap <= 1; strap += 2)
-            {
-                CreateMesh($"PayloadRetentionBand.{strap}", payload, new Vector3(0f, -0.15f, strap * 0.72f),
-                    Quaternion.identity, Vector3.one,
-                    kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(1.18f, 0.1f, 0.2f), 0.035f)),
-                    rubber);
-            }
 
             var spent = new GameObject("SpentPayloadMarker").transform;
             spent.SetParent(detail, false);
             CreateMesh("EmptyCradleTag", spent, new Vector3(0f, -0.18f, 0f), Quaternion.identity, Vector3.one,
                 kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.72f, 0.08f, 0.34f), 0.025f)), label);
+        }
+
+        private static void CreateSealedPayloadVisual(Transform detail, PsxVisualKit kit)
+        {
+            var painted = kit.MaterialFor(PsxSurface.PaintedMetal);
+            var metal = kit.MaterialFor(PsxSurface.BareMetal);
+            var warning = kit.MaterialFor(PsxSurface.Warning);
+            var rubber = kit.MaterialFor(PsxSurface.Rubber);
+            var label = kit.MaterialFor(PsxSurface.Label);
+
+            CreateMesh("PayloadFacetedBody", detail, Vector3.zero, Quaternion.Euler(90f, 0f, 0f), Vector3.one,
+                kit.RegisterMesh(PsxMeshFactory.LowPolyCylinder(0.5f, 3.1f, 10)), painted);
+            foreach (var end in new[] { -1f, 1f })
+            {
+                CreateMesh($"PayloadEndCap.{end}", detail, new Vector3(0f, 0f, end * 1.56f),
+                    Quaternion.Euler(90f, 0f, 0f), Vector3.one,
+                    kit.RegisterMesh(PsxMeshFactory.LowPolyCylinder(0.53f, 0.15f, 10)), metal);
+            }
+            CreateMesh("PayloadIdentificationBand", detail, new Vector3(0f, 0f, -0.72f),
+                Quaternion.Euler(90f, 0f, 0f), Vector3.one,
+                kit.RegisterMesh(PsxMeshFactory.LowPolyCylinder(0.515f, 0.2f, 10)), label);
+            CreateMesh("PayloadWarningBand", detail, new Vector3(0f, 0f, 0.86f),
+                Quaternion.Euler(90f, 0f, 0f), Vector3.one,
+                kit.RegisterMesh(PsxMeshFactory.LowPolyCylinder(0.512f, 0.08f, 10)), warning);
+            for (var pad = -1; pad <= 1; pad += 2)
+            {
+                CreateMesh($"PayloadRetentionContact.{pad}", detail, new Vector3(0f, 0.36f, pad * 0.7f),
+                    Quaternion.identity, Vector3.one,
+                    kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.72f, 0.08f, 0.22f), 0.025f)), rubber);
+            }
+            CreateMesh("PayloadHarnessPort", detail, new Vector3(-0.42f, 0.08f, 1.12f),
+                Quaternion.identity, Vector3.one,
+                kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.22f, 0.2f, 0.28f), 0.04f)), metal);
+        }
+
+        public static Transform[] CreateSalvageIntakeCrate(Transform parent, PsxVisualKit kit)
+        {
+            if (parent == null || kit == null) return Array.Empty<Transform>();
+            var root = new GameObject("PSX_SalvageIntakeCrate").transform;
+            root.SetParent(parent, false);
+            root.position = new Vector3(0.95f, 0.28f, -1.72f);
+            var metal = kit.MaterialFor(PsxSurface.PaintedMetal);
+            var bare = kit.MaterialFor(PsxSurface.BareMetal);
+            var warning = kit.MaterialFor(PsxSurface.Warning);
+            CreateMesh("CrateFloor", root, Vector3.zero, Quaternion.identity, Vector3.one,
+                kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(1.05f, 0.08f, 0.68f), 0.05f)), metal);
+            foreach (var x in new[] { -0.5f, 0.5f })
+            foreach (var z in new[] { -0.31f, 0.31f })
+            {
+                CreateMesh($"CrateCorner.{x}.{z}", root, new Vector3(x, 0.25f, z), Quaternion.identity, Vector3.one,
+                    kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.07f, 0.5f, 0.07f), 0.02f)), bare);
+            }
+            foreach (var z in new[] { -0.34f, 0.34f })
+            {
+                CreateMesh($"CrateRail.{z}", root, new Vector3(0f, 0.28f, z), Quaternion.identity, Vector3.one,
+                    kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(1.02f, 0.12f, 0.05f), 0.018f)), metal);
+            }
+            CreateMesh("CrateIdentificationPlate", root, new Vector3(0f, 0.24f, -0.375f), Quaternion.identity,
+                Vector3.one, kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.48f, 0.16f, 0.025f), 0.02f)), warning);
+
+            var slots = new Transform[8];
+            for (var index = 0; index < slots.Length; index++)
+            {
+                slots[index] = new GameObject($"SalvageIntakeSlot.{index + 1:00}").transform;
+                slots[index].SetParent(root, false);
+                slots[index].localPosition = new Vector3(-0.39f + index % 4 * 0.26f, 0.22f,
+                    -0.17f + index / 4 * 0.34f);
+            }
+            return slots;
+        }
+
+        public static void CreatePayloadStorageCradle(Transform parent, PsxVisualKit kit)
+        {
+            if (parent == null || kit == null || parent.Find("PSX_PayloadStorageCradle") != null) return;
+            var root = new GameObject("PSX_PayloadStorageCradle").transform;
+            root.SetParent(parent, false);
+            root.position = new Vector3(-0.35f, 0.93f, 0.18f);
+            var baseObject = CreateMesh("PayloadCradleBase", root, Vector3.zero, Quaternion.identity, Vector3.one,
+                kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.42f, 0.08f, 0.72f), 0.04f)),
+                kit.MaterialFor(PsxSurface.PaintedMetal));
+            var collider = baseObject.AddComponent<BoxCollider>();
+            collider.size = new Vector3(0.42f, 0.08f, 0.72f);
+            foreach (var x in new[] { -0.18f, 0.18f })
+            {
+                CreateMesh($"PayloadCradleRail.{x}", root, new Vector3(x, 0.09f, 0f), Quaternion.identity,
+                    Vector3.one, kit.RegisterMesh(PsxMeshFactory.ChamferedBox(
+                        new Vector3(0.06f, 0.14f, 0.68f), 0.02f)), kit.MaterialFor(PsxSurface.Rubber));
+            }
+        }
+
+        public static void AddImprovisedSalvageDetails(InstallablePart part, PsxVisualKit kit, int variant)
+        {
+            if (part == null || kit == null || part.transform.Find("PSX_ImprovisedDetails") != null) return;
+            var root = new GameObject("PSX_ImprovisedDetails").transform;
+            root.SetParent(part.transform, false);
+            CreateMesh("PatchedCasing", root, new Vector3(0.18f, 0.12f, 0f),
+                Quaternion.Euler(0f, variant * 23f, variant * 11f), Vector3.one,
+                kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.38f, 0.045f, 0.3f), 0.025f)),
+                kit.MaterialFor(PsxSurface.BareMetal));
+            CreateMesh("RepairTape", root, new Vector3(0f, -0.08f, 0.08f), Quaternion.identity, Vector3.one,
+                kit.RegisterMesh(PsxMeshFactory.ChamferedBox(new Vector3(0.62f, 0.04f, 0.12f), 0.018f)),
+                kit.MaterialFor(PsxSurface.Warning));
         }
 
         private static GameObject CreateFlatBeam(

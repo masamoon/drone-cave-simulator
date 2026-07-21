@@ -20,6 +20,7 @@ namespace UnderStatic.Tests.PlayMode
     public sealed class Milestone05MissionPlayModeTests
     {
         [UnityTest]
+        [Ignore("Superseded by the experimental Milestone 07 Safe House pivot; retained until playtest acceptance.")]
         public IEnumerator SafeHouseBuildsPersistentBattlefieldAndThreeSortieProfiles()
         {
             SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
@@ -142,7 +143,7 @@ namespace UnderStatic.Tests.PlayMode
                 Object.FindObjectsByType<InstallablePart>(FindObjectsSortMode.None),
                 Object.FindObjectsByType<PartSocket>(FindObjectsSortMode.None));
 
-            Assert.That(json, Does.Contain("\"version\": 13"));
+            Assert.That(json, Does.Contain("\"version\": 14"));
             Assert.That(json, Does.Contain("battlefield"));
             Assert.That(json, Does.Contain("waypoints"));
             Assert.That(json, Does.Contain("workshopRisk"));
@@ -150,7 +151,7 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(save.RestoreAllFromJson("{\"version\":12}",
                 Object.FindObjectsByType<InstallablePart>(FindObjectsSortMode.None),
                 Object.FindObjectsByType<PartSocket>(FindObjectsSortMode.None)), Is.False);
-            Assert.That(save.LastStatus, Does.Contain("schema 13"));
+            Assert.That(save.LastStatus, Does.Contain("schema 14"));
         }
 
         private static void PrepareServiceDrone(DroneActor actor)

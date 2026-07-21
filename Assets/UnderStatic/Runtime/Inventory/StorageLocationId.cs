@@ -29,6 +29,7 @@ namespace UnderStatic.Inventory
         public static readonly StorageLocationId SafeHouseParts = new("safehouse.parts");
         public static readonly StorageLocationId SafeHouseReturns = new("safehouse.returns");
         public static readonly StorageLocationId SafeHouseSalvage = new("safehouse.salvage");
+        public static readonly StorageLocationId SafeHouseSalvageIntake = new("safehouse.salvage-intake");
         public static readonly StorageLocationId SafeHouseServiceBay = new("safehouse.service-bay");
         public static readonly StorageLocationId SafeHouseReadyShelf = new("safehouse.ready-shelf");
         public static readonly StorageLocationId SafeHouseBatteryCharger = new("safehouse.battery-charger");

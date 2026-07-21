@@ -607,6 +607,7 @@ namespace UnderStatic.Lab
                 PartCategory.Camera => new Vector3(0.12f, 0.1f, 0.09f),
                 PartCategory.Antenna => new Vector3(0.025f, 0.16f, 0.025f),
                 PartCategory.StrikeRack => new Vector3(0.12f, 0.055f, 0.18f),
+                PartCategory.Payload => new Vector3(0.075f, 0.075f, 0.24f),
                 PartCategory.Esc => new Vector3(0.225f, 0.02f, 0.185f),
                 PartCategory.FlightController => new Vector3(0.185f, 0.018f, 0.155f),
                 _ => Vector3.one * 0.1f

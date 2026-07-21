@@ -22,7 +22,8 @@ namespace UnderStatic.Core
         Antenna,
         StrikeRack,
         Esc,
-        FlightController
+        FlightController,
+        Payload
     }
 
     public static class InteractionStateRules

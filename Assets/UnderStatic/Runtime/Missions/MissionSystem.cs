@@ -34,6 +34,7 @@ namespace UnderStatic.Missions
 
         [SerializeField] private SortieProfileDefinition[] profiles = Array.Empty<SortieProfileDefinition>();
         [SerializeField] private BattlefieldSystem battlefield;
+        [SerializeField] private FrontlineSystem frontline;
         [SerializeField] private FleetSystem fleet;
         [SerializeField] private MarketSystem market;
         [SerializeField] private InventorySystem inventory;
@@ -48,8 +49,9 @@ namespace UnderStatic.Missions
         public IReadOnlyList<MissionRuntimeData> Missions => missions;
         public IReadOnlyList<SortieProfileDefinition> Profiles => profiles;
         public SortieDraftData Draft => draft;
-        public MissionRuntimeData ActiveMission => missions.FirstOrDefault(item =>
-            item.state is MissionRuntimeState.Active or MissionRuntimeState.Returning);
+        public MissionRuntimeData ActiveTask => missions.FirstOrDefault(item => item.state == MissionRuntimeState.Active);
+        public MissionRuntimeData ActiveMission => ActiveTask ?? missions.FirstOrDefault(item =>
+            item.state == MissionRuntimeState.Returning);
         public MissionRuntimeData LatestReport => missions.LastOrDefault(item =>
             item.state == MissionRuntimeState.Resolved);
         public string LastStatus { get; private set; } = "Sortie planner ready";
@@ -70,9 +72,15 @@ namespace UnderStatic.Missions
             fieldOperations = operations;
         }
 
+        public void ConfigureFrontline(FrontlineSystem frontlineSystem)
+        {
+            frontline = frontlineSystem;
+        }
+
         public bool SetDraftLaunchSite(string siteId)
         {
-            if (ActiveMission != null || fieldOperations?.TryGetLaunchPosition(siteId, out _) != true)
+            var workshop = string.Equals(siteId, FieldOperationsSystem.WorkshopSiteId, StringComparison.Ordinal);
+            if (ActiveTask != null || !workshop && fieldOperations?.TryGetLaunchPosition(siteId, out _) != true)
             {
                 return false;
             }
@@ -112,7 +120,7 @@ namespace UnderStatic.Missions
 
         public bool SetDraftType(SortieType type)
         {
-            if (ProfileFor(type) == null || ActiveMission != null)
+            if (ProfileFor(type) == null || ActiveTask != null)
             {
                 return false;
             }
@@ -126,7 +134,7 @@ namespace UnderStatic.Missions
 
         public bool AddWaypoint(Vector2 normalized)
         {
-            if (draft.sortieType != SortieType.Recon || ActiveMission != null
+            if (draft.sortieType != SortieType.Recon || ActiveTask != null
                 || draft.waypoints.Length >= MaximumWaypoints)
             {
                 return false;
@@ -140,7 +148,7 @@ namespace UnderStatic.Missions
 
         public bool MoveWaypoint(int index, Vector2 normalized)
         {
-            if (draft.sortieType != SortieType.Recon || ActiveMission != null
+            if (draft.sortieType != SortieType.Recon || ActiveTask != null
                 || index < 0 || index >= draft.waypoints.Length)
             {
                 return false;
@@ -153,7 +161,7 @@ namespace UnderStatic.Missions
 
         public bool RemoveWaypoint(int index)
         {
-            if (draft.sortieType != SortieType.Recon || ActiveMission != null
+            if (draft.sortieType != SortieType.Recon || ActiveTask != null
                 || index < 0 || index >= draft.waypoints.Length)
             {
                 return false;
@@ -169,7 +177,7 @@ namespace UnderStatic.Missions
 
         public void ClearDraftGeometry()
         {
-            if (ActiveMission != null)
+            if (ActiveTask != null)
             {
                 return;
             }
@@ -181,8 +189,10 @@ namespace UnderStatic.Missions
 
         public bool SelectTarget(string contactId)
         {
-            if (draft.sortieType == SortieType.Recon || ActiveMission != null
-                || battlefield?.IsTargetable(contactId) != true)
+            var frontlineTarget = frontline?.Runtime.activities.Any(item => item.active && item.pressure > 0
+                && string.Equals(item.activityId, contactId, StringComparison.Ordinal)) == true;
+            if (draft.sortieType == SortieType.Recon || ActiveTask != null
+                || !frontlineTarget && battlefield?.IsTargetable(contactId) != true)
             {
                 LastStatus = "Select a current or stale discovered contact";
                 return false;
@@ -202,7 +212,7 @@ namespace UnderStatic.Missions
             {
                 return new MissionEligibilityResult(false, "Stage a tested mission-ready drone");
             }
-            if (ActiveMission != null)
+            if (ActiveTask != null)
             {
                 return new MissionEligibilityResult(false, "Another sortie is active");
             }
@@ -221,15 +231,19 @@ namespace UnderStatic.Missions
                     _ => "Grenade drop requires a reusable aircraft with a charged drop rack"
                 });
             }
-            if (draft.sortieType == SortieType.Recon && actor.IsExpendableStrikeDrone)
+            var loadedPayload = FindLoadedPayload(actor);
+            var legacyStrike = HasLegacyStrikeConfiguration(actor, draft.sortieType);
+            if (draft.sortieType == SortieType.Recon
+                && (loadedPayload != null || actor.IsExpendableStrikeDrone))
             {
-                return new MissionEligibilityResult(false, "Expendable strike aircraft cannot perform recon");
+                return new MissionEligibilityResult(false, "Remove the loaded payload before reconnaissance");
             }
-            if (draft.sortieType == SortieType.KamikazeStrike && !actor.IsExpendableStrikeDrone)
+            if (draft.sortieType == SortieType.KamikazeStrike && loadedPayload == null && !legacyStrike)
             {
-                return new MissionEligibilityResult(false, "Stage an expendable strike aircraft");
+                return new MissionEligibilityResult(false, "Seat, strap, connect and diagnose a payload");
             }
-            if (draft.sortieType == SortieType.GrenadeDrop && actor.IsExpendableStrikeDrone)
+            if (draft.sortieType == SortieType.GrenadeDrop
+                && (loadedPayload != null || actor.IsExpendableStrikeDrone))
             {
                 return new MissionEligibilityResult(false, "Grenade drop requires a recoverable aircraft");
             }
@@ -295,14 +309,19 @@ namespace UnderStatic.Missions
             var profile = ProfileFor(draft.sortieType);
             var plan = BuildPlan(actor);
             var rack = FindStrikeRack(actor);
-            if (draft.sortieType != SortieType.Recon
-                && (rack == null
-                    || rack.Runtime.consumableCharges <= 0
-                    || !(rack.GetComponent<StrikePayloadMountProcedure>()?.IsComplete ?? true)))
+            var loadedPayload = FindLoadedPayload(actor);
+            if (draft.sortieType == SortieType.KamikazeStrike && loadedPayload == null
+                && !HasLegacyStrikeConfiguration(actor, draft.sortieType))
             {
-                LastStatus = rack != null && rack.Runtime.consumableCharges > 0
-                    ? "Complete the payload mount straps and control harness"
-                    : "Strike payload has no charge";
+                LastStatus = rack != null
+                    ? "Seat the payload, secure both straps, connect the harness and run diagnostics"
+                    : "Install a compatible underslung payload rack";
+                return false;
+            }
+            if (draft.sortieType == SortieType.GrenadeDrop
+                && (rack == null || rack.Runtime.consumableCharges <= 0))
+            {
+                LastStatus = "Legacy drop rack has no charge";
                 return false;
             }
             if (!fleet.TryDeployReady(actor))
@@ -311,7 +330,7 @@ namespace UnderStatic.Missions
                 return false;
             }
 
-            if (draft.sortieType != SortieType.Recon)
+            if (draft.sortieType == SortieType.GrenadeDrop)
             {
                 rack.Runtime.consumableCharges--;
             }
@@ -359,7 +378,7 @@ namespace UnderStatic.Missions
 
         public void ForceLostLink()
         {
-            var active = missions.FirstOrDefault(item => item.state == MissionRuntimeState.Active);
+            var active = ActiveTask;
             if (active != null && !active.lostLinkTriggered)
             {
                 active.linkLostSeconds = LostLinkGraceSeconds;
@@ -414,8 +433,7 @@ namespace UnderStatic.Missions
                 }
             }
 
-            var returning = missions.FirstOrDefault(item => item.state == MissionRuntimeState.Returning);
-            if (returning != null)
+            foreach (var returning in missions.Where(item => item.state == MissionRuntimeState.Returning).ToArray())
             {
                 TryCompleteReturn(returning);
             }
@@ -475,8 +493,9 @@ namespace UnderStatic.Missions
                         && item.plan.sortieType != SortieType.KamikazeStrike && !item.maintenanceApplied
                     || item.state == MissionRuntimeState.AwaitingConfirmation
                         && (item.plan.sortieType != SortieType.KamikazeStrike || !item.confirmationPending))
+                || restored.missions.Count(item => item.state == MissionRuntimeState.Active) > 1
                 || restored.missions.Count(item => item.state is MissionRuntimeState.Active
-                    or MissionRuntimeState.Returning) > 1
+                    or MissionRuntimeState.Returning) > 2
                 || restored.missions.Select(item => item.missionInstanceId)
                     .Distinct(StringComparer.Ordinal).Count() != restored.missions.Length)
             {
@@ -486,7 +505,8 @@ namespace UnderStatic.Missions
             foreach (var item in restored.missions.Where(item => item.state is MissionRuntimeState.Active
                          or MissionRuntimeState.Returning))
             {
-                if (fleet?.FindActor(item.assignedDroneId) != fleet.DeployedDrone)
+                var actor = fleet?.FindActor(item.assignedDroneId);
+                if (actor == null || fleet.DeployedDrones.Contains(actor) == false)
                 {
                     LastStatus = "Sortie load rejected: deployed drone mismatch";
                     return false;
@@ -531,13 +551,18 @@ namespace UnderStatic.Missions
             }
             else
             {
+                var activity = frontline?.Runtime.activities.FirstOrDefault(item => item.active && item.pressure > 0
+                    && string.Equals(item.activityId, draft.targetContactId, StringComparison.Ordinal));
                 var target = battlefield.FindVisible(draft.targetContactId);
-                if (target?.IsTargetable != true)
+                if (activity == null && target?.IsTargetable != true)
                 {
                     return null;
                 }
-                targetId = target.Value.ContactId;
-                aimed = target.Value.Position;
+                targetId = activity?.activityId ?? target.Value.ContactId;
+                aimed = activity != null
+                    ? frontline.Definition.Sectors.First(item => string.Equals(
+                        item.id, activity.currentSectorId, StringComparison.Ordinal)).position.ToVector2()
+                    : target.Value.Position;
                 route.Add(aimed);
                 if (draft.sortieType == SortieType.GrenadeDrop)
                 {
@@ -562,6 +587,7 @@ namespace UnderStatic.Missions
         private void RevealReconContacts(MissionRuntimeData runtime, float progress)
         {
             var route = runtime.plan.route.Select(item => item.ToVector2()).ToArray();
+            RevealFrontlineActivities(runtime, route, progress);
             var discoveries = battlefield.RevealAlongRoute(
                 route,
                 Mathf.Clamp01(progress),
@@ -585,6 +611,59 @@ namespace UnderStatic.Missions
                 runtime.fundsAwarded += market?.AwardFunds(discovery.Reward,
                     discovery.Reacquired ? "reacquired battlefield contact" : "new battlefield contact") ?? 0;
                 runtime.lastRadioMessage = $"CONTACT · {discovery.Type} marked on tactical map";
+            }
+            runtime.discoveredContactIds = discovered.ToArray();
+            runtime.discoveredPositions = positions.ToArray();
+            runtime.discoveredTypes = types.ToArray();
+            LastStatus = runtime.lastRadioMessage;
+            StateChanged?.Invoke();
+        }
+
+        private void RevealFrontlineActivities(
+            MissionRuntimeData runtime,
+            IReadOnlyList<Vector2> route,
+            float progress)
+        {
+            if (frontline == null || route == null || route.Count < 2)
+            {
+                return;
+            }
+
+            var discovered = new HashSet<string>(runtime.discoveredContactIds, StringComparer.Ordinal);
+            var positions = runtime.discoveredPositions.ToList();
+            var types = runtime.discoveredTypes.ToList();
+            var changed = false;
+            foreach (var activity in frontline.Runtime.activities.Where(item => item.active && item.pressure > 0))
+            {
+                var sector = frontline.Definition.Sectors.First(item => string.Equals(
+                    item.id, activity.currentSectorId, StringComparison.Ordinal));
+                var position = sector.position.ToVector2();
+                var observed = Enumerable.Range(0, 25).Any(sample => sample / 24f <= progress
+                    && Vector2.Distance(PositionAlongRoute(runtime.plan.route, sample / 24f), position)
+                        <= runtime.plan.sensorHalfWidthKilometres / BattlefieldSystem.StrategicSizeKilometres);
+                if (!observed)
+                {
+                    continue;
+                }
+
+                var newlyIdentified = !activity.typeIdentified;
+                frontline.IdentifyActivity(activity.activityId);
+                if (discovered.Add(activity.activityId))
+                {
+                    positions.Add(sector.position);
+                    types.Add(ToLegacyContactType(activity.actualType));
+                }
+                if (newlyIdentified)
+                {
+                    runtime.fundsAwarded += market?.AwardFunds(
+                        frontline.Economy?.IntelligenceReward ?? 40, "frontline intelligence") ?? 0;
+                }
+                runtime.lastRadioMessage = $"CONTACT · {activity.actualType} identified";
+                changed = true;
+            }
+            if (!changed)
+            {
+                return;
             }
             runtime.discoveredContactIds = discovered.ToArray();
             runtime.discoveredPositions = positions.ToArray();
@@ -692,10 +771,36 @@ namespace UnderStatic.Missions
                 runtime.breakdown.summary = runtime.discoveredContactIds.Length == 0
                     ? "The route completed without locating a contact."
                     : $"Route completed. {runtime.discoveredContactIds.Length} contact(s) marked on the persistent map.";
+                if (score >= 0.48f && runtime.discoveredContactIds.Length > 0)
+                {
+                    runtime.fundsAwarded += market?.AwardFunds(
+                        frontline?.Economy?.ReconReward ?? 120, "completed reconnaissance") ?? 0;
+                }
             }
             else
             {
                 var effective = score >= 0.48f;
+                var frontlineActivity = frontline?.Runtime.activities.FirstOrDefault(item =>
+                    string.Equals(item.activityId, runtime.plan.targetContactId, StringComparison.Ordinal));
+                if (frontlineActivity != null)
+                {
+                    var result = frontline.ApplyStrike(runtime.plan.targetContactId, effective);
+                    runtime.breakdown.positiveIdentification = result.Found;
+                    runtime.damageApplied = result.Damage;
+                    runtime.outcome = !result.Found ? MissionOutcome.NoContact
+                        : !effective ? MissionOutcome.Aborted
+                        : score >= 0.88f ? MissionOutcome.ExceptionalSuccess
+                        : score >= 0.68f ? MissionOutcome.Success
+                        : MissionOutcome.LimitedSuccess;
+                    runtime.breakdown.summary = !result.Found
+                        ? "The activity had already moved or been neutralized."
+                        : !effective ? $"{result.Type} identified on arrival, but the strike failed."
+                        : result.Neutralized ? $"{result.Type} pressure removed from the front."
+                        : $"{result.Type} pressure reduced by {result.Damage}.";
+                    runtime.fundsAwarded += market?.AwardFunds(result.Reward, $"{result.Type} strike") ?? 0;
+                }
+                else
+                {
                 var strike = battlefield.ApplyStrike(
                     runtime.plan.targetContactId,
                     runtime.plan.aimedPosition.ToVector2(),
@@ -727,6 +832,7 @@ namespace UnderStatic.Missions
                             runtime.plan.aimedPosition.ToVector2(), strike.Salvage)?.remainingTokens ?? 0
                         : inventory?.AwardScrap(strike.Salvage, $"{strike.Type} strike") ?? 0;
                 }
+                }
             }
 
             runtime.rewardsGranted = true;
@@ -757,7 +863,7 @@ namespace UnderStatic.Missions
                 StringComparison.Ordinal);
             var recovered = remote
                 ? fieldOperations?.CacheReturnedDrone(actor, runtime.plan.returnSiteId) == true
-                : fleet?.TryRecoverDeployedToService(actor) == true;
+                : fleet?.TryRecoverDeployedToWorkshop(actor) == true;
             if (actor == null || !recovered)
             {
                 LastStatus = fleet?.LastStatus ?? "Recovery waiting";
@@ -1038,6 +1144,24 @@ namespace UnderStatic.Missions
             part?.Definition?.Category == PartCategory.StrikeRack
             && part.Runtime.currentState is InteractionState.Installed or InteractionState.Tested);
 
+        private static InstallablePart FindLoadedPayload(DroneActor actor)
+        {
+            var rack = FindStrikeRack(actor);
+            var procedure = rack?.GetComponent<StrikePayloadMountProcedure>();
+            return procedure is { IsComplete: true } ? procedure.Payload : null;
+        }
+
+        private static bool HasLegacyStrikeConfiguration(DroneActor actor, SortieType sortieType)
+        {
+            var rack = FindStrikeRack(actor);
+            var required = sortieType == SortieType.KamikazeStrike
+                ? PartMissionCapability.KamikazeWarhead
+                : PartMissionCapability.GrenadeDrop;
+            return rack != null && rack.GetComponent<StrikePayloadMountProcedure>() == null
+                && rack.Runtime.consumableCharges > 0
+                && (rack.Definition.MissionCapabilities & required) == required;
+        }
+
         private static PartMissionCapability CapabilitiesFor(DroneActor actor)
         {
             var capabilities = PartMissionCapability.None;
@@ -1048,8 +1172,11 @@ namespace UnderStatic.Missions
                     continue;
                 }
                 if (part.Definition.Category == PartCategory.StrikeRack
-                    && (part.Runtime.consumableCharges <= 0
-                        || !(part.GetComponent<StrikePayloadMountProcedure>()?.IsComplete ?? true)))
+                    && part.GetComponent<StrikePayloadMountProcedure>() != null)
+                {
+                    continue;
+                }
+                if (part.Definition.Category == PartCategory.Payload && FindLoadedPayload(actor) != part)
                 {
                     continue;
                 }
@@ -1061,6 +1188,13 @@ namespace UnderStatic.Missions
             }
             return capabilities;
         }
+
+        private static BattlefieldContactType ToLegacyContactType(EnemyActivityType type) => type switch
+        {
+            EnemyActivityType.Artillery => BattlefieldContactType.Artillery,
+            EnemyActivityType.EnemyBase => BattlefieldContactType.EnemyBase,
+            _ => BattlefieldContactType.Infantry
+        };
 
         private static float TargetSuitability(SortieType type, BattlefieldContactType target) => type switch
         {
