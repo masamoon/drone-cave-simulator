@@ -124,7 +124,7 @@ namespace UnderStatic.UI
                 return null;
             }
 
-            var key = $"{actor.FrameDefinition.Family}:{actor.FrameDefinition.Grade}:{actor.IsExpendableStrikeDrone}";
+            var key = $"{actor.FrameDefinition.AirframeClass}:{actor.FrameDefinition.Grade}:{actor.MissionCapabilities}:{actor.IsExpendableStrikeDrone}";
             if (!thumbnails.TryGetValue(key, out var thumbnail))
             {
                 thumbnail = CreateThumbnail(actor);
@@ -308,11 +308,8 @@ namespace UnderStatic.UI
 
         private static string ReadinessLabel(DroneActor actor)
         {
-            if (actor.IsExpendableStrikeDrone)
-            {
-                return actor.IsReadyForShelf ? "EXPENDABLE STRIKE  /  TESTED READY" : "EXPENDABLE STRIKE  /  MAINTENANCE";
-            }
-            return actor.IsReadyForShelf ? "TESTED READY" : "MAINTENANCE REQUIRED";
+            var readiness = actor.IsReadyForShelf ? "TESTED READY" : "MAINTENANCE";
+            return $"{actor.ConfigurationLabel}  /  {readiness}";
         }
 
         private static Texture2D CreateThumbnail(DroneActor actor)
@@ -330,16 +327,12 @@ namespace UnderStatic.UI
                 pixels[index] = transparent;
             }
 
-            var body = actor.FrameDefinition.Family switch
+            var body = actor.FrameDefinition.AirframeClass switch
             {
-                DroneFrameFamily.Survey => new Color32(88, 120, 112, 255),
-                DroneFrameFamily.Utility => new Color32(128, 112, 78, 255),
+                DroneAirframeClass.Endurance => new Color32(88, 120, 112, 255),
+                DroneAirframeClass.HeavyLift => new Color32(128, 112, 78, 255),
                 _ => new Color32(96, 110, 82, 255)
             };
-            if (actor.IsExpendableStrikeDrone)
-            {
-                body = new Color32(142, 96, 58, 255);
-            }
             var metal = new Color32(174, 184, 170, 255);
             var dark = new Color32(34, 40, 36, 255);
             DrawRect(pixels, 39, 24, 18, 16, body);
@@ -351,7 +344,7 @@ namespace UnderStatic.UI
             DrawDisc(pixels, 78, 16, 8, dark);
             DrawDisc(pixels, 18, 48, 8, dark);
             DrawDisc(pixels, 78, 48, 8, dark);
-            DrawRect(pixels, 43, 28, 10, 8, actor.IsExpendableStrikeDrone
+            DrawRect(pixels, 43, 28, 10, 8, actor.HasArmedPayload
                 ? new Color32(210, 138, 62, 255)
                 : metal);
             texture.SetPixels32(pixels);

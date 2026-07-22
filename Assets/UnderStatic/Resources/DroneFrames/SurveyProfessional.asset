@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: SurveyProfessional
   m_EditorClassIdentifier: UnderStatic.Runtime::UnderStatic.Fleet.DroneFrameDefinition
   id: frame.survey.professional
-  displayName: Survey Professional
-  family: 1
+  displayName: Endurance Professional
+  airframeClass: 1
   grade: 1
   presentationPrefab: {fileID: 0}
   socketRequirements:

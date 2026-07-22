@@ -111,8 +111,8 @@ namespace UnderStatic.Tests
             var assembly = root.AddComponent<DroneAssemblyState>();
             var definition = Track(DroneFrameDefinition.CreateTransient(
                 "frame.test",
-                "Scout Field",
-                DroneFrameFamily.Scout,
+                "Compact Field",
+                DroneAirframeClass.Compact,
                 EquipmentGrade.Field,
                 default,
                 100,

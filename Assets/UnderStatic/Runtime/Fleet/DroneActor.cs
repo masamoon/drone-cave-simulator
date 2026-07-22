@@ -23,6 +23,33 @@ namespace UnderStatic.Fleet
             ?? Array.Empty<InstallablePart>();
         public DroneReadinessSnapshot Readiness => assembly?.Readiness ?? default;
         public DroneStatsSnapshot Stats => CalculateStats();
+        public CivilianDroneConversion CivilianConversion => GetComponent<CivilianDroneConversion>();
+        public InstallablePart LoadedPayload => FindLoadedPayload();
+        public PartMissionCapability MissionCapabilities => CalculateMissionCapabilities();
+        public bool HasOneWayPayload => (IsExpendableStrikeDrone
+                || (MissionCapabilities & PartMissionCapability.KamikazeWarhead) != 0)
+            && (CivilianConversion == null || CivilianConversion.RetrofitReady);
+        public bool HasDropPayload => (MissionCapabilities & PartMissionCapability.GrenadeDrop) != 0;
+        public bool HasArmedPayload => HasOneWayPayload || HasDropPayload;
+        public string ConfigurationLabel
+        {
+            get
+            {
+                var capabilities = MissionCapabilities;
+                var hasCamera = (capabilities & PartMissionCapability.Observation) != 0;
+                if (HasOneWayPayload)
+                {
+                    return hasCamera ? "CAMERA + ONE-WAY" : "ONE-WAY PAYLOAD";
+                }
+                if (HasDropPayload)
+                {
+                    return hasCamera ? "CAMERA + DROP" : "DROP PAYLOAD";
+                }
+                return hasCamera ? "CAMERA" : "GENERAL PURPOSE";
+            }
+        }
+
+        // Retained only to load pre-configuration saves and historical market stock.
         public bool IsExpendableStrikeDrone => Runtime?.isExpendableStrikeDrone == true;
 
         public void Configure(
@@ -63,6 +90,7 @@ namespace UnderStatic.Fleet
 
             assembly.Runtime.frameCondition = Mathf.Clamp01(assembly.Runtime.frameCondition);
             BindSockets();
+            CivilianConversion?.RestoreVisualState();
         }
 
         public void SetStorageLocation(DroneStorageLocation location)
@@ -95,7 +123,7 @@ namespace UnderStatic.Fleet
         {
             var requirements = frameDefinition != null && frameDefinition.SocketRequirements.Count > 0
                 ? frameDefinition.SocketRequirements
-                : DroneFrameDefinition.DefaultRequirements(frameDefinition?.Family ?? DroneFrameFamily.Scout);
+                : DroneFrameDefinition.DefaultRequirements(frameDefinition?.AirframeClass ?? DroneAirframeClass.Compact);
             foreach (var socket in sockets)
             {
                 socket.BindRuntimeIdentity(assembly.Runtime.droneInstanceId);
@@ -106,6 +134,43 @@ namespace UnderStatic.Fleet
                     socket.SetCompatibilityStandards(requirement.standard);
                 }
             }
+        }
+
+        private InstallablePart FindLoadedPayload()
+        {
+            var rack = InstalledParts.FirstOrDefault(part =>
+                part?.Definition?.Category == PartCategory.StrikeRack
+                && part.Runtime.currentState is InteractionState.Installed or InteractionState.Tested);
+            var procedure = rack?.GetComponent<StrikePayloadMountProcedure>();
+            return procedure is { IsComplete: true } ? procedure.Payload : null;
+        }
+
+        private PartMissionCapability CalculateMissionCapabilities()
+        {
+            var capabilities = PartMissionCapability.None;
+            var loadedPayload = LoadedPayload;
+            foreach (var part in InstalledParts)
+            {
+                if (part?.Definition == null || !part.IsServiceable)
+                {
+                    continue;
+                }
+                if (part.Definition.Category == PartCategory.StrikeRack
+                    && part.GetComponent<StrikePayloadMountProcedure>() != null)
+                {
+                    continue;
+                }
+                if (part.Definition.Category == PartCategory.Payload && loadedPayload != part)
+                {
+                    continue;
+                }
+                capabilities |= part.Definition.MissionCapabilities;
+                if (part.Definition.Category == PartCategory.Camera)
+                {
+                    capabilities |= PartMissionCapability.Observation;
+                }
+            }
+            return capabilities;
         }
 
         private DroneStatsSnapshot CalculateStats()
@@ -127,11 +192,23 @@ namespace UnderStatic.Fleet
             var noise = baseStats.noise;
             var reliability = baseStats.reliability * condition;
             var componentValue = frameDefinition.MonetaryValue;
+            var conversion = CivilianConversion;
+            var totalMass = conversion != null
+                ? conversion.BaseAirframeMass + conversion.CurrentShellMass
+                : DefaultBaseMass(frameDefinition.AirframeClass);
+            var maximumMass = conversion != null
+                ? conversion.MaximumMass
+                : DefaultMaximumMass(frameDefinition.AirframeClass);
+            var powerDraw = 0f;
+            var powerBudget = conversion != null
+                ? conversion.PowerBudget
+                : DefaultPowerBudget(frameDefinition.AirframeClass);
 
             foreach (var part in parts)
             {
                 var modifier = part.Definition.StatModifiers;
                 var partCondition = Mathf.Clamp01(part.Runtime.condition);
+                speed += modifier.speed * partCondition;
                 endurance += modifier.endurance * partCondition;
                 observation += modifier.observation * partCondition;
                 durability += modifier.durability * partCondition;
@@ -140,6 +217,19 @@ namespace UnderStatic.Fleet
                 noise += modifier.noise * partCondition;
                 reliability += modifier.reliability * partCondition;
                 componentValue += part.Definition.MonetaryValue;
+                totalMass += part.Definition.Mass;
+                powerDraw += part.Definition.PowerDraw;
+            }
+
+            var loadRatio = maximumMass <= 0f ? 0f : totalMass / maximumMass;
+            speed *= Mathf.Lerp(1f, 0.68f, Mathf.Clamp01((loadRatio - 0.5f) / 0.5f));
+            if (loadRatio > 1f)
+            {
+                speed *= Mathf.Max(0.35f, 1f - (loadRatio - 1f) * 0.8f);
+            }
+            if (powerBudget > 0f && powerDraw > powerBudget)
+            {
+                speed *= Mathf.Max(0.4f, powerBudget / powerDraw);
             }
 
             var battery = parts.FirstOrDefault(part => part.Definition.Category == PartCategory.Battery);
@@ -197,7 +287,32 @@ namespace UnderStatic.Fleet
                 noise,
                 reliability,
                 componentValue,
-                mismatch);
+                mismatch,
+                totalMass,
+                maximumMass,
+                powerDraw,
+                powerBudget);
         }
+
+        private static float DefaultBaseMass(DroneAirframeClass airframeClass) => airframeClass switch
+        {
+            DroneAirframeClass.Endurance => 0.78f,
+            DroneAirframeClass.HeavyLift => 1.18f,
+            _ => 0.5f
+        };
+
+        private static float DefaultMaximumMass(DroneAirframeClass airframeClass) => airframeClass switch
+        {
+            DroneAirframeClass.Endurance => 3.1f,
+            DroneAirframeClass.HeavyLift => 4.5f,
+            _ => 2.25f
+        };
+
+        private static float DefaultPowerBudget(DroneAirframeClass airframeClass) => airframeClass switch
+        {
+            DroneAirframeClass.Endurance => 1.7f,
+            DroneAirframeClass.HeavyLift => 2.25f,
+            _ => 1.3f
+        };
     }
 }

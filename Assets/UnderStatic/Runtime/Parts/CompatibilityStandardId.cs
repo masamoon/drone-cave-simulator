@@ -85,6 +85,7 @@ namespace UnderStatic.Parts
     [Serializable]
     public struct PartStatModifiers
     {
+        public float speed;
         public float endurance;
         public float observation;
         public float control;

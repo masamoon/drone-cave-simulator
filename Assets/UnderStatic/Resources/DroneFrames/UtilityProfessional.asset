@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: UtilityProfessional
   m_EditorClassIdentifier: UnderStatic.Runtime::UnderStatic.Fleet.DroneFrameDefinition
   id: frame.utility.professional
-  displayName: Utility Professional
-  family: 2
+  displayName: Heavy-Lift Professional
+  airframeClass: 2
   grade: 1
   presentationPrefab: {fileID: 0}
   socketRequirements:

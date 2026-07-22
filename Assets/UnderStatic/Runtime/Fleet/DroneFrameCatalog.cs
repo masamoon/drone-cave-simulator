@@ -29,19 +29,19 @@ namespace UnderStatic.Fleet
         public static DroneFrameDefinition CreateFallback(string resourceName)
         {
             var professional = resourceName.EndsWith("Professional", StringComparison.Ordinal);
-            var family = resourceName.StartsWith("Survey", StringComparison.Ordinal)
-                ? DroneFrameFamily.Survey
+            var airframeClass = resourceName.StartsWith("Survey", StringComparison.Ordinal)
+                ? DroneAirframeClass.Endurance
                 : resourceName.StartsWith("Utility", StringComparison.Ordinal)
-                    ? DroneFrameFamily.Utility
-                    : DroneFrameFamily.Scout;
-            var fieldStats = family switch
+                    ? DroneAirframeClass.HeavyLift
+                    : DroneAirframeClass.Compact;
+            var fieldStats = airframeClass switch
             {
-                DroneFrameFamily.Survey => new DroneBaseStats
+                DroneAirframeClass.Endurance => new DroneBaseStats
                 {
                     speed = 0.58f, endurance = 0.9f, observation = 0.92f, durability = 0.55f,
                     payload = 0.5f, control = 0.62f, noise = 0.6f, reliability = 0.84f
                 },
-                DroneFrameFamily.Utility => new DroneBaseStats
+                DroneAirframeClass.HeavyLift => new DroneBaseStats
                 {
                     speed = 0.45f, endurance = 0.58f, observation = 0.62f, durability = 0.92f,
                     payload = 0.95f, control = 0.88f, noise = 0.85f, reliability = 0.88f
@@ -66,23 +66,36 @@ namespace UnderStatic.Fleet
                 stats.noise *= 0.9f;
             }
 
-            var fieldValue = family switch
+            var fieldValue = airframeClass switch
             {
-                DroneFrameFamily.Survey => 400,
-                DroneFrameFamily.Utility => 620,
+                DroneAirframeClass.Endurance => 400,
+                DroneAirframeClass.HeavyLift => 620,
                 _ => 240
             };
             var grade = professional ? EquipmentGrade.Professional : EquipmentGrade.Field;
-            var familyName = family.ToString();
+            var className = DroneFrameDefinition.DisplayClassName(airframeClass);
             var gradeName = grade.ToString();
             return DroneFrameDefinition.CreateTransient(
-                $"frame.{familyName.ToLowerInvariant()}.{gradeName.ToLowerInvariant()}",
-                $"{familyName} {gradeName}",
-                family,
+                StableDefinitionId(resourceName),
+                $"{className} {gradeName}",
+                airframeClass,
                 grade,
                 stats,
                 professional ? Mathf.RoundToInt(fieldValue * 2.25f) : fieldValue,
-                family == DroneFrameFamily.Utility ? 14 : family == DroneFrameFamily.Survey ? 11 : 8);
+                airframeClass == DroneAirframeClass.HeavyLift ? 14 : airframeClass == DroneAirframeClass.Endurance ? 11 : 8);
+        }
+
+        private static string StableDefinitionId(string resourceName)
+        {
+            var grade = resourceName.EndsWith("Professional", StringComparison.Ordinal)
+                ? "professional"
+                : "field";
+            var legacyFamily = resourceName.StartsWith("Survey", StringComparison.Ordinal)
+                ? "survey"
+                : resourceName.StartsWith("Utility", StringComparison.Ordinal)
+                    ? "utility"
+                    : "scout";
+            return $"frame.{legacyFamily}.{grade}";
         }
     }
 }

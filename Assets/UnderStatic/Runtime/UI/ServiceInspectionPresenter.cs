@@ -153,7 +153,7 @@ namespace UnderStatic.UI
                 return new ServiceInspectionSnapshot(
                     definition.DisplayName,
                     "UNDIAGNOSED",
-                    $"{definition.Family.ToString().ToUpperInvariant()} FRAME · {definition.Grade.ToString().ToUpperInvariant()}",
+                    $"{definition.AirframeClassName.ToUpperInvariant()} AIRFRAME · {definition.Grade.ToString().ToUpperInvariant()}",
                     ServiceInspectionSeverity.Unknown);
             }
 

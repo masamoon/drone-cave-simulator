@@ -8,7 +8,8 @@ Read these files before making project changes:
 
 1. `docs/GAME_SPEC.md`
 2. `docs/MILESTONE_01.md`
-3. Any newer milestone document explicitly named in the user prompt
+3. `docs/ART_DIRECTION.md` before any player-facing visual or asset-generation work
+4. Any newer milestone document explicitly named in the user prompt
 
 The active milestone document is the binding implementation scope. The larger game specification provides context, not permission to implement future systems.
 
@@ -22,6 +23,7 @@ The active milestone document is the binding implementation scope. The larger ga
 - Input: Unity Input System
 - Perspective: First person
 - Art target: Grounded low-poly 3D
+- Binding visual contract: `docs/ART_DIRECTION.md`
 - Player hands: Not rendered
 - Tools: Floating, visibly animated tools
 - Source control: Git

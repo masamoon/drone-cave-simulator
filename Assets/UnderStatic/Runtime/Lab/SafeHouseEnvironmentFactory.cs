@@ -5,6 +5,9 @@ namespace UnderStatic.Lab
 {
     public static class SafeHouseEnvironmentFactory
     {
+        private const string ArtPocModelPath = "Art/SafeHousePoC/Models/";
+        private const string ArtPocTexturePath = "Art/SafeHousePoC/Textures/";
+
         public static GameObject Build()
         {
             var root = new GameObject("SafeHouseEnvironment");
@@ -20,16 +23,42 @@ namespace UnderStatic.Lab
             var coldGlass = CreateEmissiveMaterial("Covered Window Leak", new Color(0.2f, 0.38f, 0.5f), 1.4f);
             var warmGlow = CreateEmissiveMaterial("Work Lamp Glow", new Color(1f, 0.48f, 0.16f), 2.2f);
             var redGlow = CreateEmissiveMaterial("Warning Lamp Glow", new Color(0.7f, 0.055f, 0.025f), 2f);
+            var artPoc = SafeHouseArtPocAssets.Load();
+            concrete = artPoc.ConcreteMaterial ?? concrete;
+            concreteDark = artPoc.ConcreteMaterial ?? concreteDark;
+            timber = artPoc.TimberMaterial ?? timber;
+            mapMaterial = artPoc.MapMaterial ?? mapMaterial;
+            fabric = artPoc.LivingMaterial ?? fabric;
+            crateMaterial = artPoc.StorageMaterial ?? crateMaterial;
 
-            CreateArchitecture(root.transform, concrete, concreteDark, timber, coldGlass);
-            CreateTacticalMap(root.transform, paintedMetal, mapMaterial, mapLine);
-            CreateRadioStation(root.transform, timber, paintedMetal, bareMetal, redGlow);
-            CreateReadyShelf(root.transform, paintedMetal, timber, crateMaterial);
-            CreatePartsStorage(root.transform, paintedMetal, crateMaterial, mapLine);
-            CreateConcealmentControls(root.transform, paintedMetal, bareMetal, redGlow);
-            CreateLivingCorner(root.transform, timber, fabric, crateMaterial);
-            CreateUtilityCorner(root.transform, paintedMetal, bareMetal);
-            CreateLighting(root.transform, warmGlow, redGlow, coldGlass);
+            EnhanceExistingWorkbench(root.transform, artPoc.FurnitureMaterial);
+            CreateArchitecture(root.transform, concrete, concreteDark, timber, coldGlass, artPoc);
+            CreateTacticalMap(root.transform, paintedMetal, mapMaterial, mapLine, artPoc.MapMaterial);
+            CreateRadioStation(
+                root.transform,
+                timber,
+                paintedMetal,
+                bareMetal,
+                redGlow,
+                artPoc.RadioMaterial,
+                artPoc.FurnitureMaterial);
+            CreateReadyShelf(
+                root.transform,
+                paintedMetal,
+                timber,
+                crateMaterial,
+                artPoc.CrateMaterial,
+                artPoc.StorageMaterial);
+            CreatePartsStorage(root.transform, paintedMetal, crateMaterial, mapLine, artPoc.StorageMaterial);
+            CreateConcealmentControls(root.transform, paintedMetal, bareMetal, redGlow, artPoc.BreakerMaterial);
+            CreateLivingCorner(root.transform, timber, fabric, crateMaterial, artPoc.LivingMaterial, artPoc.CrateMaterial);
+            CreateUtilityCorner(
+                root.transform,
+                paintedMetal,
+                bareMetal,
+                artPoc.GeneratorMaterial,
+                artPoc.UtilityMaterial);
+            CreateLighting(root.transform, warmGlow, redGlow, coldGlass, artPoc.UtilityMaterial);
 
             var ambienceObject = new GameObject("SafeHouseAmbience");
             ambienceObject.transform.SetParent(root.transform);
@@ -43,7 +72,8 @@ namespace UnderStatic.Lab
             Material concrete,
             Material concreteDark,
             Material timber,
-            Material coldGlass)
+            Material coldGlass,
+            SafeHouseArtPocAssets artPoc)
         {
             var existingFloor = GameObject.Find("Floor");
             if (existingFloor != null)
@@ -53,6 +83,18 @@ namespace UnderStatic.Lab
                 existingFloor.transform.SetPositionAndRotation(new Vector3(0f, -0.06f, 0f), Quaternion.identity);
                 existingFloor.transform.localScale = new Vector3(6.6f, 0.12f, 6.4f);
                 existingFloor.GetComponent<Renderer>().sharedMaterial = concreteDark;
+                if (CreateArtPocAsset(
+                        "SafeHouseFloorArt",
+                        "SH_POC_FloorSlab",
+                        root,
+                        new Vector3(0f, -0.06f, 0f),
+                        Quaternion.identity,
+                        Vector3.one,
+                        artPoc.ConcreteMaterial,
+                        false) != null)
+                {
+                    existingFloor.GetComponent<Renderer>().enabled = false;
+                }
             }
 
             Create("BackWall", PrimitiveType.Cube, root, new Vector3(0f, 1.5f, 3.2f), new Vector3(6.6f, 3f, 0.18f), concrete);
@@ -65,23 +107,57 @@ namespace UnderStatic.Lab
 
             for (var x = -2.75f; x <= 2.75f; x += 1.1f)
             {
-                Create("CeilingBeam", PrimitiveType.Cube, root, new Vector3(x, 2.88f, 0f), new Vector3(0.11f, 0.16f, 6.15f), timber);
+                if (CreateArtPocAsset(
+                        "CeilingBeam",
+                        "SH_POC_CeilingBeam",
+                        root,
+                        new Vector3(x, 2.88f, 0f),
+                        Quaternion.identity,
+                        Vector3.one,
+                        artPoc.TimberMaterial) == null)
+                {
+                    Create("CeilingBeam", PrimitiveType.Cube, root, new Vector3(x, 2.88f, 0f), new Vector3(0.11f, 0.16f, 6.15f), timber);
+                }
             }
 
-            Create("ConcealedExit", PrimitiveType.Cube, root, new Vector3(1.65f, 1.12f, -3.08f), new Vector3(1.35f, 2.24f, 0.12f), timber);
-            Create("ExitBraceA", PrimitiveType.Cube, root, new Vector3(1.65f, 1.15f, -3f), new Vector3(1.24f, 0.12f, 0.08f), concreteDark).transform.rotation = Quaternion.Euler(0f, 0f, 34f);
-            Create("ExitBraceB", PrimitiveType.Cube, root, new Vector3(1.65f, 1.15f, -2.98f), new Vector3(1.24f, 0.12f, 0.08f), concreteDark).transform.rotation = Quaternion.Euler(0f, 0f, -34f);
-
-            Create("BoardedWindow", PrimitiveType.Cube, root, new Vector3(-1.75f, 1.86f, 3.08f), new Vector3(1.35f, 0.92f, 0.08f), coldGlass);
-            for (var index = -1; index <= 1; index++)
+            if (CreateArtPocAsset(
+                    "ConcealedExit",
+                    "SH_POC_ConcealedDoor",
+                    root,
+                    new Vector3(1.65f, 1.22f, -3.08f),
+                    Quaternion.identity,
+                    Vector3.one,
+                    artPoc.ArchitectureMaterial) == null)
             {
-                var board = Create("WindowBoard", PrimitiveType.Cube, root, new Vector3(-1.75f, 1.86f + index * 0.26f, 2.99f), new Vector3(1.55f, 0.16f, 0.1f), timber);
-                board.transform.rotation = Quaternion.Euler(index * 5f, 0f, index * 7f);
+                Create("ConcealedExit", PrimitiveType.Cube, root, new Vector3(1.65f, 1.12f, -3.08f), new Vector3(1.35f, 2.24f, 0.12f), timber);
+                Create("ExitBraceA", PrimitiveType.Cube, root, new Vector3(1.65f, 1.15f, -3f), new Vector3(1.24f, 0.12f, 0.08f), concreteDark).transform.rotation = Quaternion.Euler(0f, 0f, 34f);
+                Create("ExitBraceB", PrimitiveType.Cube, root, new Vector3(1.65f, 1.15f, -2.98f), new Vector3(1.24f, 0.12f, 0.08f), concreteDark).transform.rotation = Quaternion.Euler(0f, 0f, -34f);
             }
 
+            if (CreateArtPocAsset(
+                    "BoardedWindow",
+                    "SH_POC_BoardedWindow",
+                    root,
+                    new Vector3(-1.75f, 1.86f, 3.08f),
+                    Quaternion.Euler(0f, 180f, 0f),
+                    Vector3.one,
+                    artPoc.ArchitectureMaterial) == null)
+            {
+                Create("BoardedWindow", PrimitiveType.Cube, root, new Vector3(-1.75f, 1.86f, 3.08f), new Vector3(1.35f, 0.92f, 0.08f), coldGlass);
+                for (var index = -1; index <= 1; index++)
+                {
+                    var board = Create("WindowBoard", PrimitiveType.Cube, root, new Vector3(-1.75f, 1.86f + index * 0.26f, 2.99f), new Vector3(1.55f, 0.16f, 0.1f), timber);
+                    board.transform.rotation = Quaternion.Euler(index * 5f, 0f, index * 7f);
+                }
+            }
         }
 
-        private static void CreateTacticalMap(Transform root, Material metal, Material map, Material line)
+        private static void CreateTacticalMap(
+            Transform root,
+            Material metal,
+            Material map,
+            Material line,
+            Material artPocMaterial)
         {
             var station = new GameObject("TacticalMapStation");
             station.transform.SetParent(root);
@@ -95,9 +171,28 @@ namespace UnderStatic.Lab
             }
 
             Create("MapShelf", PrimitiveType.Cube, station.transform, new Vector3(-2.92f, 0.92f, -0.65f), new Vector3(0.55f, 0.08f, 1.95f), metal);
+            if (CreateArtPocAsset(
+                    "TacticalMapArt",
+                    "SH_POC_TacticalMap",
+                    station.transform,
+                    new Vector3(-3.04f, 1.55f, -0.65f),
+                    Quaternion.Euler(0f, 90f, 0f),
+                    Vector3.one,
+                    artPocMaterial,
+                    false) != null)
+            {
+                DisableLegacyVisuals(station.transform, "MapFrame", "TacticalMap", "MapRoute", "MapShelf");
+            }
         }
 
-        private static void CreateRadioStation(Transform root, Material timber, Material metal, Material bareMetal, Material redGlow)
+        private static void CreateRadioStation(
+            Transform root,
+            Material timber,
+            Material metal,
+            Material bareMetal,
+            Material redGlow,
+            Material artPocMaterial,
+            Material furnitureMaterial)
         {
             var station = new GameObject("RadioStation");
             station.transform.SetParent(root);
@@ -106,15 +201,43 @@ namespace UnderStatic.Lab
             {
                 Create("RadioDeskLeg", PrimitiveType.Cube, station.transform, new Vector3(x, 0.33f, 2.42f), new Vector3(0.1f, 0.66f, 0.52f), metal);
             }
+            if (CreateArtPocAsset(
+                    "RadioDeskArt",
+                    "SH_POC_RadioDesk",
+                    station.transform,
+                    new Vector3(-2.22f, 0.68f, 2.42f),
+                    Quaternion.identity,
+                    Vector3.one,
+                    furnitureMaterial,
+                    false) != null)
+            {
+                DisableLegacyVisuals(station.transform, "RadioDesk", "RadioDeskLeg");
+            }
 
-            Create("FieldRadio", PrimitiveType.Cube, station.transform, new Vector3(-2.22f, 0.94f, 2.42f), new Vector3(0.8f, 0.42f, 0.42f), metal);
-            Create("RadioSpeaker", PrimitiveType.Cylinder, station.transform, new Vector3(-2.22f, 0.96f, 2.19f), new Vector3(0.14f, 0.025f, 0.14f), bareMetal).transform.rotation = Quaternion.Euler(90f, 0f, 0f);
-            Create("RadioIndicator", PrimitiveType.Sphere, station.transform, new Vector3(-1.95f, 1.03f, 2.18f), Vector3.one * 0.045f, redGlow);
-            var antenna = Create("RadioAntenna", PrimitiveType.Cylinder, station.transform, new Vector3(-2.48f, 1.45f, 2.42f), new Vector3(0.018f, 0.52f, 0.018f), bareMetal);
-            InteractionLabFactory.DisableCollider(antenna);
+            if (CreateArtPocAsset(
+                    "FieldRadio",
+                    "SH_POC_FieldRadio",
+                    station.transform,
+                    new Vector3(-2.22f, 0.94f, 2.42f),
+                    Quaternion.Euler(0f, 180f, 0f),
+                    Vector3.one,
+                    artPocMaterial) == null)
+            {
+                Create("FieldRadio", PrimitiveType.Cube, station.transform, new Vector3(-2.22f, 0.94f, 2.42f), new Vector3(0.8f, 0.42f, 0.42f), metal);
+                Create("RadioSpeaker", PrimitiveType.Cylinder, station.transform, new Vector3(-2.22f, 0.96f, 2.19f), new Vector3(0.14f, 0.025f, 0.14f), bareMetal).transform.rotation = Quaternion.Euler(90f, 0f, 0f);
+                Create("RadioIndicator", PrimitiveType.Sphere, station.transform, new Vector3(-1.95f, 1.03f, 2.18f), Vector3.one * 0.045f, redGlow);
+                var antenna = Create("RadioAntenna", PrimitiveType.Cylinder, station.transform, new Vector3(-2.48f, 1.45f, 2.42f), new Vector3(0.018f, 0.52f, 0.018f), bareMetal);
+                InteractionLabFactory.DisableCollider(antenna);
+            }
         }
 
-        private static void CreateReadyShelf(Transform root, Material metal, Material timber, Material crate)
+        private static void CreateReadyShelf(
+            Transform root,
+            Material metal,
+            Material timber,
+            Material crate,
+            Material artPocMaterial,
+            Material storageMaterial)
         {
             var station = new GameObject("ReadyShelf");
             station.transform.SetParent(root);
@@ -126,11 +249,48 @@ namespace UnderStatic.Lab
             {
                 Create("ReadyShelfDeck", PrimitiveType.Cube, station.transform, new Vector3(2.76f, y, 1.88f), new Vector3(0.55f, 0.08f, 1.5f), timber);
             }
-            Create("ReadyCase", PrimitiveType.Cube, station.transform, new Vector3(2.7f, 0.65f, 1.55f), new Vector3(0.4f, 0.24f, 0.55f), crate);
-            Create("ReadyCase", PrimitiveType.Cube, station.transform, new Vector3(2.7f, 1.16f, 2.15f), new Vector3(0.4f, 0.24f, 0.55f), crate);
+            if (CreateArtPocAsset(
+                    "ReadyShelfArt",
+                    "SH_POC_ReadyShelf",
+                    station.transform,
+                    new Vector3(2.76f, 1.13f, 1.88f),
+                    Quaternion.identity,
+                    Vector3.one,
+                    storageMaterial,
+                    false) != null)
+            {
+                DisableLegacyVisuals(station.transform, "ShelfPost", "ReadyShelfDeck");
+            }
+            if (CreateArtPocAsset(
+                    "ReadyCase",
+                    "SH_POC_RuggedCrate",
+                    station.transform,
+                    new Vector3(2.7f, 0.65f, 1.55f),
+                    Quaternion.Euler(0f, -90f, 0f),
+                    Vector3.one,
+                    artPocMaterial) == null)
+            {
+                Create("ReadyCase", PrimitiveType.Cube, station.transform, new Vector3(2.7f, 0.65f, 1.55f), new Vector3(0.4f, 0.24f, 0.55f), crate);
+            }
+            if (CreateArtPocAsset(
+                    "ReadyCase",
+                    "SH_POC_RuggedCrate",
+                    station.transform,
+                    new Vector3(2.7f, 1.16f, 2.15f),
+                    Quaternion.Euler(0f, -90f, 0f),
+                    Vector3.one,
+                    artPocMaterial) == null)
+            {
+                Create("ReadyCase", PrimitiveType.Cube, station.transform, new Vector3(2.7f, 1.16f, 2.15f), new Vector3(0.4f, 0.24f, 0.55f), crate);
+            }
         }
 
-        private static void CreatePartsStorage(Transform root, Material metal, Material crate, Material accent)
+        private static void CreatePartsStorage(
+            Transform root,
+            Material metal,
+            Material crate,
+            Material accent,
+            Material artPocMaterial)
         {
             var station = new GameObject("PartsStorage");
             station.transform.SetParent(root);
@@ -144,41 +304,137 @@ namespace UnderStatic.Lab
                     InteractionLabFactory.DisableCollider(tab);
                 }
             }
+            if (CreateArtPocAsset(
+                    "PartsRackArt",
+                    "SH_POC_PartsRack",
+                    station.transform,
+                    new Vector3(2.9f, 1.05f, -0.55f),
+                    Quaternion.Euler(0f, 180f, 0f),
+                    Vector3.one,
+                    artPocMaterial,
+                    false) != null)
+            {
+                DisableLegacyVisuals(station.transform, "PartsRack", "PartsBin", "BinLabel");
+            }
         }
 
-        private static void CreateConcealmentControls(Transform root, Material metal, Material bareMetal, Material redGlow)
+        private static void CreateConcealmentControls(
+            Transform root,
+            Material metal,
+            Material bareMetal,
+            Material redGlow,
+            Material artPocMaterial)
         {
             var station = new GameObject("ConcealmentControls");
             station.transform.SetParent(root);
-            Create("BreakerBox", PrimitiveType.Cube, station.transform, new Vector3(0.62f, 1.55f, -3.02f), new Vector3(0.62f, 0.82f, 0.14f), metal);
-            Create("MasterCutoff", PrimitiveType.Cube, station.transform, new Vector3(0.62f, 1.52f, -2.92f), new Vector3(0.12f, 0.42f, 0.1f), bareMetal).transform.rotation = Quaternion.Euler(0f, 0f, -18f);
-            Create("CutoffLamp", PrimitiveType.Sphere, station.transform, new Vector3(0.82f, 1.78f, -2.9f), Vector3.one * 0.055f, redGlow);
+            if (CreateArtPocAsset(
+                    "BreakerBox",
+                    "SH_POC_BreakerPanel",
+                    station.transform,
+                    new Vector3(0.62f, 1.55f, -3.02f),
+                    Quaternion.identity,
+                    Vector3.one,
+                    artPocMaterial) == null)
+            {
+                Create("BreakerBox", PrimitiveType.Cube, station.transform, new Vector3(0.62f, 1.55f, -3.02f), new Vector3(0.62f, 0.82f, 0.14f), metal);
+                Create("MasterCutoff", PrimitiveType.Cube, station.transform, new Vector3(0.62f, 1.52f, -2.92f), new Vector3(0.12f, 0.42f, 0.1f), bareMetal).transform.rotation = Quaternion.Euler(0f, 0f, -18f);
+                Create("CutoffLamp", PrimitiveType.Sphere, station.transform, new Vector3(0.82f, 1.78f, -2.9f), Vector3.one * 0.055f, redGlow);
+            }
         }
 
-        private static void CreateLivingCorner(Transform root, Material timber, Material fabric, Material crate)
+        private static void CreateLivingCorner(
+            Transform root,
+            Material timber,
+            Material fabric,
+            Material crate,
+            Material livingMaterial,
+            Material artPocCrateMaterial)
         {
             var station = new GameObject("LivingCorner");
             station.transform.SetParent(root);
             Create("FieldCot", PrimitiveType.Cube, station.transform, new Vector3(-2.15f, 0.28f, -2.2f), new Vector3(1.6f, 0.12f, 0.68f), timber);
             Create("FoldedBlanket", PrimitiveType.Cube, station.transform, new Vector3(-2.15f, 0.38f, -2.2f), new Vector3(1.48f, 0.1f, 0.58f), fabric);
-            Create("PersonalCrate", PrimitiveType.Cube, station.transform, new Vector3(-2.82f, 0.34f, -1.55f), new Vector3(0.58f, 0.68f, 0.58f), crate);
-            Create("Mug", PrimitiveType.Cylinder, station.transform, new Vector3(-2.65f, 0.74f, -1.55f), new Vector3(0.055f, 0.08f, 0.055f), timber);
-        }
-
-        private static void CreateUtilityCorner(Transform root, Material metal, Material bareMetal)
-        {
-            var station = new GameObject("UtilityCorner");
-            station.transform.SetParent(root);
-            Create("Generator", PrimitiveType.Cube, station.transform, new Vector3(2.55f, 0.55f, 2.62f), new Vector3(0.75f, 0.9f, 0.65f), metal);
-            Create("GeneratorVent", PrimitiveType.Cylinder, station.transform, new Vector3(2.55f, 0.6f, 2.25f), new Vector3(0.22f, 0.04f, 0.22f), bareMetal).transform.rotation = Quaternion.Euler(90f, 0f, 0f);
-            for (var index = 0; index < 3; index++)
+            if (CreateArtPocAsset(
+                    "FieldCotArt",
+                    "SH_POC_FieldCot",
+                    station.transform,
+                    new Vector3(-2.15f, 0.28f, -2.2f),
+                    Quaternion.identity,
+                    Vector3.one,
+                    livingMaterial,
+                    false) != null)
             {
-                var pipe = Create("UtilityPipe", PrimitiveType.Cylinder, station.transform, new Vector3(3.08f, 1.55f, 1.45f - index * 0.18f), new Vector3(0.035f, 1.25f, 0.035f), bareMetal);
-                InteractionLabFactory.DisableCollider(pipe);
+                DisableLegacyVisuals(station.transform, "FieldCot", "FoldedBlanket");
+            }
+            if (CreateArtPocAsset(
+                    "PersonalCrate",
+                    "SH_POC_RuggedCrate",
+                    station.transform,
+                    new Vector3(-2.82f, 0.34f, -1.55f),
+                    Quaternion.Euler(0f, -90f, 0f),
+                    new Vector3(1.35f, 1.05f, 2.2f),
+                    artPocCrateMaterial) == null)
+            {
+                Create("PersonalCrate", PrimitiveType.Cube, station.transform, new Vector3(-2.82f, 0.34f, -1.55f), new Vector3(0.58f, 0.68f, 0.58f), crate);
+            }
+            if (CreateArtPocAsset(
+                    "Mug",
+                    "SH_POC_EnamelMug",
+                    station.transform,
+                    new Vector3(-2.65f, 0.74f, -1.55f),
+                    Quaternion.identity,
+                    Vector3.one,
+                    livingMaterial) == null)
+            {
+                Create("Mug", PrimitiveType.Cylinder, station.transform, new Vector3(-2.65f, 0.74f, -1.55f), new Vector3(0.055f, 0.08f, 0.055f), timber);
             }
         }
 
-        private static void CreateLighting(Transform root, Material warmGlow, Material redGlow, Material coldGlow)
+        private static void CreateUtilityCorner(
+            Transform root,
+            Material metal,
+            Material bareMetal,
+            Material artPocMaterial,
+            Material utilityMaterial)
+        {
+            var station = new GameObject("UtilityCorner");
+            station.transform.SetParent(root);
+            if (CreateArtPocAsset(
+                    "Generator",
+                    "SH_POC_PortableGenerator",
+                    station.transform,
+                    new Vector3(2.55f, 0.55f, 2.62f),
+                    Quaternion.Euler(0f, 180f, 0f),
+                    Vector3.one,
+                    artPocMaterial) == null)
+            {
+                Create("Generator", PrimitiveType.Cube, station.transform, new Vector3(2.55f, 0.55f, 2.62f), new Vector3(0.75f, 0.9f, 0.65f), metal);
+                Create("GeneratorVent", PrimitiveType.Cylinder, station.transform, new Vector3(2.55f, 0.6f, 2.25f), new Vector3(0.22f, 0.04f, 0.22f), bareMetal).transform.rotation = Quaternion.Euler(90f, 0f, 0f);
+            }
+            if (CreateArtPocAsset(
+                    "UtilityPipeBundle",
+                    "SH_POC_UtilityPipes",
+                    station.transform,
+                    new Vector3(3.08f, 1.55f, 1.27f),
+                    Quaternion.identity,
+                    Vector3.one,
+                    utilityMaterial,
+                    false) == null)
+            {
+                for (var index = 0; index < 3; index++)
+                {
+                    var pipe = Create("UtilityPipe", PrimitiveType.Cylinder, station.transform, new Vector3(3.08f, 1.55f, 1.45f - index * 0.18f), new Vector3(0.035f, 1.25f, 0.035f), bareMetal);
+                    InteractionLabFactory.DisableCollider(pipe);
+                }
+            }
+        }
+
+        private static void CreateLighting(
+            Transform root,
+            Material warmGlow,
+            Material redGlow,
+            Material coldGlow,
+            Material utilityMaterial)
         {
             RenderSettings.ambientMode = AmbientMode.Trilight;
             RenderSettings.ambientSkyColor = new Color(0.13f, 0.145f, 0.16f);
@@ -202,6 +458,15 @@ namespace UnderStatic.Lab
             CreatePointLight(root, "Exit Warning Light", new Vector3(1.65f, 2.45f, -2.78f), new Color(0.75f, 0.08f, 0.035f), 1.15f, 2.2f);
 
             Create("WorkbenchBulb", PrimitiveType.Sphere, root, new Vector3(0f, 2.55f, 0.85f), Vector3.one * 0.09f, warmGlow);
+            CreateArtPocAsset(
+                "WorkbenchLampCage",
+                "SH_POC_CagedLamp",
+                root,
+                new Vector3(0f, 2.55f, 0.85f),
+                Quaternion.identity,
+                Vector3.one,
+                utilityMaterial,
+                false);
             Create("ExitLamp", PrimitiveType.Sphere, root, new Vector3(1.65f, 2.45f, -2.84f), Vector3.one * 0.075f, redGlow);
             var windowGlow = Create("WindowGlow", PrimitiveType.Cube, root, new Vector3(-1.75f, 2.02f, 3f), new Vector3(1.1f, 0.62f, 0.025f), coldGlow);
             InteractionLabFactory.DisableCollider(windowGlow);
@@ -223,6 +488,182 @@ namespace UnderStatic.Lab
         private static GameObject Create(string name, PrimitiveType type, Transform parent, Vector3 position, Vector3 scale, Material material)
         {
             return InteractionLabFactory.CreatePrimitive(name, type, parent, position, scale, material);
+        }
+
+        private static void EnhanceExistingWorkbench(Transform root, Material material)
+        {
+            var workbench = GameObject.Find("Workbench");
+            if (workbench == null)
+            {
+                return;
+            }
+
+            if (CreateArtPocAsset(
+                    "WorkbenchArt",
+                    "SH_POC_Workbench",
+                    root,
+                    new Vector3(0f, 0.54f, 1.02f),
+                    Quaternion.identity,
+                    Vector3.one,
+                    material,
+                    false) != null)
+            {
+                foreach (var renderer in workbench.GetComponentsInChildren<Renderer>(true))
+                {
+                    renderer.enabled = false;
+                }
+            }
+        }
+
+        private static void DisableLegacyVisuals(Transform parent, params string[] objectNames)
+        {
+            foreach (var renderer in parent.GetComponentsInChildren<Renderer>(true))
+            {
+                foreach (var objectName in objectNames)
+                {
+                    if (renderer.gameObject.name == objectName)
+                    {
+                        renderer.enabled = false;
+                        break;
+                    }
+                }
+            }
+        }
+
+        private static GameObject CreateArtPocAsset(
+            string instanceName,
+            string resourceName,
+            Transform parent,
+            Vector3 position,
+            Quaternion rotation,
+            Vector3 scale,
+            Material material,
+            bool addCollider = true)
+        {
+            var prefab = Resources.Load<GameObject>(ArtPocModelPath + resourceName);
+            if (prefab == null || material == null)
+            {
+                return null;
+            }
+
+            var instance = Object.Instantiate(prefab, parent, false);
+            var importedRotation = instance.transform.localRotation;
+            instance.name = instanceName;
+            instance.transform.SetPositionAndRotation(position, rotation * importedRotation);
+            instance.transform.localScale = scale;
+
+            var renderers = instance.GetComponentsInChildren<Renderer>(true);
+            if (renderers.Length == 0)
+            {
+                Object.Destroy(instance);
+                return null;
+            }
+
+            var bounds = renderers[0].bounds;
+            foreach (var renderer in renderers)
+            {
+                renderer.sharedMaterial = material;
+                bounds.Encapsulate(renderer.bounds);
+            }
+
+            if (addCollider)
+            {
+                var collider = instance.AddComponent<BoxCollider>();
+                collider.center = instance.transform.InverseTransformPoint(bounds.center);
+                var lossyScale = instance.transform.lossyScale;
+                collider.size = new Vector3(
+                    bounds.size.x / Mathf.Max(0.0001f, Mathf.Abs(lossyScale.x)),
+                    bounds.size.y / Mathf.Max(0.0001f, Mathf.Abs(lossyScale.y)),
+                    bounds.size.z / Mathf.Max(0.0001f, Mathf.Abs(lossyScale.z)));
+            }
+            return instance;
+        }
+
+        private static Material CreateArtPocMaterial(string name, string textureName, Color fallbackColour)
+        {
+            var texture = Resources.Load<Texture2D>(ArtPocTexturePath + textureName);
+            if (texture == null)
+            {
+                return null;
+            }
+
+            texture.filterMode = FilterMode.Point;
+            texture.wrapMode = TextureWrapMode.Repeat;
+            texture.anisoLevel = 0;
+            var material = InteractionLabFactory.CreateMaterial(name, fallbackColour);
+            if (material.HasProperty("_BaseMap"))
+            {
+                material.SetTexture("_BaseMap", texture);
+                material.SetColor("_BaseColor", Color.white);
+            }
+            if (material.HasProperty("_MainTex"))
+            {
+                material.SetTexture("_MainTex", texture);
+                material.SetColor("_Color", Color.white);
+            }
+            material.SetFloat("_Smoothness", 0.08f);
+            return material;
+        }
+
+        private readonly struct SafeHouseArtPocAssets
+        {
+            public Material RadioMaterial { get; }
+            public Material GeneratorMaterial { get; }
+            public Material BreakerMaterial { get; }
+            public Material CrateMaterial { get; }
+            public Material ConcreteMaterial { get; }
+            public Material TimberMaterial { get; }
+            public Material ArchitectureMaterial { get; }
+            public Material FurnitureMaterial { get; }
+            public Material MapMaterial { get; }
+            public Material StorageMaterial { get; }
+            public Material LivingMaterial { get; }
+            public Material UtilityMaterial { get; }
+
+            private SafeHouseArtPocAssets(
+                Material radioMaterial,
+                Material generatorMaterial,
+                Material breakerMaterial,
+                Material crateMaterial,
+                Material concreteMaterial,
+                Material timberMaterial,
+                Material architectureMaterial,
+                Material furnitureMaterial,
+                Material mapMaterial,
+                Material storageMaterial,
+                Material livingMaterial,
+                Material utilityMaterial)
+            {
+                RadioMaterial = radioMaterial;
+                GeneratorMaterial = generatorMaterial;
+                BreakerMaterial = breakerMaterial;
+                CrateMaterial = crateMaterial;
+                ConcreteMaterial = concreteMaterial;
+                TimberMaterial = timberMaterial;
+                ArchitectureMaterial = architectureMaterial;
+                FurnitureMaterial = furnitureMaterial;
+                MapMaterial = mapMaterial;
+                StorageMaterial = storageMaterial;
+                LivingMaterial = livingMaterial;
+                UtilityMaterial = utilityMaterial;
+            }
+
+            public static SafeHouseArtPocAssets Load()
+            {
+                return new SafeHouseArtPocAssets(
+                    CreateArtPocMaterial("Field Radio PoC", "SH_POC_Radio_128", new Color(0.24f, 0.3f, 0.23f)),
+                    CreateArtPocMaterial("Generator PoC", "SH_POC_Generator_128", new Color(0.16f, 0.23f, 0.2f)),
+                    CreateArtPocMaterial("Breaker Panel PoC", "SH_POC_Breaker_128", new Color(0.19f, 0.27f, 0.25f)),
+                    CreateArtPocMaterial("Rugged Crate PoC", "SH_POC_Crate_128", new Color(0.36f, 0.27f, 0.16f)),
+                    CreateArtPocMaterial("Concrete PoC", "SH_POC_Concrete_128", new Color(0.25f, 0.27f, 0.26f)),
+                    CreateArtPocMaterial("Timber PoC", "SH_POC_Timber_128", new Color(0.35f, 0.22f, 0.12f)),
+                    CreateArtPocMaterial("Architecture PoC", "SH_POC_Architecture_128", new Color(0.31f, 0.25f, 0.18f)),
+                    CreateArtPocMaterial("Furniture PoC", "SH_POC_Furniture_128", new Color(0.32f, 0.24f, 0.16f)),
+                    CreateArtPocMaterial("Tactical Map PoC", "SH_POC_Map_128", new Color(0.35f, 0.39f, 0.25f)),
+                    CreateArtPocMaterial("Storage PoC", "SH_POC_Storage_128", new Color(0.22f, 0.27f, 0.23f)),
+                    CreateArtPocMaterial("Living Corner PoC", "SH_POC_Living_128", new Color(0.24f, 0.29f, 0.21f)),
+                    CreateArtPocMaterial("Utility PoC", "SH_POC_Utility_128", new Color(0.22f, 0.27f, 0.25f)));
+            }
         }
 
         private static Material CreateEmissiveMaterial(string name, Color color, float intensity)

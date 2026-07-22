@@ -62,7 +62,7 @@ namespace UnderStatic.Tests.EditMode
         }
 
         [Test]
-        public void FrameCatalogue_PreservesHorizontalRolesAndProfessionalVerticalOrdering()
+        public void FrameCatalogue_UsesPhysicalClassesAndPreservesStableResourceIds()
         {
             var scout = DroneFrameCatalog.CreateFallback("ScoutField");
             var scoutPro = DroneFrameCatalog.CreateFallback("ScoutProfessional");
@@ -70,6 +70,13 @@ namespace UnderStatic.Tests.EditMode
             var utility = DroneFrameCatalog.CreateFallback("UtilityField");
             Track(scout); Track(scoutPro); Track(survey); Track(utility);
 
+            Assert.That(scout.Id, Is.EqualTo("frame.scout.field"));
+            Assert.That(scout.DisplayName, Is.EqualTo("Compact Field"));
+            Assert.That(scout.AirframeClass, Is.EqualTo(DroneAirframeClass.Compact));
+            Assert.That(survey.DisplayName, Is.EqualTo("Endurance Field"));
+            Assert.That(survey.AirframeClass, Is.EqualTo(DroneAirframeClass.Endurance));
+            Assert.That(utility.DisplayName, Is.EqualTo("Heavy-Lift Field"));
+            Assert.That(utility.AirframeClass, Is.EqualTo(DroneAirframeClass.HeavyLift));
             Assert.That(scout.BaseStats.speed, Is.GreaterThan(survey.BaseStats.speed));
             Assert.That(scout.BaseStats.noise, Is.LessThan(survey.BaseStats.noise));
             Assert.That(survey.BaseStats.endurance, Is.GreaterThan(scout.BaseStats.endurance));

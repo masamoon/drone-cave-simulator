@@ -784,6 +784,10 @@ On save, a held or partially guided component should either:
 
 ## 9. Visual direction
 
+The binding production constraints for generated and authored assets live in `docs/ART_DIRECTION.md`. This section
+defines the high-level product direction; the dedicated art document records the settled triangle, texture,
+attachment, Blender-source, naming, and visual-QA rules that future asset work must follow.
+
 ### Style
 
 - grounded contemporary low-poly;

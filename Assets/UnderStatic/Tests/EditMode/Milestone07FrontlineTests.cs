@@ -232,7 +232,7 @@ namespace UnderStatic.Tests.EditMode
             var assembly = root.AddComponent<DroneAssemblyState>();
             assembly.ConfigureRequirements(1, 0, 1, 1, 1);
             var frame = Track(DroneFrameDefinition.CreateTransient(
-                $"frame.{suffix}", "Forecast Scout", DroneFrameFamily.Scout, EquipmentGrade.Field,
+                $"frame.{suffix}", "Forecast Compact", DroneAirframeClass.Compact, EquipmentGrade.Field,
                 new DroneBaseStats
                 {
                     speed = 1f,

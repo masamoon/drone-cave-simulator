@@ -147,10 +147,10 @@ namespace UnderStatic.Tests
             var detail = root.transform.Find("PSX_PartDetail");
             Assert.That(detail, Is.Not.Null);
             Assert.That(detail.GetComponentsInChildren<Collider>(true), Is.Empty);
-            Assert.That(detail.Find("MotorBell"), Is.Not.Null);
-            Assert.That(detail.Find("MotorMarkingBand"), Is.Not.Null);
-            Assert.That(detail.Find("MotorShaft"), Is.Not.Null);
-            Assert.That(detail.Find("MotorVent.5"), Is.Not.Null);
+            Assert.That(detail.Find("Authored_DR_Motor/MotorBell"), Is.Not.Null);
+            Assert.That(detail.Find("Authored_DR_Motor/MotorMarkingBand"), Is.Not.Null);
+            Assert.That(detail.Find("Authored_DR_Motor/MotorShaft"), Is.Not.Null);
+            Assert.That(detail.Find("Authored_DR_Motor/MotorVent.5"), Is.Not.Null);
             Assert.That(root.GetComponent<Renderer>().enabled, Is.False);
         }
 
@@ -166,11 +166,11 @@ namespace UnderStatic.Tests
 
             Assert.That(PsxVisualFactory.EnhancePart(part, kit), Is.True);
             var detail = root.transform.Find("PSX_PartDetail");
-            Assert.That(detail.Find("PropellerHub"), Is.Not.Null);
-            Assert.That(detail.Find("PropellerCollet"), Is.Not.Null);
-            Assert.That(detail.Find("PropellerBlade.0"), Is.Not.Null);
-            Assert.That(detail.Find("PropellerBlade.1"), Is.Not.Null);
-            Assert.That(detail.Find("PropellerBlade.2"), Is.Not.Null);
+            Assert.That(detail.Find("Authored_DR_Propeller/PropellerHub"), Is.Not.Null);
+            Assert.That(detail.Find("Authored_DR_Propeller/PropellerCollet"), Is.Not.Null);
+            Assert.That(detail.Find("Authored_DR_Propeller/PropellerBlade.0"), Is.Not.Null);
+            Assert.That(detail.Find("Authored_DR_Propeller/PropellerBlade.1"), Is.Not.Null);
+            Assert.That(detail.Find("Authored_DR_Propeller/PropellerBlade.2"), Is.Not.Null);
             Assert.That(detail.GetComponentsInChildren<MeshFilter>(true)
                 .Sum(filter => filter.sharedMesh.triangles.Length / 3), Is.LessThan(150));
             Assert.That(detail.GetComponentsInChildren<Collider>(true), Is.Empty);
@@ -222,26 +222,31 @@ namespace UnderStatic.Tests
             Assert.That(PsxVisualFactory.EnhancePart(esc, kit), Is.True);
             Assert.That(PsxVisualFactory.EnhancePart(controller, kit), Is.True);
             Assert.That(PsxVisualFactory.EnhancePart(battery, kit), Is.True);
-            Assert.That(esc.transform.Find("PSX_PartDetail/EscBoard"), Is.Not.Null);
-            Assert.That(esc.transform.Find("PSX_PartDetail/EscMosfet.7"), Is.Not.Null);
-            Assert.That(esc.transform.Find("PSX_PartDetail/EscMotorPad.1.1"), Is.Not.Null);
-            Assert.That(controller.transform.Find("PSX_PartDetail/FlightControllerBoard"), Is.Not.Null);
-            Assert.That(controller.transform.Find("PSX_PartDetail/FlightControllerGyro"), Is.Not.Null);
-            Assert.That(controller.transform.Find("PSX_PartDetail/FlightControllerUsbPort"), Is.Not.Null);
-            Assert.That(battery.transform.Find("PSX_PartDetail/BatteryShrinkWrap"), Is.Not.Null);
+            Assert.That(esc.transform.Find("PSX_PartDetail/Authored_DR_ESC/EscBoard"), Is.Not.Null);
+            Assert.That(esc.transform.Find("PSX_PartDetail/Authored_DR_ESC/EscMosfet.7"), Is.Not.Null);
+            Assert.That(esc.transform.Find("PSX_PartDetail/Authored_DR_ESC/EscMotorPad.1.1"), Is.Not.Null);
+            Assert.That(controller.transform.Find(
+                "PSX_PartDetail/Authored_DR_FlightController/FlightControllerBoard"), Is.Not.Null);
+            Assert.That(controller.transform.Find(
+                "PSX_PartDetail/Authored_DR_FlightController/FlightControllerGyro"), Is.Not.Null);
+            Assert.That(controller.transform.Find(
+                "PSX_PartDetail/Authored_DR_FlightController/FlightControllerUsbPort"), Is.Not.Null);
+            Assert.That(battery.transform.Find(
+                "PSX_PartDetail/Authored_DR_Battery/BatteryShrinkWrap"), Is.Not.Null);
             var xt60Housing = battery.transform.Find(
-                "PSX_PartDetail/BatteryXT60Connector/XT60Housing.Battery");
+                "PSX_PartDetail/Authored_DR_Battery/BatteryXT60Connector");
             var balanceHousing = battery.transform.Find(
-                "PSX_PartDetail/BatteryBalanceConnector/BalanceHousing");
+                "PSX_PartDetail/Authored_DR_Battery/BatteryBalanceConnector");
             Assert.That(xt60Housing, Is.Not.Null);
             Assert.That(xt60Housing.GetComponent<MeshFilter>().sharedMesh.bounds.size.x,
-                Is.LessThanOrEqualTo(0.2f));
+                Is.LessThanOrEqualTo(0.23f));
             Assert.That(balanceHousing, Is.Not.Null);
             Assert.That(balanceHousing.GetComponent<MeshFilter>().sharedMesh.bounds.size.x,
                 Is.LessThanOrEqualTo(0.155f));
             Assert.That(battery.transform.Find("PSX_PartDetail/BatteryMainConnector"), Is.Null);
             Assert.That(battery.transform.Find("PSX_PartDetail/BatteryBalancePlug"), Is.Null);
-            Assert.That(battery.transform.Find("PSX_PartDetail/BatteryBalanceLead.4"), Is.Not.Null);
+            Assert.That(battery.transform.Find(
+                "PSX_PartDetail/Authored_DR_Battery/BatteryBalanceLead.4"), Is.Not.Null);
             Assert.That(battery.transform.Find("PSX_PartDetail/BatteryStrap"), Is.Null,
                 "The retention strap belongs to the frame, not to the removable LiPo.");
         }
@@ -261,24 +266,18 @@ namespace UnderStatic.Tests
                 .Where(filter => filter.sharedMesh != null)
                 .Sum(filter => filter.sharedMesh.triangles.Length / 3);
 
-            Assert.That(marker.Find("PSX_BottomPlate"), Is.Not.Null);
-            Assert.That(marker.Find("PSX_TopPlate"), Is.Not.Null);
-            Assert.That(marker.Find("PSX_FrameStandoff.5"), Is.Not.Null);
-            Assert.That(marker.Find("PSX_TopPlateScrew.5"), Is.Not.Null);
-            Assert.That(marker.Find("PSX_CameraCage.Left"), Is.Not.Null);
-            Assert.That(marker.Find("PSX_MotorMount.3"), Is.Not.Null);
-            Assert.That(marker.Find("PSX_WireRun.3"), Is.Not.Null);
-            Assert.That(marker.Find("PSX_MotorWire.3.2"), Is.Not.Null);
-            Assert.That(marker.Find("PSX_ArmTruss.3"), Is.Null);
-            Assert.That(marker.Find("PSX_ArmTape.3"), Is.Null);
-            Assert.That(marker.Find("PSX_MotorAdapter.3"), Is.Null);
-            Assert.That(marker.Find("PSX_CameraPivot.Left"), Is.Not.Null);
-            Assert.That(marker.Find("PSX_XT60Connector/XT60Housing.Frame"), Is.Not.Null);
-            Assert.That(marker.Find("PSX_XT60Connector/XT60Contact.Frame.1"), Is.Not.Null);
-            Assert.That(marker.Find("PSX_PowerLead.Red.B"), Is.Not.Null);
-            Assert.That(marker.Find("PSX_XTConnector"), Is.Null);
-            Assert.That(marker.Find("PSX_VtxBoard"), Is.Not.Null);
-            Assert.That(marker.Find("PSX_Receiver"), Is.Not.Null);
+            Assert.That(marker.Find("Authored_DR_ScoutFrame/FrameBottomPlate"), Is.Not.Null);
+            Assert.That(marker.Find("Authored_DR_ScoutFrame/FrameTopPlate"), Is.Not.Null);
+            Assert.That(marker.Find("Authored_DR_ScoutFrame/FrameStandoff.5"), Is.Not.Null);
+            Assert.That(marker.Find("Authored_DR_ScoutFrame/FrameScrew.5"), Is.Not.Null);
+            Assert.That(marker.Find("Authored_DR_ScoutFrame/CameraCage.Left"), Is.Not.Null);
+            Assert.That(marker.Find("Authored_DR_ScoutFrame/MotorMount.3"), Is.Not.Null);
+            Assert.That(marker.Find("Authored_DR_ScoutFrame/MotorWire.3.2"), Is.Not.Null);
+            Assert.That(marker.Find("Authored_DR_ScoutFrame/FrameArm.3"), Is.Not.Null);
+            Assert.That(marker.Find("Authored_DR_ScoutFrame/BatteryPad"), Is.Not.Null);
+            Assert.That(marker.Find("Authored_DR_ScoutFrame/AntennaCableRun"), Is.Not.Null);
+            Assert.That(marker.Find("Authored_DR_ReceiverVTX/VtxBoard"), Is.Not.Null);
+            Assert.That(marker.Find("Authored_DR_ReceiverVTX/ReceiverBoard"), Is.Not.Null);
             Assert.That(marker.GetComponentsInChildren<Collider>(true), Is.Empty);
             Assert.That(triangles, Is.LessThan(8000));
         }

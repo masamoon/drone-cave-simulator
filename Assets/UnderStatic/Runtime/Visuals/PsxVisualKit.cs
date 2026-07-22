@@ -8,6 +8,7 @@ namespace UnderStatic.Visuals
     {
         [SerializeField] private PsxVisualProfile profile;
         private readonly Dictionary<PsxSurface, Material> materials = new();
+        private readonly Dictionary<string, Material> texturedMaterials = new();
         private readonly List<Mesh> runtimeMeshes = new();
 
         public Texture2D Atlas { get; private set; }
@@ -31,6 +32,39 @@ namespace UnderStatic.Visuals
 
         public Material MaterialFor(PsxSurface surface) =>
             materials.TryGetValue(surface, out var material) ? material : null;
+
+        public Material MaterialForTexture(PsxSurface surface, Texture2D texture)
+        {
+            if (texture == null)
+            {
+                return MaterialFor(surface);
+            }
+            var key = $"{surface}:{texture.name}";
+            if (texturedMaterials.TryGetValue(key, out var existing))
+            {
+                return existing;
+            }
+            var source = MaterialFor(surface);
+            if (source == null)
+            {
+                return null;
+            }
+            var material = new Material(source) { name = $"PSX Authored {texture.name}" };
+            if (material.HasProperty("_BaseMap"))
+            {
+                material.SetTexture("_BaseMap", texture);
+                material.SetTextureScale("_BaseMap", Vector2.one);
+                material.SetTextureOffset("_BaseMap", Vector2.zero);
+            }
+            if (material.HasProperty("_MainTex"))
+            {
+                material.SetTexture("_MainTex", texture);
+                material.SetTextureScale("_MainTex", Vector2.one);
+                material.SetTextureOffset("_MainTex", Vector2.zero);
+            }
+            texturedMaterials[key] = material;
+            return material;
+        }
 
         public Mesh RegisterMesh(Mesh mesh)
         {
@@ -234,6 +268,11 @@ namespace UnderStatic.Visuals
 
         private void ReleaseResources()
         {
+            foreach (var material in texturedMaterials.Values)
+            {
+                DestroyRuntimeObject(material);
+            }
+            texturedMaterials.Clear();
             foreach (var material in materials.Values)
             {
                 DestroyRuntimeObject(material);

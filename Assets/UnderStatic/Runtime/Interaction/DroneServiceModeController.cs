@@ -142,6 +142,7 @@ namespace UnderStatic.Interaction
         private Rect diagnosticRect;
         private Rect payloadBayRect;
         private Rect exitRect;
+        private Rect loadEnvelopeRect;
         private float PartsRowStartY => CanShowInstalledComponents ? 126f : 92f;
 
         public bool IsActive { get; private set; }
@@ -944,6 +945,11 @@ namespace UnderStatic.Interaction
                     payloadStep.Activate();
                     serviceStatus = payloadStep.InteractionPrompt;
                 }
+                else if (hovered is CivilianShellPanel shellPanel)
+                {
+                    shellPanel.Activate();
+                    serviceStatus = shellPanel.InteractionPrompt;
+                }
                 else if (hovered is FastenerTarget fastener)
                 {
                     BeginFastenerAction(fastener, FastenerDriveDirection.Tighten);
@@ -1117,7 +1123,8 @@ namespace UnderStatic.Interaction
                     closestPayloadStepDistance = hit.distance;
                     continue;
                 }
-                IInteractable candidate = hit.collider?.GetComponentInParent<LatchTarget>();
+                IInteractable candidate = hit.collider?.GetComponentInParent<CivilianShellPanel>();
+                candidate ??= hit.collider?.GetComponentInParent<LatchTarget>();
                 candidate ??= hit.collider?.GetComponentInParent<InstallablePart>();
                 candidate ??= hit.collider?.GetComponentInParent<PartSocket>();
                 candidate ??= hit.collider?.GetComponentInParent<DroneFrameInspectionTarget>();
@@ -1294,6 +1301,7 @@ namespace UnderStatic.Interaction
             || supportsSalvage && scrapRect.Contains(guiPointer)
             || supportsDiagnostic && diagnosticRect.Contains(guiPointer)
             || HasPayloadBay && payloadBayRect.Contains(guiPointer)
+            || loadEnvelopeRect.Contains(guiPointer)
             || exitRect.Contains(guiPointer);
 
         private bool UpdateDragInput(Vector2 guiPointer)
@@ -1396,6 +1404,7 @@ namespace UnderStatic.Interaction
                 ? new Rect(Screen.width - 460f, 18f, 142f, 34f)
                 : Rect.zero;
             exitRect = new Rect(Screen.width - 154f, 18f, 136f, 34f);
+            loadEnvelopeRect = new Rect(Screen.width - 374f, 82f, 356f, 154f);
         }
 
         private Vector2 GetGuiPointer()
@@ -1464,6 +1473,8 @@ namespace UnderStatic.Interaction
                 return;
             }
 
+            DrawLoadEnvelope();
+
             GUI.Box(
                 new Rect(374f, 18f, Mathf.Max(300f, Screen.width - 548f), 54f),
                 $"{serviceTitle} · MMB orbit · wheel zoom · LMB interact · RMB loosen · 1 save · 2 load");
@@ -1487,6 +1498,43 @@ namespace UnderStatic.Interaction
             {
                 DrawInspectionTooltip(GetGuiPointer(), inspection);
             }
+        }
+
+        private void DrawLoadEnvelope()
+        {
+            var actor = fleetSystem?.ServiceDrone;
+            if (actor == null) return;
+            var stats = actor.Stats;
+            GUI.Box(loadEnvelopeRect, string.Empty);
+            GUI.Label(new Rect(loadEnvelopeRect.x + 12f, loadEnvelopeRect.y + 7f, loadEnvelopeRect.width - 24f, 22f),
+                "LOAD ENVELOPE · LIVE CONFIGURATION");
+            DrawEnvelopeBar(loadEnvelopeRect.y + 34f, "MASS", stats.TotalMass, stats.MaximumMass, "kg");
+            DrawEnvelopeBar(loadEnvelopeRect.y + 67f, "POWER", stats.PowerDraw, stats.PowerBudget, "PU");
+            DrawEnvelopeBar(loadEnvelopeRect.y + 100f, "SPEED", stats.Speed, 1.2f, string.Empty);
+            var conversion = actor.CivilianConversion;
+            GUI.Label(
+                new Rect(loadEnvelopeRect.x + 12f, loadEnvelopeRect.y + 130f, loadEnvelopeRect.width - 24f, 20f),
+                conversion != null ? conversion.StatusLabel : actor.ConfigurationLabel);
+        }
+
+        private void DrawEnvelopeBar(float y, string label, float value, float maximum, string unit)
+        {
+            var ratio = maximum <= 0f ? 0f : value / maximum;
+            var labelRect = new Rect(loadEnvelopeRect.x + 12f, y, 72f, 18f);
+            var track = new Rect(loadEnvelopeRect.x + 84f, y + 3f, 166f, 12f);
+            var valueRect = new Rect(loadEnvelopeRect.x + 258f, y, 86f, 18f);
+            GUI.Label(labelRect, label);
+            var previous = GUI.color;
+            GUI.color = new Color(0.055f, 0.075f, 0.072f, 1f);
+            GUI.DrawTexture(track, Texture2D.whiteTexture);
+            GUI.color = ratio > 1f
+                ? new Color(0.92f, 0.2f, 0.16f)
+                : ratio > 0.82f
+                    ? new Color(0.95f, 0.7f, 0.18f)
+                    : new Color(0.22f, 0.82f, 0.58f);
+            GUI.DrawTexture(new Rect(track.x, track.y, track.width * Mathf.Clamp01(ratio), track.height), Texture2D.whiteTexture);
+            GUI.color = previous;
+            GUI.Label(valueRect, $"{value:0.00}/{maximum:0.00} {unit}");
         }
 
         private static void DrawInspectionTooltip(Vector2 pointer, ServiceInspectionSnapshot inspection)
@@ -1558,7 +1606,8 @@ namespace UnderStatic.Interaction
                     part.Definition?.DisplayName ?? part.name);
                 GUI.Label(
                     new Rect(row.x + 10f, row.y + 27f, row.width - 20f, 22f),
-                    $"{part.ServiceDescription} · {FormatLocation(part.Runtime.storageLocation)}");
+                    $"{part.Definition.Mass:0.00}kg · {part.Definition.PowerDraw:0.00}PU · " +
+                    $"SPD {part.Definition.StatModifiers.speed:+0.00;-0.00;0.00} · {FormatLocation(part.Runtime.storageLocation)}");
                 y += 62f;
             }
 
@@ -1573,16 +1622,16 @@ namespace UnderStatic.Interaction
             var components = GetInstalledComponentStatuses();
             var maximumY = supportsSalvage ? scrapRect.yMin - 10f : Screen.height - 50f;
             var viewport = new Rect(30f, PartsRowStartY, 308f, Mathf.Max(80f, maximumY - PartsRowStartY));
-            var content = new Rect(0f, 0f, viewport.width - 18f, Mathf.Max(viewport.height, components.Count * 70f + 4f));
+            var content = new Rect(0f, 0f, viewport.width - 18f, Mathf.Max(viewport.height, components.Count * 86f + 4f));
             installedPartsScroll = GUI.BeginScrollView(viewport, installedPartsScroll, content);
             for (var index = 0; index < components.Count; index++)
             {
                 var component = components[index];
-                var row = new Rect(0f, index * 70f, content.width, 64f);
+                var row = new Rect(0f, index * 86f, content.width, 80f);
                 GUI.Box(row, string.Empty);
                 GUI.Label(new Rect(row.x + 8f, row.y + 4f, row.width - 92f, 20f), component.SlotLabel);
                 GUI.Label(new Rect(row.x + 8f, row.y + 24f, row.width - 16f, 20f), component.ComponentName);
-                GUI.Label(new Rect(row.x + 8f, row.y + 43f, row.width - 16f, 18f), component.Detail);
+                GUI.Label(new Rect(row.x + 8f, row.y + 43f, row.width - 16f, 34f), component.Detail);
 
                 var previousColor = GUI.color;
                 GUI.color = StatusColor(component);
@@ -1643,9 +1692,11 @@ namespace UnderStatic.Interaction
             }
 
             var testState = part.Runtime.tested ? "tested" : "not tested";
-            var detail = part.Definition?.Category == PartCategory.Battery
-                ? $"{part.ServiceDescription} · condition {part.Runtime.condition:P0} · {testState}"
-                : $"{part.ServiceDescription} · {testState}";
+            var detail = part.Definition == null
+                ? testState
+                : $"{part.ServiceDescription} · {testState}\n" +
+                  $"{part.Definition.Mass:0.00}kg · {part.Definition.PowerDraw:0.00}PU · " +
+                  $"SPD {part.Definition.StatModifiers.speed:+0.00;-0.00;0.00}";
             return new ServiceComponentStatus(
                 socket.PersistenceSocketId,
                 slotLabel,

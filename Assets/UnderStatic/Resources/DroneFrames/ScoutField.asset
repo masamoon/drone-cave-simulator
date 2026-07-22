@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: ScoutField
   m_EditorClassIdentifier: UnderStatic.Runtime::UnderStatic.Fleet.DroneFrameDefinition
   id: frame.scout.field
-  displayName: Scout Field
-  family: 0
+  displayName: Compact Field
+  airframeClass: 0
   grade: 0
   presentationPrefab: {fileID: 0}
   socketRequirements:

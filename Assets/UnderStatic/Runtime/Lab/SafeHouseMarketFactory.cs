@@ -33,14 +33,14 @@ namespace UnderStatic.Lab
             var motorDefinition = CreateUpgradePartDefinition(
                 PartCategory.Motor,
                 "part.market.scout.professional.motor",
-                "Scout Professional Motor",
+                "Compact Professional Motor",
                 CompatibilityStandardId.CompactMotor,
                 300,
                 new PartStatModifiers { control = 0.045f, reliability = 0.03f });
             var batteryDefinition = CreateUpgradePartDefinition(
                 PartCategory.Battery,
                 "part.market.scout.professional.battery",
-                "Scout Professional Battery",
+                "Compact Professional Battery",
                 CompatibilityStandardId.CompactBattery,
                 250,
                 new PartStatModifiers { endurance = 0.08f, reliability = 0.025f });
@@ -80,6 +80,41 @@ namespace UnderStatic.Lab
                 PartListing("market.initial.scout-battery-upgrade", battery, 250, MarketAccessTier.Trusted)
             };
             var marketParts = new List<InstallablePart> { motor, battery };
+            var retrofitBatteryDefinition = PartDefinition.CreateTransient(
+                "part.market.retrofit.high-capacity-battery",
+                "High-Capacity Retrofit Battery",
+                PartCategory.Battery,
+                new[] { "battery.slide" },
+                reliability: 0.9f,
+                partMass: 0.72f,
+                partPowerDraw: 0f,
+                standards: new[]
+                {
+                    CompatibilityStandardId.CompactBattery,
+                    CompatibilityStandardId.SurveyBattery,
+                    CompatibilityStandardId.HeavyBattery
+                },
+                equipmentGrade: EquipmentGrade.Field,
+                modifiers: new PartStatModifiers { speed = -0.1f, endurance = 0.24f, control = -0.05f },
+                value: 360,
+                retrofitClearanceRequired: true);
+            var retrofitBattery = InteractionLabFactory.CreateComponentPart(
+                "MarketHighCapacityRetrofitBattery",
+                null,
+                new Vector3(0f, -20f, 0f),
+                PartCategory.Battery,
+                retrofitBatteryDefinition,
+                stockMaterial,
+                "market-part-retrofit-battery-01");
+            retrofitBattery.SetCondition(0.94f);
+            retrofitBattery.SetControlledPhysics();
+            retrofitBattery.SetLocation(StorageLocationId.MarketStock, "Market stock");
+            retrofitBattery.gameObject.SetActive(false);
+            allParts.Add(retrofitBattery);
+            saveSystem.RegisterParts(new[] { retrofitBattery });
+            listings.Add(PartListing("market.initial.retrofit-battery", retrofitBattery, 360, MarketAccessTier.Field));
+            marketParts.Add(retrofitBattery);
+            PsxVisualFactory.EnhancePart(retrofitBattery, visualKit);
             AddPartStock(marketParts, listings, allParts, stockMaterial, visualKit);
             AddScratchBuildStock(marketParts, listings, allParts);
 
@@ -110,7 +145,7 @@ namespace UnderStatic.Lab
                 marketActors.Add(salvageActor);
             }
 
-            var sourceActor = playerActors?.FirstOrDefault(actor => actor != null && !actor.IsExpendableStrikeDrone);
+            var sourceActor = playerActors?.FirstOrDefault(actor => actor != null && !actor.HasArmedPayload);
             if (sourceActor != null)
             {
                 AddDroneStock(
@@ -118,11 +153,12 @@ namespace UnderStatic.Lab
                     marketActors,
                     marketSockets,
                     allParts,
-                    listings);
+                    listings,
+                    visualKit);
             }
 
             var strikeSourceActor = playerActors?.FirstOrDefault(actor =>
-                actor != null && actor.IsExpendableStrikeDrone);
+                actor != null && actor.HasOneWayPayload);
             if (strikeSourceActor != null)
             {
                 AddStrikeDroneStock(
@@ -265,12 +301,12 @@ namespace UnderStatic.Lab
                 new PartStockSpec(PartCategory.Propeller, "Compact Professional Propeller", CompatibilityStandardId.CompactPropeller, EquipmentGrade.Professional, 105, MarketAccessTier.Trusted),
                 new PartStockSpec(PartCategory.Camera, "Shared Professional Camera", CompatibilityStandardId.SharedCamera, EquipmentGrade.Professional, 330, MarketAccessTier.Trusted),
                 new PartStockSpec(PartCategory.Antenna, "Shared Professional Antenna", CompatibilityStandardId.SharedAntenna, EquipmentGrade.Professional, 190, MarketAccessTier.Trusted),
-                new PartStockSpec(PartCategory.Motor, "Survey Field Motor", CompatibilityStandardId.SurveyMotor, EquipmentGrade.Field, 260, MarketAccessTier.Trusted),
-                new PartStockSpec(PartCategory.Propeller, "Survey Field Propeller", CompatibilityStandardId.SurveyPropeller, EquipmentGrade.Field, 80, MarketAccessTier.Trusted),
-                new PartStockSpec(PartCategory.Battery, "Survey Field Battery", CompatibilityStandardId.SurveyBattery, EquipmentGrade.Field, 340, MarketAccessTier.Trusted),
-                new PartStockSpec(PartCategory.Motor, "Heavy Field Motor", CompatibilityStandardId.HeavyMotor, EquipmentGrade.Field, 320, MarketAccessTier.Professional),
-                new PartStockSpec(PartCategory.Propeller, "Heavy Field Propeller", CompatibilityStandardId.HeavyPropeller, EquipmentGrade.Field, 100, MarketAccessTier.Professional),
-                new PartStockSpec(PartCategory.Battery, "Heavy Field Battery", CompatibilityStandardId.HeavyBattery, EquipmentGrade.Field, 420, MarketAccessTier.Professional)
+                new PartStockSpec(PartCategory.Motor, "Endurance Field Motor", CompatibilityStandardId.SurveyMotor, EquipmentGrade.Field, 260, MarketAccessTier.Trusted),
+                new PartStockSpec(PartCategory.Propeller, "Endurance Field Propeller", CompatibilityStandardId.SurveyPropeller, EquipmentGrade.Field, 80, MarketAccessTier.Trusted),
+                new PartStockSpec(PartCategory.Battery, "Endurance Field Battery", CompatibilityStandardId.SurveyBattery, EquipmentGrade.Field, 340, MarketAccessTier.Trusted),
+                new PartStockSpec(PartCategory.Motor, "Heavy-Lift Field Motor", CompatibilityStandardId.HeavyMotor, EquipmentGrade.Field, 320, MarketAccessTier.Professional),
+                new PartStockSpec(PartCategory.Propeller, "Heavy-Lift Field Propeller", CompatibilityStandardId.HeavyPropeller, EquipmentGrade.Field, 100, MarketAccessTier.Professional),
+                new PartStockSpec(PartCategory.Battery, "Heavy-Lift Field Battery", CompatibilityStandardId.HeavyBattery, EquipmentGrade.Field, 420, MarketAccessTier.Professional)
             };
 
             for (var index = 0; index < specs.Length; index++)
@@ -409,7 +445,8 @@ namespace UnderStatic.Lab
             ICollection<DroneActor> actors,
             ICollection<PartSocket> sockets,
             ICollection<InstallablePart> allParts,
-            ICollection<MarketListingRuntimeData> listings)
+            ICollection<MarketListingRuntimeData> listings,
+            PsxVisualKit psxVisualKit)
         {
             var specs = new[]
             {
@@ -425,7 +462,7 @@ namespace UnderStatic.Lab
 
             foreach (var spec in specs)
             {
-                var actor = CreateStockDrone(source, spec, out var createdParts, out var createdSockets);
+                var actor = CreateStockDrone(source, spec, psxVisualKit, out var createdParts, out var createdSockets);
                 actors.Add(actor);
                 foreach (var part in createdParts) allParts.Add(part);
                 foreach (var socket in createdSockets) sockets.Add(socket);
@@ -442,6 +479,7 @@ namespace UnderStatic.Lab
         private static DroneActor CreateStockDrone(
             DroneActor source,
             DroneStockSpec spec,
+            PsxVisualKit psxVisualKit,
             out IReadOnlyList<InstallablePart> createdParts,
             out IReadOnlyList<PartSocket> createdSockets)
         {
@@ -531,11 +569,37 @@ namespace UnderStatic.Lab
             actor.Runtime.hasDiagnosticResult = spec.Complete;
             actor.Runtime.latestDiagnosticPassed = spec.Complete;
             actor.Runtime.diagnosticFaultsDisclosed = spec.Complete;
+            if (spec.Complete)
+            {
+                var civilian = CreateCivilianDefinition(frame.AirframeClass);
+                var presentation = PsxVisualFactory.AttachCivilianDroneShell(
+                    clone.transform,
+                    psxVisualKit,
+                    civilian.AuthoredModelName);
+                var conversion = clone.GetComponent<CivilianDroneConversion>()
+                    ?? clone.AddComponent<CivilianDroneConversion>();
+                conversion.Configure(civilian, presentation);
+                actor.Runtime.provenance = $"Civilian market · {civilian.DisplayName}";
+            }
             clone.SetActive(false);
             createdParts = kept;
             createdSockets = sockets;
             return actor;
         }
+
+        private static CivilianDroneModelDefinition CreateCivilianDefinition(DroneAirframeClass airframeClass) =>
+            airframeClass switch
+            {
+                DroneAirframeClass.Endurance => CivilianDroneModelDefinition.CreateTransient(
+                    "civilian.horizon-survey-6", "Horizon LR7 Kit", "DR_CivilianHorizonSurvey6",
+                    airframeClass, 0.78f, 0.18f, 4.25f, 1.75f),
+                DroneAirframeClass.HeavyLift => CivilianDroneModelDefinition.CreateTransient(
+                    "civilian.atlas-cargo-8", "Atlas Lift 8 Kit", "DR_CivilianAtlasCargo8",
+                    airframeClass, 1.18f, 0.24f, 4.8f, 2.25f),
+                _ => CivilianDroneModelDefinition.CreateTransient(
+                    "civilian.aster-cx4", "Aster R5 Kit", "DR_CivilianAsterCX4",
+                    airframeClass, 0.5f, 0.12f, 3.75f, 1.5f)
+            };
 
         private static void AddStrikeDroneStock(
             DroneActor source,
@@ -664,7 +728,7 @@ namespace UnderStatic.Lab
         {
             var requirements = frame.SocketRequirements.Count > 0
                 ? frame.SocketRequirements
-                : DroneFrameDefinition.DefaultRequirements(frame.Family);
+                : DroneFrameDefinition.DefaultRequirements(frame.AirframeClass);
             var requirement = requirements.FirstOrDefault(item => item.category == category);
             var value = category switch
             {
@@ -677,8 +741,8 @@ namespace UnderStatic.Lab
             };
             if (frame.Grade == EquipmentGrade.Professional) value = Mathf.RoundToInt(value * 1.8f);
             return PartDefinition.CreateTransient(
-                $"part.market.{frame.Family.ToString().ToLowerInvariant()}.{frame.Grade.ToString().ToLowerInvariant()}.{category.ToString().ToLowerInvariant()}",
-                $"{frame.Family} {frame.Grade} {category}",
+                $"part.market.{LegacyClassToken(frame.AirframeClass)}.{frame.Grade.ToString().ToLowerInvariant()}.{category.ToString().ToLowerInvariant()}",
+                $"{frame.AirframeClassName} {frame.Grade} {category}",
                 category,
                 new[] { LegacyTag(category) },
                 reliability: frame.Grade == EquipmentGrade.Professional ? 0.96f : 0.88f,
@@ -686,6 +750,13 @@ namespace UnderStatic.Lab
                 equipmentGrade: frame.Grade,
                 value: value);
         }
+
+        private static string LegacyClassToken(DroneAirframeClass airframeClass) => airframeClass switch
+        {
+            DroneAirframeClass.Endurance => "survey",
+            DroneAirframeClass.HeavyLift => "utility",
+            _ => "scout"
+        };
 
         private static string LegacyTag(PartCategory category) => category switch
         {

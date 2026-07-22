@@ -107,6 +107,43 @@ namespace UnderStatic.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator MarketOffersThreeDistinctCivilianOriginsWithIntactShells()
+        {
+            SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var market = Object.FindAnyObjectByType<MarketSystem>();
+            var civilianActors = market.Listings
+                .Where(item => item.category == MarketListingCategory.CompleteDrone)
+                .Select(market.ResolveDrone)
+                .Where(actor => actor != null)
+                .ToArray();
+
+            Assert.That(civilianActors, Has.Length.EqualTo(3));
+            Assert.That(civilianActors.Select(actor => actor.CivilianConversion.Definition.Id).Distinct().Count(),
+                Is.EqualTo(3));
+            Assert.That(civilianActors.Select(actor => actor.FrameDefinition.AirframeClass).Distinct().Count(),
+                Is.EqualTo(3));
+            Assert.That(civilianActors.All(actor =>
+                actor.CivilianConversion.RequiredPanelCount == 3
+                && actor.CivilianConversion.RemovedPanelCount == 0
+                && !actor.CivilianConversion.RetrofitReady), Is.True);
+            foreach (var actor in civilianActors)
+            {
+                var battery = actor.InstalledParts.Single(part => part.Definition.Category == UnderStatic.Core.PartCategory.Battery);
+                var batteryPlug = battery.GetComponentsInChildren<Transform>(true)
+                    .Single(child => child.name == "BatteryXT60Connector");
+                var frameSocket = actor.GetComponentsInChildren<Transform>(true)
+                    .Single(child => child.name.StartsWith("Fpv.PowerSocket.", System.StringComparison.Ordinal));
+                Assert.That(Vector3.Distance(batteryPlug.position, frameSocket.position), Is.LessThan(0.05f),
+                    $"{actor.CivilianConversion.Definition.DisplayName} battery lead is visibly disconnected");
+            }
+            Assert.That(market.Listings.Any(item => item.partInstanceId == "market-part-retrofit-battery-01"),
+                Is.True);
+        }
+
+        [UnityTest]
         public IEnumerator CompleteDroneCardOpensDetailsAndPurchasePreservesCertifiedReadiness()
         {
             SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);

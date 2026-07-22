@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: UtilityField
   m_EditorClassIdentifier: UnderStatic.Runtime::UnderStatic.Fleet.DroneFrameDefinition
   id: frame.utility.field
-  displayName: Utility Field
-  family: 2
+  displayName: Heavy-Lift Field
+  airframeClass: 2
   grade: 0
   presentationPrefab: {fileID: 0}
   socketRequirements:

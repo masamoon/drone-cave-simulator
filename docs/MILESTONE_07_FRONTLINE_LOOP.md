@@ -16,7 +16,12 @@ field-operation implementations remain dormant until this loop receives human ap
 - Unknown activity that recon converts into Infantry, Tank, Artillery, or Enemy Base information.
 - Blind one-way strikes with target-specific pressure damage.
 - Recon and strike configurations drawn from the same physical fleet.
+- Airframe classes describe physical size and tradeoffs only; mission roles come from installed, serviceable equipment.
+- Three fictional civilian FPV kits enter the fleet with open carbon frames, exposed component stacks, removable retail guards, and distinct physical envelopes.
+- Service exposes live mass, power, and speed bars; every component contributes an explicit tradeoff.
+- Civilian guards are removed through three deterministic authored steps before oversized batteries or payload hardware fit.
 - A reusable rack plus a separate, sealed, visually authored payload.
+- The battery charger uses a five-position modular chassis with one functional front-panel plug pair in this milestone. Batteries rest beside the unit and connect by visible leads; each future capacity upgrade exposes another plug pair rather than adding a top-mounted battery rack.
 - Seeded physical salvage deliveries with one readable compromise per salvaged part.
 - Mission-facing Reach, Effect, Reliability, Arrival, committed value, and margin forecasts.
 - Save schema 14 for frontline, salvage, payload, compromise, and concurrent deployed-aircraft state.

@@ -32,7 +32,7 @@ namespace UnderStatic.Tests.PlayMode
             var fleet = Object.FindAnyObjectByType<FleetSystem>();
             Assert.That(fleet, Is.Not.Null);
             Assert.That(fleet.Actors.Count, Is.EqualTo(3));
-            Assert.That(fleet.ServiceDrone.FrameDefinition.DisplayName, Is.EqualTo("Scout Field"));
+            Assert.That(fleet.ServiceDrone.FrameDefinition.DisplayName, Is.EqualTo("Compact Field"));
             Assert.That(fleet.Locker.Count, Is.EqualTo(3));
             Assert.That(fleet.Locker[0].IsExpendableStrikeDrone, Is.True);
             Assert.That(fleet.Locker[1].IsExpendableStrikeDrone, Is.True);
@@ -117,7 +117,7 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(frameLocker, Is.GreaterThanOrEqualTo(0));
             Assert.That(fleet.TrySwapLockerIntoService(frameLocker, false), Is.True, fleet.LastStatus);
             Assert.That(scratch, Is.Not.SameAs(originalService));
-            Assert.That(scratch.FrameDefinition.DisplayName, Is.EqualTo("Empty FPV Strike Frame"));
+            Assert.That(scratch.FrameDefinition.DisplayName, Is.EqualTo("Empty Compact FPV Frame"));
             Assert.That(scratch.InstalledParts, Is.Empty);
             Assert.That(scratch.Readiness.InstalledCount, Is.Zero);
             Assert.That(fleet.ServiceDrone, Is.SameAs(scratch));

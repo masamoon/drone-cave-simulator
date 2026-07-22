@@ -15,6 +15,8 @@ namespace UnderStatic.Replays
     {
         public const float LiveFeedStartProgress = 0.6f;
         private const float LiveFeedResultBoundary = 0.58f;
+        private const string RecreationModelPath = "Art/MissionRecreation/Models/";
+        private const string RecreationTexturePath = "Art/MissionRecreation/Textures/";
 
         [SerializeField] private MissionSystem missions;
         [SerializeField] private BattlefieldSystem battlefield;
@@ -42,6 +44,7 @@ namespace UnderStatic.Replays
         private float staticRefreshElapsed;
         private uint staticNoiseState;
         private MissionReplayPlan activePlan;
+        private MissionReplayArtAssets activeArtAssets;
         private InputAction cancelAction;
         private bool isLiveFeed;
         private bool liveResultReceived;
@@ -457,6 +460,11 @@ namespace UnderStatic.Replays
             var vegetationMaterial = ResolveMaterial(PsxSurface.Vegetation, "Reconstruction Vegetation", new Color(0.08f, 0.2f, 0.1f));
             var targetMaterial = ResolveMaterial(PsxSurface.PaintedMetal, "Reconstruction Target", new Color(0.27f, 0.28f, 0.26f));
             var flashMaterial = ResolveMaterial(PsxSurface.Warning, "Reconstruction Confirmation", new Color(0.9f, 0.34f, 0.08f));
+            activeArtAssets = MissionReplayArtAssets.Load(this);
+            terrainMaterial = activeArtAssets.TerrainMaterial ?? terrainMaterial;
+            roadMaterial = activeArtAssets.RoadMaterial ?? roadMaterial;
+            vegetationMaterial = activeArtAssets.VegetationMaterial ?? vegetationMaterial;
+            targetMaterial = activeArtAssets.TargetMaterial ?? targetMaterial;
 
             var terrain = new GameObject("TopographyMesh");
             terrain.transform.SetParent(reconstructionRoot.transform, false);
@@ -511,14 +519,26 @@ namespace UnderStatic.Replays
                 var v1 = (row + 1) / (float)(ActiveMap.Resolution - 1);
                 var start = SurfacePoint(new Vector2(ActiveMap.RoadCenterAtRow(row), v0));
                 var end = SurfacePoint(new Vector2(ActiveMap.RoadCenterAtRow(row + 1), v1));
-                var segment = CreatePrimitive(
-                    $"Road.{row:00}",
-                    PrimitiveType.Cube,
-                    reconstructionRoot.transform,
-                    (start + end) * 0.5f + Vector3.up * 0.12f,
-                    new Vector3(2.25f, 0.12f, Vector3.Distance(start, end) + 0.15f),
-                    material);
-                segment.transform.rotation = Quaternion.LookRotation(end - start, Vector3.up);
+                var segmentLength = Vector3.Distance(start, end) + 0.15f;
+                var rotation = Quaternion.LookRotation(end - start, Vector3.up);
+                if (CreateRecreationAsset(
+                        $"Road.{row:00}",
+                        "MR_RoadSegment",
+                        reconstructionRoot.transform,
+                        (start + end) * 0.5f + Vector3.up * 0.12f,
+                        rotation,
+                        new Vector3(1f, segmentLength, 1f),
+                        material) == null)
+                {
+                    var segment = CreatePrimitive(
+                        $"Road.{row:00}",
+                        PrimitiveType.Cube,
+                        reconstructionRoot.transform,
+                        (start + end) * 0.5f + Vector3.up * 0.12f,
+                        new Vector3(2.25f, 0.12f, segmentLength),
+                        material);
+                    segment.transform.rotation = rotation;
+                }
             }
         }
 
@@ -536,16 +556,31 @@ namespace UnderStatic.Replays
                     var normalized = new Vector2(
                         x / (float)(ActiveMap.Resolution - 1),
                         row / (float)(ActiveMap.Resolution - 1));
-                    if (visualKit != null)
+                    var variant = (x * 17 + row * 31) % 3;
+                    var modelName = variant switch
+                    {
+                        0 => "MR_PineTree",
+                        1 => "MR_DeadTree",
+                        _ => "MR_ScrubCluster"
+                    };
+                    var recreationVegetation = CreateRecreationAsset(
+                            $"Vegetation.{created:00}",
+                            modelName,
+                            reconstructionRoot.transform,
+                            SurfacePoint(normalized),
+                            Quaternion.Euler(0f, (x * 37 + row * 19) % 360, 0f),
+                            Vector3.one,
+                            material);
+                    if (recreationVegetation == null && visualKit != null)
                     {
                         PsxVisualFactory.CreateTree(
                             $"Vegetation.{created:00}",
                             reconstructionRoot.transform,
                             SurfacePoint(normalized),
-                            (x * 17 + row * 31) % 3,
+                            variant,
                             visualKit);
                     }
-                    else
+                    else if (recreationVegetation == null)
                     {
                         var height = 0.75f + ((x * 17 + row * 31) % 9) * 0.045f;
                         CreatePrimitive(
@@ -574,8 +609,18 @@ namespace UnderStatic.Replays
                 var empty = new GameObject("SearchedPosition");
                 empty.transform.SetParent(target.transform, false);
                 empty.transform.localPosition = SurfacePoint(activePlan.TargetPosition);
-                CreatePrimitive("EmptyLastKnownPosition", PrimitiveType.Cylinder, empty.transform,
-                    new Vector3(0f, 0.18f, 0f), new Vector3(2.4f, 0.12f, 2.4f), material);
+                if (CreateRecreationAsset(
+                        "EmptyLastKnownPosition",
+                        "MR_EmptyPosition",
+                        empty.transform,
+                        Vector3.zero,
+                        Quaternion.identity,
+                        Vector3.one,
+                        activeArtAssets.TerrainMaterial ?? material) == null)
+                {
+                    CreatePrimitive("EmptyLastKnownPosition", PrimitiveType.Cylinder, empty.transform,
+                        new Vector3(0f, 0.18f, 0f), new Vector3(2.4f, 0.12f, 2.4f), material);
+                }
                 return target;
             }
 
@@ -608,11 +653,19 @@ namespace UnderStatic.Replays
 
             if (type == BattlefieldContactType.Artillery)
             {
-                if (visualKit != null)
+                var artillery = CreateRecreationAsset(
+                        "ArtilleryTarget",
+                        "MR_TowedArtillery",
+                        target.transform,
+                        Vector3.zero,
+                        Quaternion.identity,
+                        Vector3.one,
+                        material);
+                if (artillery == null && visualKit != null)
                 {
                     PsxVisualFactory.CreateArtillery(target.transform, visualKit);
                 }
-                else
+                else if (artillery == null)
                 {
                     CreatePrimitive("ArtilleryCarriage", PrimitiveType.Cube, target.transform,
                         new Vector3(0f, 0.55f, 0f), new Vector3(2.5f, 0.75f, 1.7f), material);
@@ -623,18 +676,38 @@ namespace UnderStatic.Replays
             }
             else if (type == BattlefieldContactType.EnemyBase)
             {
-                CreatePrimitive("EnemyBaseBuilding", PrimitiveType.Cube, target.transform,
-                    new Vector3(0f, 0.8f, 0f), new Vector3(3.6f, 1.6f, 3f), material);
-                CreatePrimitive("EnemyBaseAntenna", PrimitiveType.Cylinder, target.transform,
-                    new Vector3(0.8f, 2f, 0.4f), new Vector3(0.12f, 1.5f, 0.12f), material);
+                if (CreateRecreationAsset(
+                        "EnemyBaseBuilding",
+                        "MR_FieldCommandPost",
+                        target.transform,
+                        Vector3.zero,
+                        Quaternion.Euler(0f, 180f, 0f),
+                        Vector3.one,
+                        activeArtAssets.StructureMaterial ?? material) == null)
+                {
+                    CreatePrimitive("EnemyBaseBuilding", PrimitiveType.Cube, target.transform,
+                        new Vector3(0f, 0.8f, 0f), new Vector3(3.6f, 1.6f, 3f), material);
+                    CreatePrimitive("EnemyBaseAntenna", PrimitiveType.Cylinder, target.transform,
+                        new Vector3(0.8f, 2f, 0.4f), new Vector3(0.12f, 1.5f, 0.12f), material);
+                }
             }
             else
             {
-                for (var index = 0; index < 3; index++)
+                if (CreateRecreationAsset(
+                        "DistantInfantryGroup",
+                        "MR_DistantInfantryGroup",
+                        target.transform,
+                        Vector3.zero,
+                        Quaternion.identity,
+                        Vector3.one,
+                        material) == null)
                 {
-                    CreatePrimitive($"DistantFigure.{index}", PrimitiveType.Capsule, target.transform,
-                        new Vector3((index - 1) * 1.4f, 0.65f, (index % 2) * 0.9f),
-                        new Vector3(0.36f, 0.65f, 0.36f), material);
+                    for (var index = 0; index < 3; index++)
+                    {
+                        CreatePrimitive($"DistantFigure.{index}", PrimitiveType.Capsule, target.transform,
+                            new Vector3((index - 1) * 1.4f, 0.65f, (index % 2) * 0.9f),
+                            new Vector3(0.36f, 0.65f, 0.36f), material);
+                    }
                 }
             }
         }
@@ -721,6 +794,44 @@ namespace UnderStatic.Replays
             return item;
         }
 
+        private GameObject CreateRecreationAsset(
+            string instanceName,
+            string resourceName,
+            Transform parent,
+            Vector3 localPosition,
+            Quaternion localRotation,
+            Vector3 localScale,
+            Material material)
+        {
+            var prefab = Resources.Load<GameObject>(RecreationModelPath + resourceName);
+            if (prefab == null || material == null)
+            {
+                return null;
+            }
+
+            var instance = Instantiate(prefab, parent, false);
+            var importedRotation = instance.transform.localRotation;
+            instance.name = instanceName;
+            instance.transform.localPosition = localPosition;
+            instance.transform.localRotation = localRotation * importedRotation;
+            instance.transform.localScale = localScale;
+            var renderers = instance.GetComponentsInChildren<Renderer>(true);
+            if (renderers.Length == 0)
+            {
+                DestroyRuntimeObject(instance);
+                return null;
+            }
+            foreach (var renderer in renderers)
+            {
+                renderer.sharedMaterial = material;
+            }
+            foreach (var collider in instance.GetComponentsInChildren<Collider>(true))
+            {
+                collider.enabled = false;
+            }
+            return instance;
+        }
+
         private Vector3 SurfacePoint(Vector2 normalized)
         {
             var point = ActiveMap.ToWorld(normalized);
@@ -735,6 +846,34 @@ namespace UnderStatic.Replays
         {
             var material = InteractionLabFactory.CreateMaterial(name, color);
             runtimeMaterials.Add(material);
+            return material;
+        }
+
+        private Material CreateRecreationMaterial(string name, string textureName, Color fallbackColour)
+        {
+            var texture = Resources.Load<Texture2D>(RecreationTexturePath + textureName);
+            if (texture == null)
+            {
+                return null;
+            }
+            texture.filterMode = FilterMode.Point;
+            texture.wrapMode = TextureWrapMode.Repeat;
+            texture.anisoLevel = 0;
+            var material = CreateMaterial(name, fallbackColour);
+            if (material.HasProperty("_BaseMap"))
+            {
+                material.SetTexture("_BaseMap", texture);
+                material.SetColor("_BaseColor", Color.white);
+            }
+            if (material.HasProperty("_MainTex"))
+            {
+                material.SetTexture("_MainTex", texture);
+                material.SetColor("_Color", Color.white);
+            }
+            if (material.HasProperty("_Smoothness"))
+            {
+                material.SetFloat("_Smoothness", 0.06f);
+            }
             return material;
         }
 
@@ -765,6 +904,7 @@ namespace UnderStatic.Replays
             bombVisual = null;
             staticTexture = null;
             staticPixels = null;
+            activeArtAssets = default;
             foreach (var material in runtimeMaterials)
             {
                 DestroyRuntimeObject(material);
@@ -819,6 +959,36 @@ namespace UnderStatic.Replays
 
             public Behaviour Behaviour { get; }
             public bool WasEnabled { get; }
+        }
+
+        private readonly struct MissionReplayArtAssets
+        {
+            private MissionReplayArtAssets(
+                Material terrainMaterial,
+                Material roadMaterial,
+                Material vegetationMaterial,
+                Material targetMaterial,
+                Material structureMaterial)
+            {
+                TerrainMaterial = terrainMaterial;
+                RoadMaterial = roadMaterial;
+                VegetationMaterial = vegetationMaterial;
+                TargetMaterial = targetMaterial;
+                StructureMaterial = structureMaterial;
+            }
+
+            public Material TerrainMaterial { get; }
+            public Material RoadMaterial { get; }
+            public Material VegetationMaterial { get; }
+            public Material TargetMaterial { get; }
+            public Material StructureMaterial { get; }
+
+            public static MissionReplayArtAssets Load(MissionReplayDirector owner) => new(
+                owner.CreateRecreationMaterial("Mission Recreation Terrain", "MR_Terrain_128", new Color(0.3f, 0.29f, 0.19f)),
+                owner.CreateRecreationMaterial("Mission Recreation Road", "MR_Road_128", new Color(0.34f, 0.29f, 0.2f)),
+                owner.CreateRecreationMaterial("Mission Recreation Vegetation", "MR_Vegetation_128", new Color(0.12f, 0.27f, 0.13f)),
+                owner.CreateRecreationMaterial("Mission Recreation Targets", "MR_Targets_128", new Color(0.27f, 0.28f, 0.26f)),
+                owner.CreateRecreationMaterial("Mission Recreation Structures", "MR_Structures_128", new Color(0.26f, 0.25f, 0.2f)));
         }
 
         private static void DestroyRuntimeObject(UnityEngine.Object item)

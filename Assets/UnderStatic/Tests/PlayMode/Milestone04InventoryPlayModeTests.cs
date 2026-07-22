@@ -81,7 +81,17 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(serviceVolume.size.x, Is.GreaterThan(1.7f));
             Assert.That(charger, Is.Not.Null);
             Assert.That(charger.Socket, Is.Not.Null);
+            Assert.That(charger.UnlockedPlugCount, Is.EqualTo(1));
+            Assert.That(charger.MaximumPlugCapacity, Is.EqualTo(5));
+            Assert.That(charger.CapacityLabel, Is.EqualTo("1/5 PLUGS ONLINE"));
+            Assert.That(charger.transform.Find("AuthoredModularBatteryCharger"), Is.Not.Null);
+            Assert.That(charger.transform.Find("ChargingStationHousing")
+                .GetComponent<Renderer>().enabled, Is.False,
+                "The old flat charger housing read as a protruding desk shelf.");
             Assert.That(charger.Socket.ProcedureType, Is.EqualTo(InstallationProcedureType.ChargingDock));
+            Assert.That(charger.Socket.name, Is.EqualTo("ChargingPlugSocket"));
+            Assert.That(charger.transform.Find("ChargingBayRail"), Is.Null,
+                "A cabled charger must not present a top-mounted battery rack.");
             Assert.That(charger.transform.Find("BatteryLatch"), Is.Null);
             Assert.That(charger.Socket.PersistenceSocketId,
                 Does.Contain("station.safehouse.battery-charger"));
@@ -141,7 +151,11 @@ namespace UnderStatic.Tests.PlayMode
 
             Assert.That(chargerService.TryInstallPart(battery, charger.Socket), Is.True,
                 chargerService.ServiceStatus);
+            yield return null;
             Assert.That(battery.Runtime.currentState, Is.EqualTo(InteractionState.Installed));
+            Assert.That(charger.IsPlugConnectionVisible, Is.True);
+            Assert.That(battery.transform.position.x, Is.LessThan(charger.transform.position.x - 0.35f),
+                "The battery should rest beside the charger rather than on top of it.");
             Assert.That(charger.Socket.ProcedureType, Is.EqualTo(InstallationProcedureType.ChargingDock));
             Assert.That(charger.AdvanceCharging(charger.ChargeDurationSeconds), Is.True);
             Assert.That(battery.Runtime.chargeLevel, Is.EqualTo(1f).Within(0.001f));
@@ -149,7 +163,9 @@ namespace UnderStatic.Tests.PlayMode
 
             Assert.That(charger.Socket.ReleaseChargingDock(), Is.True);
             Assert.That(chargerService.TryExtractPart(battery), Is.True, chargerService.ServiceStatus);
+            yield return null;
             Assert.That(charger.Socket.OccupiedPart, Is.Null);
+            Assert.That(charger.IsPlugConnectionVisible, Is.False);
             Assert.That(partsStorage.Contains(battery), Is.True);
             Assert.That(battery.Runtime.storageLocation, Is.EqualTo(StorageLocationId.SafeHouseParts));
         }

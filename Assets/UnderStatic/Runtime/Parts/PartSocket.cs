@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnderStatic.Core;
+using UnderStatic.Fleet;
 using UnderStatic.Interaction;
 using UnityEngine;
 
@@ -271,6 +272,17 @@ namespace UnderStatic.Parts
         public bool CanAccept(InstallablePart part)
         {
             if (part?.Definition == null || (OccupiedPart != null && OccupiedPart != part))
+            {
+                return false;
+            }
+
+            var conversion = assembly != null
+                ? assembly.GetComponent<CivilianDroneConversion>()
+                    ?? assembly.GetComponentInParent<CivilianDroneConversion>()
+                : null;
+            if (part.Definition.RequiresRetrofitClearance
+                && conversion != null
+                && !conversion.RetrofitReady)
             {
                 return false;
             }

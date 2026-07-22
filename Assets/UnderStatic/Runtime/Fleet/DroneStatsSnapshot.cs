@@ -12,7 +12,11 @@ namespace UnderStatic.Fleet
             float noise,
             float reliability,
             int componentValue,
-            bool motorMismatch)
+            bool motorMismatch,
+            float totalMass = 0f,
+            float maximumMass = 1f,
+            float powerDraw = 0f,
+            float powerBudget = 1f)
         {
             Speed = speed;
             Endurance = endurance;
@@ -24,6 +28,10 @@ namespace UnderStatic.Fleet
             Reliability = reliability;
             ComponentValue = componentValue;
             HasMotorMismatch = motorMismatch;
+            TotalMass = totalMass;
+            MaximumMass = maximumMass;
+            PowerDraw = powerDraw;
+            PowerBudget = powerBudget;
         }
 
         public float Speed { get; }
@@ -36,5 +44,11 @@ namespace UnderStatic.Fleet
         public float Reliability { get; }
         public int ComponentValue { get; }
         public bool HasMotorMismatch { get; }
+        public float TotalMass { get; }
+        public float MaximumMass { get; }
+        public float PowerDraw { get; }
+        public float PowerBudget { get; }
+        public float MassRatio => MaximumMass <= 0f ? 0f : TotalMass / MaximumMass;
+        public float PowerRatio => PowerBudget <= 0f ? 0f : PowerDraw / PowerBudget;
     }
 }

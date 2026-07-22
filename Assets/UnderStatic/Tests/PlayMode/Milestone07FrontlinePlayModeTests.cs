@@ -61,7 +61,8 @@ namespace UnderStatic.Tests.PlayMode
                 Is.True);
             Assert.That(procedure.UsesPhysicalPayload, Is.True);
             Assert.That(procedure.HasPayload, Is.False);
-            Assert.That(payload.transform.Find("PSX_PartDetail/PayloadFacetedBody"), Is.Not.Null);
+            Assert.That(payload.transform.Find(
+                "PSX_PartDetail/Authored_DR_SealedPayload/PayloadFacetedBody"), Is.Not.Null);
             Assert.That(GameObject.Find("PSX_PayloadStorageCradle"), Is.Not.Null);
             Assert.That(GameObject.Find("PSX_SalvageIntakeCrate"), Is.Not.Null);
         }
@@ -84,7 +85,8 @@ namespace UnderStatic.Tests.PlayMode
                 .Single(part => part.name == "FieldStrikeRack");
             var payloadSocket = rack.GetComponentsInChildren<PartSocket>(true)
                 .Single(socket => socket.AcceptedPrimaryCategory == PartCategory.Payload);
-            var rackRail = rack.transform.Find("PSX_PartDetail/RackRail.-1");
+            var rackRail = rack.transform.Find(
+                "PSX_PartDetail/Authored_DR_StrikeRack/RackRail.-1");
             var looseHarnessCable = rack.transform.Find(
                 "PayloadMountFunctional/PayloadControlHarness/PayloadHarnessCableLoose")
                 .GetComponent<Renderer>();
@@ -99,13 +101,16 @@ namespace UnderStatic.Tests.PlayMode
                 Is.EqualTo(PartCategory.StrikeRack));
             Assert.That(rackRail.GetComponent<MeshFilter>().sharedMesh.bounds.size.z,
                 Is.GreaterThanOrEqualTo(3.7f));
-            Assert.That(rack.transform.Find("PSX_PartDetail/RackAirframeMountingBridge.-1"), Is.Not.Null);
-            Assert.That(rack.transform.Find("PSX_PartDetail/RackAirframeMountingBridge.1"), Is.Not.Null);
+            Assert.That(rack.transform.Find(
+                "PSX_PartDetail/Authored_DR_StrikeRack/RackAirframeMountingBridge.Front"), Is.Not.Null);
+            Assert.That(rack.transform.Find(
+                "PSX_PartDetail/Authored_DR_StrikeRack/RackAirframeMountingBridge.Rear"), Is.Not.Null);
             Assert.That(rack.transform.Find("PayloadMountFunctional/PayloadCradleRail.-1")
                 .GetComponent<Renderer>().enabled, Is.False);
             Assert.That(looseHarnessCable.bounds.Intersects(looseHarnessPlug.bounds), Is.True);
             Assert.That(looseHarnessCable.bounds.Intersects(harnessSocket.bounds), Is.True);
-            Assert.That(payload.transform.Find("PSX_PartDetail/PayloadHarnessPortFlange"), Is.Not.Null);
+            Assert.That(payload.transform.Find(
+                "PSX_PartDetail/Authored_DR_SealedPayload/PayloadHarnessPortFlange"), Is.Not.Null);
             var serviceDrone = Object.FindAnyObjectByType<FleetSystem>().ServiceDrone.transform;
             var originalPosition = serviceDrone.position;
             var originalRotation = serviceDrone.rotation;

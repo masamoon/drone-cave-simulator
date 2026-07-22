@@ -52,7 +52,7 @@ namespace UnderStatic.Lab
                 new[] { "Aircraft outbound along the planned search route.", "Camera sweep continuing." });
             var kamikaze = SortieProfileDefinition.CreateTransient(
                 "sortie.kamikaze",
-                "Kamikaze Strike",
+                "Configured Strike",
                 SortieType.KamikazeStrike,
                 PartMissionCapability.KamikazeWarhead,
                 new MissionStatWeights

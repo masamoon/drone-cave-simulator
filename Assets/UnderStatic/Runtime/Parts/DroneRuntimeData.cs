@@ -16,6 +16,8 @@ namespace UnderStatic.Parts
         public bool latestDiagnosticPassed;
         public bool diagnosticFaultsDisclosed;
         public bool isExpendableStrikeDrone;
+        public string civilianModelId = string.Empty;
+        public int civilianShellPanelsRemoved;
 
         public DroneRuntimeData Copy()
         {
@@ -30,7 +32,9 @@ namespace UnderStatic.Parts
                 hasDiagnosticResult = hasDiagnosticResult,
                 latestDiagnosticPassed = latestDiagnosticPassed,
                 diagnosticFaultsDisclosed = diagnosticFaultsDisclosed,
-                isExpendableStrikeDrone = isExpendableStrikeDrone
+                isExpendableStrikeDrone = isExpendableStrikeDrone,
+                civilianModelId = civilianModelId,
+                civilianShellPanelsRemoved = civilianShellPanelsRemoved
             };
         }
     }

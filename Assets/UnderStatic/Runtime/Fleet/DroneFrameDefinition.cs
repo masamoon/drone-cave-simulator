@@ -3,14 +3,15 @@ using System.Collections.Generic;
 using UnderStatic.Core;
 using UnderStatic.Parts;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 namespace UnderStatic.Fleet
 {
-    public enum DroneFrameFamily
+    public enum DroneAirframeClass
     {
-        Scout,
-        Survey,
-        Utility
+        Compact,
+        Endurance,
+        HeavyLift
     }
 
     [Serializable]
@@ -38,8 +39,9 @@ namespace UnderStatic.Fleet
     public sealed class DroneFrameDefinition : ScriptableObject
     {
         [SerializeField] private string id = "frame.scout.field";
-        [SerializeField] private string displayName = "Scout Field";
-        [SerializeField] private DroneFrameFamily family = DroneFrameFamily.Scout;
+        [SerializeField] private string displayName = "Compact Field";
+        [FormerlySerializedAs("family")]
+        [SerializeField] private DroneAirframeClass airframeClass = DroneAirframeClass.Compact;
         [SerializeField] private EquipmentGrade grade = EquipmentGrade.Field;
         [SerializeField] private GameObject presentationPrefab;
         [SerializeField] private DroneSocketRequirement[] socketRequirements = Array.Empty<DroneSocketRequirement>();
@@ -49,7 +51,8 @@ namespace UnderStatic.Fleet
 
         public string Id => id;
         public string DisplayName => displayName;
-        public DroneFrameFamily Family => family;
+        public DroneAirframeClass AirframeClass => airframeClass;
+        public string AirframeClassName => DisplayClassName(airframeClass);
         public EquipmentGrade Grade => grade;
         public GameObject PresentationPrefab => presentationPrefab;
         public IReadOnlyList<DroneSocketRequirement> SocketRequirements => socketRequirements;
@@ -60,7 +63,7 @@ namespace UnderStatic.Fleet
         public static DroneFrameDefinition CreateTransient(
             string definitionId,
             string name,
-            DroneFrameFamily frameFamily,
+            DroneAirframeClass targetAirframeClass,
             EquipmentGrade equipmentGrade,
             DroneBaseStats stats,
             int value,
@@ -70,33 +73,40 @@ namespace UnderStatic.Fleet
             var definition = CreateInstance<DroneFrameDefinition>();
             definition.id = definitionId;
             definition.displayName = name;
-            definition.family = frameFamily;
+            definition.airframeClass = targetAirframeClass;
             definition.grade = equipmentGrade;
             definition.baseStats = stats;
             definition.monetaryValue = Mathf.Max(0, value);
             definition.scrapYield = Mathf.Max(0, frameScrapYield);
-            definition.socketRequirements = requirements ?? DefaultRequirements(frameFamily);
+            definition.socketRequirements = requirements ?? DefaultRequirements(targetAirframeClass);
             return definition;
         }
 
-        public static DroneSocketRequirement[] DefaultRequirements(DroneFrameFamily family)
+        public static string DisplayClassName(DroneAirframeClass value) => value switch
         {
-            var motor = family switch
+            DroneAirframeClass.Endurance => "Endurance",
+            DroneAirframeClass.HeavyLift => "Heavy-Lift",
+            _ => "Compact"
+        };
+
+        public static DroneSocketRequirement[] DefaultRequirements(DroneAirframeClass airframeClass)
+        {
+            var motor = airframeClass switch
             {
-                DroneFrameFamily.Survey => CompatibilityStandardId.SurveyMotor,
-                DroneFrameFamily.Utility => CompatibilityStandardId.HeavyMotor,
+                DroneAirframeClass.Endurance => CompatibilityStandardId.SurveyMotor,
+                DroneAirframeClass.HeavyLift => CompatibilityStandardId.HeavyMotor,
                 _ => CompatibilityStandardId.CompactMotor
             };
-            var battery = family switch
+            var battery = airframeClass switch
             {
-                DroneFrameFamily.Survey => CompatibilityStandardId.SurveyBattery,
-                DroneFrameFamily.Utility => CompatibilityStandardId.HeavyBattery,
+                DroneAirframeClass.Endurance => CompatibilityStandardId.SurveyBattery,
+                DroneAirframeClass.HeavyLift => CompatibilityStandardId.HeavyBattery,
                 _ => CompatibilityStandardId.CompactBattery
             };
-            var propeller = family switch
+            var propeller = airframeClass switch
             {
-                DroneFrameFamily.Survey => CompatibilityStandardId.SurveyPropeller,
-                DroneFrameFamily.Utility => CompatibilityStandardId.HeavyPropeller,
+                DroneAirframeClass.Endurance => CompatibilityStandardId.SurveyPropeller,
+                DroneAirframeClass.HeavyLift => CompatibilityStandardId.HeavyPropeller,
                 _ => CompatibilityStandardId.CompactPropeller
             };
             return new[]

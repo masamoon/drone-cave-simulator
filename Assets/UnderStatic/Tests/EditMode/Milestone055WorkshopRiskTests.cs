@@ -171,7 +171,7 @@ namespace UnderStatic.Tests
             var assembly = root.AddComponent<DroneAssemblyState>();
             assembly.ConfigureRequirements(1, 1, 1, 1, 1);
             var frame = Track(DroneFrameDefinition.CreateTransient(
-                $"frame.{id}", "Field Scout", DroneFrameFamily.Scout, EquipmentGrade.Field,
+                $"frame.{id}", "Compact Field", DroneAirframeClass.Compact, EquipmentGrade.Field,
                 new DroneBaseStats { speed = 1f, endurance = 1f, observation = 1f, durability = 1f,
                     payload = 1f, control = 1f, reliability = 1f },
                 100, 1, Array.Empty<DroneSocketRequirement>()));

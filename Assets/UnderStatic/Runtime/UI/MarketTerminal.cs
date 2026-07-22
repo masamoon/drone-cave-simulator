@@ -156,7 +156,11 @@ namespace UnderStatic.UI
                 return;
             }
 
-            var tabCount = Enum.GetValues(typeof(MarketTerminalView)).Length;
+            var tabs = Enum.GetValues(typeof(MarketTerminalView)).Cast<MarketTerminalView>()
+                .Where(tab => tab != MarketTerminalView.StrikeDrones
+                    || market.Listings.Any(item => item.category == MarketListingCategory.StrikeDrone))
+                .ToArray();
+            var tabCount = tabs.Length;
             var tabWidth = (panel.width - 44f - (tabCount - 1) * 8f) / tabCount;
             var tabX = panel.x + 22f;
             var tabStyle = new GUIStyle(GUI.skin.button)
@@ -164,7 +168,7 @@ namespace UnderStatic.UI
                 fontSize = tabWidth < 145f ? 11 : GUI.skin.button.fontSize,
                 clipping = TextClipping.Clip
             };
-            foreach (var tab in Enum.GetValues(typeof(MarketTerminalView)).Cast<MarketTerminalView>())
+            foreach (var tab in tabs)
             {
                 if (GUI.Button(new Rect(tabX, panel.y + 56f, tabWidth, 34f), ViewLabel(tab), tabStyle)) SelectView(tab);
                 tabX += tabWidth + 8f;
@@ -336,7 +340,9 @@ namespace UnderStatic.UI
                 var modifiers = part.Definition.StatModifiers;
                 return $"{part.Definition.Category} · {part.Definition.Grade}\n" +
                        $"Condition {part.Runtime.condition:P0} · reliability {part.Definition.BaseReliability:P0}\n" +
-                       $"Mass {part.Definition.Mass:0.00} kg · standards {string.Join(", ", part.Definition.CompatibilityStandards)}\n\n" +
+                       $"Mass {part.Definition.Mass:0.00} kg · power {part.Definition.PowerDraw:0.00} PU · " +
+                       $"speed {modifiers.speed:+0.00;-0.00;0.00}\n" +
+                       $"Standards {string.Join(", ", part.Definition.CompatibilityStandards)}\n\n" +
                        $"END {modifiers.endurance:+0.000;-0.000;0}  OBS {modifiers.observation:+0.000;-0.000;0}  " +
                        $"CTL {modifiers.control:+0.000;-0.000;0}  REL {modifiers.reliability:+0.000;-0.000;0}\n" +
                        "Full specification and condition are disclosed before purchase.";
@@ -348,14 +354,18 @@ namespace UnderStatic.UI
             var disclosure = listing.exactFaultsDisclosed
                 ? "Certified serviceable. Exact condition and specification disclosed."
                 : "Visual inspection only. Exact component faults remain hidden until workshop diagnosis.";
-            var role = actor.IsExpendableStrikeDrone
-                ? "EXPENDABLE STRIKE · Armed rack with one sortie charge\n"
-                : listing.category == MarketListingCategory.EmptyFrame
-                    ? "EMPTY FRAME · No components included\n"
-                    : string.Empty;
-            return $"{actor.FrameDefinition.Family} · {actor.FrameDefinition.Grade}\n" +
+            var role = listing.category == MarketListingCategory.EmptyFrame
+                ? "EMPTY FRAME · No components included\n"
+                : $"{actor.ConfigurationLabel}\n";
+            var conversion = actor.CivilianConversion;
+            var origin = conversion != null
+                ? $"{conversion.Definition.DisplayName} · {conversion.StatusLabel}\n"
+                : string.Empty;
+            return $"{actor.FrameDefinition.AirframeClassName} AIRFRAME · {actor.FrameDefinition.Grade}\n" +
+                   origin +
                    role +
                    $"Frame {actor.Runtime.frameCondition:P0} · {actor.Readiness.InstalledCount}/{actor.Readiness.RequiredCount} components\n" +
+                   $"MASS {stats.TotalMass:0.00}/{stats.MaximumMass:0.00} kg  POWER {stats.PowerDraw:0.00}/{stats.PowerBudget:0.00} PU\n" +
                    $"SPD {stats.Speed:0.00}  END {stats.Endurance:0.00}  OBS {stats.Observation:0.00}\n" +
                    $"CTL {stats.Control:0.00}  PAY {stats.Payload:0.00}  REL {stats.Reliability:0.00}\n\n" +
                    disclosure;
@@ -370,7 +380,9 @@ namespace UnderStatic.UI
                     : listing.category == MarketListingCategory.EmptyFrame
                         ? "EMPTY FRAME STOCK · Cheap bare chassis delivered to an empty drone locker for workshop assembly."
                     : listing.category == MarketListingCategory.StrikeDrone
-                        ? "ONE-WAY STRIKE STOCK · Complete, tested, charged, and armed. Consumed only when assigned to an armed sortie."
+                        ? "LEGACY CONFIGURED STOCK · Retained for save compatibility; new aircraft enter through civilian conversion."
+                    : listing.category == MarketListingCategory.CompleteDrone
+                        ? "CIVILIAN FPV KIT · Retail guards fitted. Remove three covers before fitting retrofit hardware."
                     : "AVAILABLE THROUGH CURRENT BROKER ACCESS · Purchase requires suitable physical storage.";
             }
 
@@ -385,7 +397,10 @@ namespace UnderStatic.UI
             {
                 return market.ResolvePart(listing)?.Definition.DisplayName ?? "Unavailable part";
             }
-            return market.ResolveDrone(listing)?.FrameDefinition.DisplayName ?? "Unavailable drone";
+            var actor = market.ResolveDrone(listing);
+            return actor?.CivilianConversion?.Definition?.DisplayName
+                ?? actor?.FrameDefinition.DisplayName
+                ?? "Unavailable drone";
         }
 
         private Texture2D ThumbnailFor(MarketListingRuntimeData listing)
@@ -417,24 +432,51 @@ namespace UnderStatic.UI
                 DrawDroneThumbnail(
                     texture,
                     listing.category == MarketListingCategory.SalvageDrone,
-                    listing.category == MarketListingCategory.StrikeDrone);
+                    listing.category == MarketListingCategory.StrikeDrone,
+                    market.ResolveDrone(listing)?.FrameDefinition?.AirframeClass
+                        ?? DroneAirframeClass.Compact);
             }
             texture.Apply(false, true);
             thumbnails[listing.listingId] = texture;
             return texture;
         }
 
-        private static void DrawDroneThumbnail(Texture2D texture, bool damaged, bool strike)
+        private static void DrawDroneThumbnail(
+            Texture2D texture,
+            bool damaged,
+            bool strike,
+            DroneAirframeClass airframeClass)
         {
             var body = damaged
                 ? new Color(0.64f, 0.43f, 0.24f)
                 : strike
                     ? new Color(0.82f, 0.34f, 0.2f)
                     : new Color(0.34f, 0.76f, 0.6f);
-            Fill(texture, 65, 34, 30, 22, body);
-            Fill(texture, 28, 42, 104, 6, body);
-            Fill(texture, 75, 20, 10, 50, body);
-            Fill(texture, 20, 34, 24, 20, body);
+            if (airframeClass == DroneAirframeClass.HeavyLift)
+            {
+                Fill(texture, 55, 30, 50, 30, body);
+                Fill(texture, 24, 40, 112, 9, body);
+                Fill(texture, 16, 31, 28, 28, body);
+                Fill(texture, 116, 31, 28, 28, body);
+                Fill(texture, 48, 61, 8, 16, body);
+                Fill(texture, 104, 61, 8, 16, body);
+            }
+            else if (airframeClass == DroneAirframeClass.Endurance)
+            {
+                Fill(texture, 66, 22, 28, 42, body);
+                Fill(texture, 25, 40, 110, 6, body);
+                Fill(texture, 18, 32, 22, 22, body);
+                Fill(texture, 120, 32, 22, 22, body);
+                Fill(texture, 53, 66, 5, 15, body);
+                Fill(texture, 102, 66, 5, 15, body);
+            }
+            else
+            {
+                Fill(texture, 65, 34, 30, 22, body);
+                Fill(texture, 28, 42, 104, 6, body);
+                Fill(texture, 75, 20, 10, 50, body);
+                Fill(texture, 20, 34, 24, 20, body);
+            }
             Fill(texture, 116, 34, 24, 20, body);
             Fill(texture, 22, 18, 6, 54, body);
             Fill(texture, 132, 18, 6, 54, body);
@@ -494,8 +536,8 @@ namespace UnderStatic.UI
 
         private static string ViewLabel(MarketTerminalView value) => value switch
         {
-            MarketTerminalView.StrikeDrones => "STRIKE DRONES",
-            MarketTerminalView.CompleteDrones => "COMPLETE DRONES",
+            MarketTerminalView.StrikeDrones => "SPECIAL STOCK",
+            MarketTerminalView.CompleteDrones => "CIVILIAN DRONES",
             MarketTerminalView.DamagedDrones => "DAMAGED DRONES",
             _ => SplitName(value.ToString()).ToUpperInvariant()
         };

@@ -175,6 +175,57 @@ namespace UnderStatic.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator ScoutServiceHardware_HasVisibleContactAtEveryFastenedAssembly()
+        {
+            SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var serviceMode = Object.FindAnyObjectByType<UnderStatic.Interaction.DroneServiceModeController>();
+            Assert.That(serviceMode, Is.Not.Null);
+            Assert.That(serviceMode.EnterServiceMode(), Is.True);
+            yield return null;
+
+            var workshop = GameObject.Find("WorkshopDrone").transform;
+            var camera = GameObject.Find("InstalledCamera").transform;
+            var esc = GameObject.Find("Installed4In1Esc").transform;
+            var motor = GameObject.Find("Motor_front-left").transform;
+            var propeller = GameObject.Find("Propeller_front-left").transform;
+            var battery = GameObject.Find("InstalledDepletedBattery").transform;
+            var frame = workshop.Find("PSX_ScoutPresentation/Authored_DR_ScoutFrame");
+
+            AssertRenderersTouch(
+                workshop.Find("CameraBracketSocket_Fastener_1").GetComponent<Renderer>(),
+                camera.Find("PSX_PartDetail/Authored_DR_FpvCamera/CameraFastenerBoss.-1")
+                    .GetComponent<Renderer>(),
+                "The camera screw must land on its mounting boss.");
+            AssertRenderersTouch(
+                workshop.Find("MotorSocket_front-left_Fastener_1").GetComponent<Renderer>(),
+                motor.Find("PSX_PartDetail/Authored_DR_Motor/MotorMountEar.-1.-1")
+                    .GetComponent<Renderer>(),
+                "The motor screw must land on the motor mounting ear.");
+            AssertRenderersTouch(
+                workshop.Find("EscStackSocket_Fastener_1").GetComponent<Renderer>(),
+                esc.Find("PSX_PartDetail/Authored_DR_ESC/EscFastenerPost.-1.-1")
+                    .GetComponent<Renderer>(),
+                "The ESC screw must land on the board standoff.");
+            AssertRenderersTouch(
+                frame.Find("FrameScrew.0").GetComponent<Renderer>(),
+                frame.Find("FrameTopPlate").GetComponent<Renderer>(),
+                "Decorative frame screws must sit on the top plate.");
+            AssertRenderersTouch(
+                propeller.Find("PSX_PartDetail/Authored_DR_Propeller/PropellerCollet")
+                    .GetComponent<Renderer>(),
+                motor.Find("PSX_PartDetail/Authored_DR_Motor/MotorShaft").GetComponent<Renderer>(),
+                "The propeller collet must meet the motor shaft.");
+            AssertRenderersTouch(
+                battery.Find("PSX_PartDetail/Authored_DR_Battery/BatteryShrinkWrap")
+                    .GetComponent<Renderer>(),
+                frame.Find("BatteryPad").GetComponent<Renderer>(),
+                "The battery must rest on its anti-slip pad.");
+        }
+
+        [UnityTest]
         public IEnumerator PrecisionStrikeReconstructionUsesTexturedArtilleryKit()
         {
             SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
@@ -182,19 +233,22 @@ namespace UnderStatic.Tests.PlayMode
             yield return null;
 
             var director = Object.FindAnyObjectByType<MissionReplayDirector>();
-            var kit = Object.FindAnyObjectByType<PsxVisualKit>();
             var strike = Runtime(SortieType.GrenadeDrop, BattlefieldContactType.Artillery);
             strike.ordnanceConsumed = true;
             strike.breakdown.positiveIdentification = true;
 
             Assert.That(director.TryPlay(strike), Is.True);
             var terrain = GameObject.Find("TopographyMesh").GetComponent<MeshRenderer>();
-            Assert.That(terrain.sharedMaterial.mainTexture, Is.SameAs(kit.Atlas));
-            Assert.That(GameObject.Find("ArtilleryTarget"), Is.Not.Null);
-            Assert.That(GameObject.Find("GunShield"), Is.Not.Null);
-            Assert.That(GameObject.Find("Breech"), Is.Not.Null);
-            Assert.That(GameObject.Find("Wheel.-1"), Is.Not.Null);
-            Assert.That(GameObject.Find("Barrel"), Is.Not.Null);
+            var terrainTexture = Resources.Load<Texture2D>(
+                "Art/MissionRecreation/Textures/MR_Terrain_128");
+            var targetTexture = Resources.Load<Texture2D>(
+                "Art/MissionRecreation/Textures/MR_Targets_128");
+            Assert.That(terrain.sharedMaterial.mainTexture, Is.SameAs(terrainTexture));
+            var artillery = GameObject.Find("ArtilleryTarget");
+            Assert.That(artillery, Is.Not.Null);
+            Assert.That(artillery.GetComponentsInChildren<MeshRenderer>(true), Is.Not.Empty);
+            Assert.That(artillery.GetComponentInChildren<MeshRenderer>(true).sharedMaterial.mainTexture,
+                Is.SameAs(targetTexture));
             director.StopReplay();
             yield return null;
         }
@@ -214,15 +268,86 @@ namespace UnderStatic.Tests.PlayMode
             recon.breakdown.positiveIdentification = true;
 
             Assert.That(director.TryPlay(recon), Is.True);
-            Assert.That(GameObject.Find("DistantFigure.0"), Is.Not.Null);
+            Assert.That(GameObject.Find("DistantInfantryGroup"), Is.Not.Null);
             Assert.That(GameObject.Find("FPVPresentationCamera"), Is.Not.Null);
             Assert.That(GameObject.Find("ReconstructionDrone"), Is.Null);
             var vegetation = GameObject.Find("Vegetation.00");
             Assert.That(vegetation, Is.Not.Null);
-            Assert.That(vegetation.transform.Find("Trunk"), Is.Not.Null);
-            Assert.That(vegetation.transform.Find("Canopy"), Is.Not.Null);
+            Assert.That(vegetation.GetComponentsInChildren<MeshRenderer>(true), Is.Not.Empty);
+            var road = GameObject.Find("Road.00");
+            var roadTexture = Resources.Load<Texture2D>(
+                "Art/MissionRecreation/Textures/MR_Road_128");
+            Assert.That(road, Is.Not.Null);
+            Assert.That(road.GetComponentInChildren<MeshRenderer>(true).sharedMaterial.mainTexture,
+                Is.SameAs(roadTexture));
             director.StopReplay();
             yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator EnemyBaseReconstructionUsesFieldCommandPostArt()
+        {
+            SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var director = Object.FindAnyObjectByType<MissionReplayDirector>();
+            var strike = Runtime(SortieType.GrenadeDrop, BattlefieldContactType.EnemyBase);
+            strike.ordnanceConsumed = true;
+            strike.breakdown.positiveIdentification = true;
+
+            Assert.That(director.TryPlay(strike), Is.True);
+            var commandPost = GameObject.Find("EnemyBaseBuilding");
+            var structureTexture = Resources.Load<Texture2D>(
+                "Art/MissionRecreation/Textures/MR_Structures_128");
+            Assert.That(commandPost, Is.Not.Null);
+            Assert.That(commandPost.GetComponentsInChildren<MeshRenderer>(true), Is.Not.Empty);
+            Assert.That(commandPost.GetComponentInChildren<MeshRenderer>(true).sharedMaterial.mainTexture,
+                Is.SameAs(structureTexture));
+            director.StopReplay();
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator SafeHouseUsesAuthoredDroneKitWithinRenderedBudget()
+        {
+            SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var drone = GameObject.Find("WorkshopDrone");
+            var frame = GameObject.Find("Authored_DR_ScoutFrame");
+            var receiver = GameObject.Find("Authored_DR_ReceiverVTX");
+            var motor = GameObject.Find("Authored_DR_Motor");
+            var propeller = GameObject.Find("Authored_DR_Propeller");
+            var battery = GameObject.Find("Authored_DR_Battery");
+            var camera = GameObject.Find("Authored_DR_FpvCamera");
+            var antenna = GameObject.Find("Authored_DR_Antenna");
+            var esc = GameObject.Find("Authored_DR_ESC");
+            var flightController = GameObject.Find("Authored_DR_FlightController");
+
+            Assert.That(drone, Is.Not.Null);
+            Assert.That(frame, Is.Not.Null);
+            Assert.That(receiver, Is.Not.Null);
+            Assert.That(motor, Is.Not.Null);
+            Assert.That(propeller, Is.Not.Null);
+            Assert.That(battery, Is.Not.Null);
+            Assert.That(camera, Is.Not.Null);
+            Assert.That(antenna, Is.Not.Null);
+            Assert.That(esc, Is.Not.Null);
+            Assert.That(flightController, Is.Not.Null);
+            var renderedTriangles = drone.GetComponentsInChildren<MeshFilter>(true)
+                .Where(filter => filter.sharedMesh != null
+                    && filter.TryGetComponent<Renderer>(out var renderer)
+                    && renderer.enabled)
+                .Sum(filter => Enumerable.Range(0, filter.sharedMesh.subMeshCount)
+                    .Sum(subMesh => (int)filter.sharedMesh.GetIndexCount(subMesh) / 3));
+            Assert.That(renderedTriangles, Is.LessThan(8000));
+            Assert.That(frame.GetComponentsInChildren<Collider>(true), Is.Empty);
+            Assert.That(motor.GetComponentInChildren<Renderer>(true).sharedMaterial.mainTexture.name,
+                Is.EqualTo("DR_Components_128"));
+            Assert.That(frame.GetComponentInChildren<Renderer>(true).sharedMaterial.mainTexture.name,
+                Is.EqualTo("DR_Frame_128"));
         }
 
         [UnityTest]
@@ -281,15 +406,15 @@ namespace UnderStatic.Tests.PlayMode
             }
 
             Assert.That(parts.First(part => part.Definition.Category == PartCategory.Motor)
-                .transform.Find("PSX_PartDetail/MotorBell"), Is.Not.Null);
+                .transform.Find("PSX_PartDetail/Authored_DR_Motor"), Is.Not.Null);
             Assert.That(parts.First(part => part.Definition.Category == PartCategory.Battery)
-                .transform.Find("PSX_PartDetail/BatteryShrinkWrap"), Is.Not.Null);
+                .transform.Find("PSX_PartDetail/Authored_DR_Battery"), Is.Not.Null);
             Assert.That(parts.First(part => part.Definition.Category == PartCategory.Camera)
-                .transform.Find("PSX_PartDetail/CameraGlass"), Is.Not.Null);
+                .transform.Find("PSX_PartDetail/Authored_DR_FpvCamera"), Is.Not.Null);
             Assert.That(parts.First(part => part.Definition.Category == PartCategory.Antenna)
-                .transform.Find("PSX_PartDetail/AntennaWhip"), Is.Not.Null);
+                .transform.Find("PSX_PartDetail/Authored_DR_Antenna"), Is.Not.Null);
             Assert.That(parts.First(part => part.Definition.Category == PartCategory.Propeller)
-                .transform.Find("PSX_PartDetail/PropellerBlade.2"), Is.Not.Null);
+                .transform.Find("PSX_PartDetail/Authored_DR_Propeller"), Is.Not.Null);
         }
 
         [UnityTest]
@@ -319,6 +444,15 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(blade.bounds.min.y, Is.LessThan(driveSlot.bounds.max.y));
 
             screwdriver.Deactivate();
+        }
+
+        private static void AssertRenderersTouch(Renderer first, Renderer second, string message)
+        {
+            Assert.That(first, Is.Not.Null, message);
+            Assert.That(second, Is.Not.Null, message);
+            var expanded = first.bounds;
+            expanded.Expand(0.003f);
+            Assert.That(expanded.Intersects(second.bounds), Is.True, message);
         }
 
         private static MissionRuntimeData Runtime(SortieType type, BattlefieldContactType targetType) => new()

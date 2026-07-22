@@ -109,7 +109,9 @@ namespace UnderStatic.Tests.PlayMode
             runtime.state = MissionRuntimeState.Resolved;
             runtime.outcome = MissionOutcome.NoContact;
             director.Tick(0.01f);
-            Assert.That(GameObject.Find("EmptyLastKnownPosition"), Is.Not.Null);
+            var emptyPosition = GameObject.Find("EmptyLastKnownPosition");
+            Assert.That(emptyPosition, Is.Not.Null);
+            Assert.That(emptyPosition.GetComponentsInChildren<MeshRenderer>(true), Is.Not.Empty);
             Assert.That(GameObject.Find("DistantFigure.0"), Is.Null);
             Assert.That(director.ActiveStrikeType, Is.EqualTo(MissionReplayStrikeType.BombDrop));
             director.StopReplay();

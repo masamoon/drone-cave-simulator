@@ -58,6 +58,9 @@ Desktop.ini
 *.tmp
 *.bak
 *.swp
+*.blend1
+__pycache__/
+*.pyc
 
 # Rider
 .idea/

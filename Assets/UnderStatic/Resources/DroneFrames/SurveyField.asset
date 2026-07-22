@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: SurveyField
   m_EditorClassIdentifier: UnderStatic.Runtime::UnderStatic.Fleet.DroneFrameDefinition
   id: frame.survey.field
-  displayName: Survey Field
-  family: 1
+  displayName: Endurance Field
+  airframeClass: 1
   grade: 0
   presentationPrefab: {fileID: 0}
   socketRequirements:

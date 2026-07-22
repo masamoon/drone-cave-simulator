@@ -196,6 +196,24 @@ namespace UnderStatic.Tests
         }
 
         [Test]
+        public void OneWayStrikeEligibility_ComesFromInstalledConfigurationNotAirframeIdentity()
+        {
+            var setup = CreateSetup(SortieType.KamikazeStrike, includeRack: true, expendable: true);
+            setup.actor.Runtime.isExpendableStrikeDrone = false;
+            var target = setup.battlefield.CaptureState().contacts.First(item =>
+                item.type == BattlefieldContactType.Artillery);
+            Reveal(setup.battlefield, target, 1);
+            Assert.That(setup.missions.SelectTarget(target.contactId), Is.True);
+
+            Assert.That(setup.actor.FrameDefinition.AirframeClass, Is.EqualTo(DroneAirframeClass.Compact));
+            Assert.That(setup.actor.IsExpendableStrikeDrone, Is.False);
+            Assert.That(setup.actor.HasOneWayPayload, Is.True);
+            Assert.That(setup.actor.ConfigurationLabel, Is.EqualTo("CAMERA + ONE-WAY"));
+            Assert.That(setup.missions.EvaluateDraft().Eligible, Is.True,
+                setup.missions.EvaluateDraft().Reason);
+        }
+
+        [Test]
         public void KamikazeConsumesAirframeWhileGrenadeDropReturnsReusableDrone()
         {
             var kamikaze = CreateSetup(SortieType.KamikazeStrike, includeRack: true, expendable: true);
@@ -496,7 +514,7 @@ namespace UnderStatic.Tests
         private DroneActor CreateReadyActor(string id, bool includeRack, bool expendable, float endurance)
         {
             var frame = Track(DroneFrameDefinition.CreateTransient(
-                $"frame.{id}", "Test Frame", DroneFrameFamily.Scout, EquipmentGrade.Field,
+                $"frame.{id}", "Test Frame", DroneAirframeClass.Compact, EquipmentGrade.Field,
                 new DroneBaseStats
                 {
                     speed = 1f,

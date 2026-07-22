@@ -1,5 +1,7 @@
 using UnderStatic.Core;
 using UnderStatic.Parts;
+using System;
+using System.Linq;
 using UnityEngine;
 
 namespace UnderStatic.Workshop
@@ -9,13 +11,21 @@ namespace UnderStatic.Workshop
     {
         [SerializeField] private PartSocket socket;
         [SerializeField] private Renderer statusRenderer;
+        [SerializeField] private Renderer[] plugConnectionRenderers = Array.Empty<Renderer>();
         [SerializeField, Min(0.1f)] private float chargeDurationSeconds = 8f;
+        [SerializeField, Min(1)] private int unlockedPlugCount = 1;
+        [SerializeField, Min(1)] private int maximumPlugCapacity = 5;
 
         private MaterialPropertyBlock propertyBlock;
 
         public PartSocket Socket => socket;
         public InstallablePart OccupiedBattery => socket?.OccupiedPart;
         public float ChargeDurationSeconds => chargeDurationSeconds;
+        public int UnlockedPlugCount => Mathf.Clamp(unlockedPlugCount, 1, MaximumPlugCapacity);
+        public int MaximumPlugCapacity => Mathf.Max(1, maximumPlugCapacity);
+        public string CapacityLabel => $"{UnlockedPlugCount}/{MaximumPlugCapacity} PLUGS ONLINE";
+        public bool IsPlugConnectionVisible => plugConnectionRenderers.Any(
+            renderer => renderer != null && renderer.enabled);
         public bool IsCharging => CanCharge(OccupiedBattery)
             && OccupiedBattery.Runtime.chargeLevel < 0.999f;
         public string Status
@@ -29,7 +39,7 @@ namespace UnderStatic.Workshop
                 }
                 if (battery.Runtime.currentState is not (InteractionState.Installed or InteractionState.Tested))
                 {
-                    return $"{battery.Runtime.chargeLevel:P0} - seat battery on charging connector";
+                    return $"{battery.Runtime.chargeLevel:P0} - connect battery lead to charge plug";
                 }
                 if (!battery.IsServiceable)
                 {
@@ -41,11 +51,20 @@ namespace UnderStatic.Workshop
             }
         }
 
-        public void Configure(PartSocket chargingSocket, Renderer indicator, float durationSeconds = 8f)
+        public void Configure(
+            PartSocket chargingSocket,
+            Renderer indicator,
+            Renderer[] connectionRenderers,
+            float durationSeconds = 8f,
+            int initialUnlockedPlugs = 1,
+            int maximumPlugs = 5)
         {
             socket = chargingSocket;
             statusRenderer = indicator;
+            plugConnectionRenderers = connectionRenderers ?? Array.Empty<Renderer>();
             chargeDurationSeconds = Mathf.Max(0.1f, durationSeconds);
+            maximumPlugCapacity = Mathf.Max(1, maximumPlugs);
+            unlockedPlugCount = Mathf.Clamp(initialUnlockedPlugs, 1, maximumPlugCapacity);
             UpdateIndicator();
         }
 
@@ -76,6 +95,16 @@ namespace UnderStatic.Workshop
 
         private void UpdateIndicator()
         {
+            var connectionVisible = OccupiedBattery != null
+                && OccupiedBattery.Runtime.currentState is InteractionState.Installed or InteractionState.Tested;
+            foreach (var renderer in plugConnectionRenderers)
+            {
+                if (renderer != null)
+                {
+                    renderer.enabled = connectionVisible;
+                }
+            }
+
             if (statusRenderer == null)
             {
                 return;

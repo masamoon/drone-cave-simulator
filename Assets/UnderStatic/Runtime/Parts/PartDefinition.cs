@@ -22,6 +22,7 @@ namespace UnderStatic.Parts
         [SerializeField, Range(0f, 1f)] private float baseReliability = 0.9f;
         [SerializeField, Min(0.01f)] private float mass = 0.18f;
         [SerializeField, Min(0f)] private float powerDraw = 0.1f;
+        [SerializeField] private bool requiresRetrofitClearance;
         [SerializeField, Range(0f, 1f)] private float capability = 0.8f;
         [SerializeField, Min(1)] private int salvageYield = 1;
 
@@ -41,6 +42,7 @@ namespace UnderStatic.Parts
         public float BaseReliability => baseReliability;
         public float Mass => mass;
         public float PowerDraw => powerDraw;
+        public bool RequiresRetrofitClearance => requiresRetrofitClearance;
         public float Capability => capability;
         public int SalvageYield => Mathf.Max(1, salvageYield);
 
@@ -71,7 +73,8 @@ namespace UnderStatic.Parts
             EquipmentGrade equipmentGrade = EquipmentGrade.Field,
             PartStatModifiers modifiers = default,
             int value = 50,
-            PartMissionCapability capabilities = PartMissionCapability.None)
+            PartMissionCapability capabilities = PartMissionCapability.None,
+            bool retrofitClearanceRequired = false)
         {
             var definition = CreateInstance<PartDefinition>();
             definition.id = definitionId;
@@ -87,6 +90,7 @@ namespace UnderStatic.Parts
             definition.baseReliability = Mathf.Clamp01(reliability);
             definition.mass = Mathf.Max(0.01f, partMass);
             definition.powerDraw = Mathf.Max(0f, partPowerDraw);
+            definition.requiresRetrofitClearance = retrofitClearanceRequired;
             definition.capability = Mathf.Clamp01(partCapability);
             definition.salvageYield = Mathf.Max(1, partSalvageYield);
             return definition;

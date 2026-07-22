@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: ScoutProfessional
   m_EditorClassIdentifier: UnderStatic.Runtime::UnderStatic.Fleet.DroneFrameDefinition
   id: frame.scout.professional
-  displayName: Scout Professional
-  family: 0
+  displayName: Compact Professional
+  airframeClass: 0
   grade: 1
   presentationPrefab: {fileID: 0}
   socketRequirements:

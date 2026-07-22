@@ -9,6 +9,9 @@ namespace UnderStatic.Visuals
 {
     public static class PsxVisualFactory
     {
+        private const string DroneModelRoot = "Art/DroneKit/Models/";
+        private const string DroneTextureRoot = "Art/DroneKit/Textures/";
+
         public static PsxVisualKit CreateKit(Transform parent, PsxVisualProfile profile)
         {
             var root = new GameObject("PSXVisualKit");
@@ -58,6 +61,31 @@ namespace UnderStatic.Visuals
             var label = kit.MaterialFor(PsxSurface.Label);
             var warning = kit.MaterialFor(PsxSurface.Warning);
             var center = new Vector3(0f, 1.155f, 0.86f);
+
+            if (AttachAuthoredModel(
+                    presentation,
+                    kit,
+                    "DR_ScoutFrame",
+                    "DR_Frame_128",
+                    PsxSurface.FrameComposite,
+                    Vector3.zero,
+                    Vector3.one))
+            {
+                AttachAuthoredModel(
+                    presentation,
+                    kit,
+                    "DR_ReceiverVTX",
+                    "DR_Electronics_128",
+                    PsxSurface.Electronics,
+                    new Vector3(0f, 1.205f, 1.035f),
+                    Vector3.one * 0.38f);
+                foreach (var authoredPart in parts?.Where(item => item != null && item.transform.IsChildOf(drone))
+                             ?? Enumerable.Empty<InstallablePart>())
+                {
+                    EnhancePart(authoredPart, kit);
+                }
+                return true;
+            }
 
             foreach (var renderer in drone.GetComponentsInChildren<Renderer>(true))
             {
@@ -213,6 +241,37 @@ namespace UnderStatic.Visuals
             return true;
         }
 
+        public static Transform AttachCivilianDroneShell(
+            Transform drone,
+            PsxVisualKit kit,
+            string modelName)
+        {
+            if (drone == null || kit == null || string.IsNullOrWhiteSpace(modelName))
+            {
+                return null;
+            }
+            var existing = drone.Find("PSX_CivilianPresentation");
+            if (existing != null)
+            {
+                return existing;
+            }
+            var presentation = new GameObject("PSX_CivilianPresentation").transform;
+            presentation.SetParent(drone, false);
+            if (AttachAuthoredModel(
+                    presentation,
+                    kit,
+                    modelName,
+                    "DR_Civilian_128",
+                    PsxSurface.FrameComposite,
+                    Vector3.zero,
+                    Vector3.one))
+            {
+                return presentation;
+            }
+            UnityEngine.Object.Destroy(presentation.gameObject);
+            return null;
+        }
+
         public static bool EnhancePart(InstallablePart part, PsxVisualKit kit)
         {
             if (part == null || kit == null || part.transform.Find("PSX_PartDetail") != null)
@@ -243,6 +302,23 @@ namespace UnderStatic.Visuals
                 };
             }
             HideLegacyPartPresentation(part, category);
+
+            if (TryAttachAuthoredPart(detail, category, kit))
+            {
+                if (category == PartCategory.StrikeRack)
+                {
+                    CreateStrikeRackVisual(detail, kit);
+                    foreach (Transform child in detail)
+                    {
+                        if (child.name.StartsWith("Rack", StringComparison.Ordinal))
+                        {
+                            SetRendererEnabled(child, false);
+                        }
+                    }
+                    UpdateStrikePayloadVisual(part);
+                }
+                return true;
+            }
 
             switch (category)
             {
@@ -913,6 +989,85 @@ namespace UnderStatic.Visuals
             {
                 renderer.enabled = enabled;
             }
+        }
+
+        private static bool TryAttachAuthoredPart(
+            Transform parent,
+            PartCategory category,
+            PsxVisualKit kit)
+        {
+            var model = category switch
+            {
+                PartCategory.Motor => "DR_Motor",
+                PartCategory.Propeller => "DR_Propeller",
+                PartCategory.Battery => "DR_Battery",
+                PartCategory.Camera => "DR_FpvCamera",
+                PartCategory.Antenna => "DR_Antenna",
+                PartCategory.Esc => "DR_ESC",
+                PartCategory.FlightController => "DR_FlightController",
+                PartCategory.StrikeRack => "DR_StrikeRack",
+                PartCategory.Payload => "DR_SealedPayload",
+                _ => null
+            };
+            if (model == null)
+            {
+                return false;
+            }
+            var texture = category is PartCategory.Esc or PartCategory.FlightController
+                ? "DR_Electronics_128"
+                : "DR_Components_128";
+            var surface = category is PartCategory.Esc or PartCategory.FlightController
+                ? PsxSurface.Electronics
+                : category is PartCategory.Propeller or PartCategory.Battery or PartCategory.Antenna
+                    ? PsxSurface.Rubber
+                    : PsxSurface.PaintedMetal;
+            return AttachAuthoredModel(parent, kit, model, texture, surface, Vector3.zero, Vector3.one);
+        }
+
+        private static bool AttachAuthoredModel(
+            Transform parent,
+            PsxVisualKit kit,
+            string modelName,
+            string textureName,
+            PsxSurface surface,
+            Vector3 localPosition,
+            Vector3 localScale)
+        {
+            var prefab = Resources.Load<GameObject>($"{DroneModelRoot}{modelName}");
+            var texture = Resources.Load<Texture2D>($"{DroneTextureRoot}{textureName}");
+            if (parent == null || kit == null || prefab == null || texture == null)
+            {
+                return false;
+            }
+            var instance = UnityEngine.Object.Instantiate(prefab, parent, false);
+            instance.name = $"Authored_{modelName}";
+            instance.transform.localPosition = localPosition;
+            instance.transform.localRotation = Quaternion.identity;
+            instance.transform.localScale = localScale;
+            var material = kit.MaterialForTexture(surface, texture);
+            var decalTexture = Resources.Load<Texture2D>($"{DroneTextureRoot}DR_Decals_128");
+            var decalMaterial = kit.MaterialForTexture(PsxSurface.Label, decalTexture);
+            foreach (var renderer in instance.GetComponentsInChildren<Renderer>(true))
+            {
+                renderer.sharedMaterial = renderer.gameObject.name.Contains(
+                        "Label",
+                        StringComparison.OrdinalIgnoreCase)
+                    || renderer.gameObject.name.Contains("MarkingBand", StringComparison.OrdinalIgnoreCase)
+                        ? decalMaterial
+                        : material;
+            }
+            foreach (var collider in instance.GetComponentsInChildren<Collider>(true))
+            {
+                if (Application.isPlaying)
+                {
+                    UnityEngine.Object.Destroy(collider);
+                }
+                else
+                {
+                    UnityEngine.Object.DestroyImmediate(collider);
+                }
+            }
+            return true;
         }
     }
 }

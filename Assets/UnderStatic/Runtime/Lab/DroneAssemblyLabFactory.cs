@@ -1331,12 +1331,12 @@ namespace UnderStatic.Lab
             var strikeFrame = DroneFrameDefinition.CreateTransient(
                 "frame.expendable-strike.field",
                 "Expendable Strike Field",
-                DroneFrameFamily.Scout,
+                DroneAirframeClass.Compact,
                 EquipmentGrade.Field,
                 strikeStats,
                 180,
                 6,
-                DroneFrameDefinition.DefaultRequirements(DroneFrameFamily.Scout));
+                DroneFrameDefinition.DefaultRequirements(DroneAirframeClass.Compact));
             var actor = clone.GetComponent<DroneActor>();
             actor.Configure(
                 strikeFrame,
@@ -1439,7 +1439,7 @@ namespace UnderStatic.Lab
             }
 
             var baseFrame = DroneFrameCatalog.Load("ScoutField");
-            var requirements = DroneFrameDefinition.DefaultRequirements(DroneFrameFamily.Scout)
+            var requirements = DroneFrameDefinition.DefaultRequirements(DroneAirframeClass.Compact)
                 .Concat(new[]
                 {
                     new DroneSocketRequirement
@@ -1452,8 +1452,8 @@ namespace UnderStatic.Lab
                 .ToArray();
             var frame = DroneFrameDefinition.CreateTransient(
                 "frame.scratch-strike.field",
-                "Empty FPV Strike Frame",
-                DroneFrameFamily.Scout,
+                "Empty Compact FPV Frame",
+                DroneAirframeClass.Compact,
                 EquipmentGrade.Field,
                 baseFrame.BaseStats,
                 100,
@@ -1688,7 +1688,7 @@ namespace UnderStatic.Lab
             };
             return PartDefinition.CreateTransient(
                 $"part.survey.professional.{source.Category.ToString().ToLowerInvariant()}",
-                $"Survey Professional {source.Category}",
+                $"Endurance Professional {source.Category}",
                 source.Category,
                 source.CompatibleSocketTags.ToArray(),
                 Mathf.Clamp01(source.BaseReliability * 1.08f),
@@ -1848,7 +1848,7 @@ namespace UnderStatic.Lab
             };
             return PartDefinition.CreateTransient(
                 $"part.utility.field.{category.ToString().ToLowerInvariant()}",
-                $"Utility Field {category}",
+                $"Heavy-Lift Field {category}",
                 category,
                 Array.Empty<string>(),
                 reliability: 0.88f,
@@ -1974,9 +1974,10 @@ namespace UnderStatic.Lab
                 partSalvageYield: 2,
                 standards: new[] { CompatibilityStandardId.SharedStrikeRack },
                 equipmentGrade: EquipmentGrade.Field,
-                modifiers: new PartStatModifiers { payload = -0.035f, control = -0.015f, noise = 0.02f },
+                modifiers: new PartStatModifiers { speed = -0.04f, payload = -0.035f, control = -0.015f, noise = 0.02f },
                 value: 40,
-                capabilities: PartMissionCapability.None);
+                capabilities: PartMissionCapability.None,
+                retrofitClearanceRequired: true);
             var rack = InteractionLabFactory.CreateComponentPart(
                 requiredForScratchBuild ? "ScratchStrikePayloadMount" : "FieldStrikeRack",
                 null,
@@ -2252,9 +2253,10 @@ namespace UnderStatic.Lab
                 partSalvageYield: 1,
                 standards: new[] { CompatibilityStandardId.SharedPayload },
                 equipmentGrade: EquipmentGrade.Field,
-                modifiers: new PartStatModifiers { payload = -0.04f, control = -0.02f },
+                modifiers: new PartStatModifiers { speed = -0.08f, payload = -0.04f, control = -0.02f },
                 value: 40,
-                capabilities: PartMissionCapability.KamikazeWarhead);
+                capabilities: PartMissionCapability.KamikazeWarhead,
+                retrofitClearanceRequired: true);
             var payload = InteractionLabFactory.CreateComponentPart(
                 "FieldSealedPayload",
                 null,

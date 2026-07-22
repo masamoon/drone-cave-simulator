@@ -238,7 +238,7 @@ namespace UnderStatic.Economy
                 listingId = $"resale.drone.{actor.Runtime.droneInstanceId}",
                 category = actor.InstalledParts.Count == 0
                     ? MarketListingCategory.EmptyFrame
-                    : actor.IsExpendableStrikeDrone
+                    : actor.HasOneWayPayload
                         ? MarketListingCategory.StrikeDrone
                         : MarketListingCategory.SalvageDrone,
                 askingPrice = Mathf.Max(value + 1, CalculateWholeDroneMarketValue(actor)),

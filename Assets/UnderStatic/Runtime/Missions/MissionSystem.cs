@@ -221,31 +221,27 @@ namespace UnderStatic.Missions
                 return new MissionEligibilityResult(false, "Only the tested ready-shelf drone can launch");
             }
 
-            var capabilities = CapabilitiesFor(actor);
+            var capabilities = actor.MissionCapabilities;
             if ((capabilities & profile.RequiredCapabilities) != profile.RequiredCapabilities)
             {
                 return new MissionEligibilityResult(false, draft.sortieType switch
                 {
-                    SortieType.Recon => "Recon requires a reusable aircraft with a serviceable camera",
-                    SortieType.KamikazeStrike => "Kamikaze requires an expendable aircraft with a charged warhead",
-                    _ => "Grenade drop requires a reusable aircraft with a charged drop rack"
+                    SortieType.Recon => "Recon requires a serviceable camera configuration",
+                    SortieType.KamikazeStrike => "One-way strike requires a charged armed payload",
+                    _ => "Grenade drop requires a charged drop payload"
                 });
             }
-            var loadedPayload = FindLoadedPayload(actor);
-            var legacyStrike = HasLegacyStrikeConfiguration(actor, draft.sortieType);
-            if (draft.sortieType == SortieType.Recon
-                && (loadedPayload != null || actor.IsExpendableStrikeDrone))
+            if (draft.sortieType == SortieType.Recon && actor.HasArmedPayload)
             {
-                return new MissionEligibilityResult(false, "Remove the loaded payload before reconnaissance");
+                return new MissionEligibilityResult(false, "Remove the armed payload before reconnaissance");
             }
-            if (draft.sortieType == SortieType.KamikazeStrike && loadedPayload == null && !legacyStrike)
+            if (draft.sortieType == SortieType.KamikazeStrike && !actor.HasOneWayPayload)
             {
                 return new MissionEligibilityResult(false, "Seat, strap, connect and diagnose a payload");
             }
-            if (draft.sortieType == SortieType.GrenadeDrop
-                && (loadedPayload != null || actor.IsExpendableStrikeDrone))
+            if (draft.sortieType == SortieType.GrenadeDrop && actor.HasOneWayPayload)
             {
-                return new MissionEligibilityResult(false, "Grenade drop requires a recoverable aircraft");
+                return new MissionEligibilityResult(false, "Replace the one-way payload with a recoverable drop payload");
             }
 
             var plan = BuildPlan(actor);
@@ -309,7 +305,7 @@ namespace UnderStatic.Missions
             var profile = ProfileFor(draft.sortieType);
             var plan = BuildPlan(actor);
             var rack = FindStrikeRack(actor);
-            var loadedPayload = FindLoadedPayload(actor);
+            var loadedPayload = actor.LoadedPayload;
             if (draft.sortieType == SortieType.KamikazeStrike && loadedPayload == null
                 && !HasLegacyStrikeConfiguration(actor, draft.sortieType))
             {
@@ -1144,13 +1140,6 @@ namespace UnderStatic.Missions
             part?.Definition?.Category == PartCategory.StrikeRack
             && part.Runtime.currentState is InteractionState.Installed or InteractionState.Tested);
 
-        private static InstallablePart FindLoadedPayload(DroneActor actor)
-        {
-            var rack = FindStrikeRack(actor);
-            var procedure = rack?.GetComponent<StrikePayloadMountProcedure>();
-            return procedure is { IsComplete: true } ? procedure.Payload : null;
-        }
-
         private static bool HasLegacyStrikeConfiguration(DroneActor actor, SortieType sortieType)
         {
             var rack = FindStrikeRack(actor);
@@ -1160,33 +1149,6 @@ namespace UnderStatic.Missions
             return rack != null && rack.GetComponent<StrikePayloadMountProcedure>() == null
                 && rack.Runtime.consumableCharges > 0
                 && (rack.Definition.MissionCapabilities & required) == required;
-        }
-
-        private static PartMissionCapability CapabilitiesFor(DroneActor actor)
-        {
-            var capabilities = PartMissionCapability.None;
-            foreach (var part in actor?.InstalledParts ?? Array.Empty<InstallablePart>())
-            {
-                if (part?.Definition == null || !part.IsServiceable)
-                {
-                    continue;
-                }
-                if (part.Definition.Category == PartCategory.StrikeRack
-                    && part.GetComponent<StrikePayloadMountProcedure>() != null)
-                {
-                    continue;
-                }
-                if (part.Definition.Category == PartCategory.Payload && FindLoadedPayload(actor) != part)
-                {
-                    continue;
-                }
-                capabilities |= part.Definition.MissionCapabilities;
-                if (part.Definition.Category == PartCategory.Camera)
-                {
-                    capabilities |= PartMissionCapability.Observation;
-                }
-            }
-            return capabilities;
         }
 
         private static BattlefieldContactType ToLegacyContactType(EnemyActivityType type) => type switch
