@@ -33,8 +33,8 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(frontline, Is.Not.Null);
             Assert.That(frontline.Definition.Sectors.Count, Is.EqualTo(9));
             Assert.That(salvage, Is.Not.Null);
-            Assert.That(salvage.DeliveredParts.Count, Is.EqualTo(4));
-            Assert.That(salvage.DeliveredParts.All(part => part.Runtime.condition is >= 0.45f and <= 0.75f), Is.True);
+            Assert.That(salvage.DeliveredParts.Count, Is.EqualTo(3));
+            Assert.That(salvage.DeliveredParts.All(part => part.Runtime.condition is >= 0.48f and <= 0.78f), Is.True);
             Assert.That(salvage.DeliveredParts.All(part => part.Compromise.IsPresent), Is.True);
             Assert.That(missions.Profiles.Select(item => item.SortieType),
                 Is.EquivalentTo(new[] { SortieType.Recon, SortieType.KamikazeStrike }));

@@ -317,10 +317,10 @@ namespace UnderStatic.Missions
 
         public static int StrikeRewardFor(EnemyActivityType type, bool neutralized) => type switch
         {
-            EnemyActivityType.Infantry => neutralized ? 320 : 160,
-            EnemyActivityType.Tank => neutralized ? 480 : 240,
-            EnemyActivityType.Artillery => neutralized ? 420 : 210,
-            EnemyActivityType.EnemyBase => neutralized ? 700 : 300,
+            EnemyActivityType.Infantry => neutralized ? 950 : Mathf.RoundToInt(950f * 0.55f),
+            EnemyActivityType.Tank => neutralized ? 1450 : Mathf.RoundToInt(1450f * 0.55f),
+            EnemyActivityType.Artillery => neutralized ? 1350 : Mathf.RoundToInt(1350f * 0.55f),
+            EnemyActivityType.EnemyBase => neutralized ? 2300 : Mathf.RoundToInt(2300f * 0.55f),
             _ => 0
         };
     }

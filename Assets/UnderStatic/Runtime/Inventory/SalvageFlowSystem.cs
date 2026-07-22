@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnderStatic.Core;
+using UnderStatic.Economy;
 using UnderStatic.Fleet;
 using UnderStatic.Missions;
 using UnderStatic.Parts;
@@ -39,6 +40,7 @@ namespace UnderStatic.Inventory
         private OperationalDaySystem operationalDay;
         private FleetSystem fleet;
         private InventorySystem inventory;
+        private MarketDefinition balance;
 
         public SalvageFlowRuntimeData Runtime => runtime;
         public IReadOnlyList<InstallablePart> DeliveredParts => candidateParts.Where(IsDelivered).ToArray();
@@ -52,7 +54,8 @@ namespace UnderStatic.Inventory
             OperationalDaySystem daySystem,
             FleetSystem fleetSystem,
             InventorySystem inventorySystem,
-            int seed = 1701)
+            int seed = 1701,
+            MarketDefinition balanceDefinition = null)
         {
             candidateParts = candidates?.Where(item => item != null).Distinct().ToArray()
                 ?? Array.Empty<InstallablePart>();
@@ -62,6 +65,9 @@ namespace UnderStatic.Inventory
             operationalDay = daySystem;
             fleet = fleetSystem;
             inventory = inventorySystem;
+            balance = balanceDefinition != null
+                ? balanceDefinition
+                : MarketDefinition.CreateTransient();
             runtime = new SalvageFlowRuntimeData { seed = seed };
 
             foreach (var part in candidateParts)
@@ -71,7 +77,7 @@ namespace UnderStatic.Inventory
             }
             if (missions != null) missions.MissionResolved += HandleMissionResolved;
             if (operationalDay != null) operationalDay.DayBegan += HandleDayBegan;
-            DeliverLot(4, true);
+            DeliverLot(balance.InitialSalvageCount, true);
         }
 
         public SalvageFlowRuntimeData CaptureState() => runtime.Copy();
@@ -143,10 +149,13 @@ namespace UnderStatic.Inventory
         private void HandleMissionResolved(MissionRuntimeData _)
         {
             runtime.resolvedSorties++;
-            if (runtime.resolvedSorties % 2 == 0) DeliverLot(3, true);
+            if (runtime.resolvedSorties % balance.SortiesPerSalvageDelivery == 0)
+            {
+                DeliverLot(balance.SortieSalvageCount, true);
+            }
         }
 
-        private void HandleDayBegan(int _) => DeliverLot(4, true);
+        private void HandleDayBegan(int _) => DeliverLot(balance.DailySalvageCount, true);
 
         private IEnumerable<PartCategory> NeededCategories()
         {
@@ -161,7 +170,7 @@ namespace UnderStatic.Inventory
         private void ApplySeededCondition(InstallablePart part, int delivery, int index)
         {
             var random = new System.Random(StableHash($"{runtime.seed}:{delivery}:{index}:{part.Runtime.uniqueInstanceId}"));
-            part.SetCondition(Mathf.Lerp(0.45f, 0.75f, (float)random.NextDouble()));
+            part.SetCondition(Mathf.Lerp(0.48f, 0.78f, (float)random.NextDouble()));
             var types = new[]
             {
                 PartCompromiseType.ReachPenalty,

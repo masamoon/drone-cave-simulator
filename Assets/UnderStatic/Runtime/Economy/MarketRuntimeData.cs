@@ -111,7 +111,7 @@ namespace UnderStatic.Economy
     [Serializable]
     public sealed class EconomyRuntimeData
     {
-        public int funds = 600;
+        public int funds = 1100;
         public int reputation;
         public MarketRuntimeData market = new();
 

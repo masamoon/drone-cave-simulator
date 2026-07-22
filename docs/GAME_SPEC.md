@@ -1019,6 +1019,13 @@ Replace terminal-driven day advancement with an authored return to the living co
 sleeping in the cot, sees a concise transition, and wakes into the deterministically advanced workshop state. See
 `MILESTONE_13.md`.
 
+### Milestone 14 — Unmanned Ground Vehicle Operations
+
+Add persistent contemporary land drones primarily as remote launch-and-recovery platforms for aerial drones and as
+salvage retrievers that avoid direct player field exposure. A limited abstract offensive role complements those
+logistics functions, while platform, cargo, route, and staged-aircraft loss preserve meaningful risk. Direct driving
+and detailed combat remain excluded. See `MILESTONE_14.md`.
+
 The detailed document for the active milestone is binding. Earlier milestone documents provide regression
 coverage but do not authorize additional expansion. Do not proceed until the active milestone is stable,
 validated in Play Mode, and subjectively acceptable.

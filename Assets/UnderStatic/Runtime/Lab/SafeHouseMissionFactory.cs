@@ -83,7 +83,8 @@ namespace UnderStatic.Lab
             var day = dayObject.AddComponent<OperationalDaySystem>();
             day.Configure(missions, market: market, fleet: fleet, battlefield: battlefield);
             saveSystem.ConfigureMissions(missions, day, battlefield);
-            var salvageFlow = SafeHouseSalvageFactory.Build(inventory, fleet, missions, day, visualKit);
+            var salvageFlow = SafeHouseSalvageFactory.Build(
+                inventory, fleet, missions, day, visualKit, market?.Definition);
             saveSystem.RegisterParts(salvageFlow.DeliveredParts.Concat(
                 UnityEngine.Object.FindObjectsByType<InstallablePart>(FindObjectsInactive.Include,
                     FindObjectsSortMode.None).Where(part => part.name.StartsWith("CompromisedSalvage",
@@ -108,6 +109,7 @@ namespace UnderStatic.Lab
                 true);
             var terminal = tacticalControl.AddComponent<TacticalMapTerminal>();
             PsxVisualFactory.EnhanceTacticalTerminal(tacticalControl.transform, visualKit);
+            var mapSurface = GameObject.Find("TacticalMapDynamicSurface")?.GetComponent<Renderer>();
             terminal.Configure(
                 missions,
                 battlefield,
@@ -118,7 +120,8 @@ namespace UnderStatic.Lab
                 controller,
                 tacticalControl.GetComponent<Renderer>(),
                 replay,
-                frontlineSystem: frontline);
+                frontlineSystem: frontline,
+                physicalMapRenderer: mapSurface);
             return missions;
         }
     }

@@ -14,7 +14,8 @@ namespace UnderStatic.UI
         Damaged,
         Failed,
         Depleted,
-        Missing
+        Missing,
+        Compromised
     }
 
     public readonly struct ServiceInspectionSnapshot
@@ -109,11 +110,14 @@ namespace UnderStatic.UI
             }
 
             var severity = SeverityForCondition(runtime.condition);
+            var compromise = part.Compromise.IsPresent
+                ? $" · {part.Compromise.ShortLabel}"
+                : string.Empty;
             return new ServiceInspectionSnapshot(
                 part.Definition.DisplayName,
-                LabelForSeverity(severity),
-                $"{category} · {state} · CONDITION {Percent(runtime.condition)}",
-                severity,
+                part.Compromise.IsPresent ? "COMPROMISED" : LabelForSeverity(severity),
+                $"{category} · {state} · CONDITION {Percent(runtime.condition)}{compromise}",
+                part.Compromise.IsPresent ? ServiceInspectionSeverity.Compromised : severity,
                 runtime.condition,
                 true);
         }
@@ -184,6 +188,7 @@ namespace UnderStatic.UI
             ServiceInspectionSeverity.Failed => "FAILED",
             ServiceInspectionSeverity.Depleted => "DEPLETED",
             ServiceInspectionSeverity.Missing => "MISSING",
+            ServiceInspectionSeverity.Compromised => "COMPROMISED",
             _ => "UNDIAGNOSED"
         };
 

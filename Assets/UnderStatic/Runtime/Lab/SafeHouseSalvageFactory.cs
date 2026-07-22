@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnderStatic.Core;
+using UnderStatic.Economy;
 using UnderStatic.Fleet;
 using UnderStatic.Inventory;
 using UnderStatic.Missions;
@@ -18,7 +19,8 @@ namespace UnderStatic.Lab
             FleetSystem fleet,
             MissionSystem missions,
             OperationalDaySystem day,
-            PsxVisualKit kit)
+            PsxVisualKit kit,
+            MarketDefinition balance = null)
         {
             var systems = GameObject.Find("Systems")?.transform;
             var root = new GameObject("SalvageFlowSystem");
@@ -49,7 +51,8 @@ namespace UnderStatic.Lab
                 PsxVisualFactory.AddImprovisedSalvageDetails(part, kit, index);
                 candidates.Add(part);
             }
-            flow.Configure(candidates, slots, missions, day, fleet, inventory);
+            flow.Configure(candidates, slots, missions, day, fleet, inventory,
+                balanceDefinition: balance);
             return flow;
         }
 

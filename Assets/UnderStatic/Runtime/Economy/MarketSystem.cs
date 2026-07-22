@@ -22,8 +22,10 @@ namespace UnderStatic.Economy
         private readonly List<MarketListingRuntimeData> authoredListings = new();
         private EconomyRuntimeData runtime = new();
 
+        public MarketDefinition Definition => definition;
         public int Funds => runtime.funds;
         public int Reputation => runtime.reputation;
+        public int ScrapTokenValue => definition?.ScrapTokenValue ?? 0;
         public MarketAccessTier AccessTier => definition.AccessTierFor(runtime.reputation);
         public int Cycle => runtime.market.cycle;
         public int Seed => runtime.market.seed;
@@ -331,11 +333,16 @@ namespace UnderStatic.Economy
         {
             runtime.market.cycle++;
             runtime.market.seed = seed;
-            foreach (var listing in listings.Where(item => IsMarketOwned(item) && !item.originatedFromPlayer))
+            foreach (var listing in listings.Where(item => IsMarketOwned(item)
+                         && !item.originatedFromPlayer
+                         && !item.isRenewable))
             {
                 var hash = StableHash($"{seed}:{runtime.market.cycle}:{listing.listingId}");
                 var variance = 0.94f + (hash % 13) * 0.01f;
-                listing.askingPrice = Mathf.Max(1, Mathf.RoundToInt(listing.askingPrice * variance));
+                var authoredPrice = authoredListings.FirstOrDefault(item => string.Equals(
+                    item.listingId, listing.listingId, StringComparison.Ordinal))?.askingPrice
+                    ?? listing.askingPrice;
+                listing.askingPrice = Mathf.Max(1, Mathf.RoundToInt(authoredPrice * variance));
             }
 
             listings.Sort((left, right) => StableHash($"{seed}:{left.listingId}")
@@ -427,7 +434,8 @@ namespace UnderStatic.Economy
             : Mathf.Max(0, Mathf.RoundToInt(
                 part.Definition.MonetaryValue
                 * ConditionMultiplier(part.Runtime.condition)
-                * definition.SaleFraction));
+                * definition.SaleFraction
+                * (part.Compromise.IsPresent ? definition.CompromisedSaleMultiplier : 1f)));
 
         public int CalculateWholeDroneSaleValue(DroneActor actor)
         {
@@ -457,6 +465,162 @@ namespace UnderStatic.Economy
                 : condition >= 0.6f ? "Used"
                 : condition >= 0.35f ? "Worn"
                 : "Rough";
+        }
+
+        public int CheapestRenewablePartPrice(
+            PartCategory category,
+            CompatibilityStandardId standard = default)
+        {
+            return listings.Where(item => item.category == MarketListingCategory.Part
+                        && item.isRenewable
+                        && item.isAvailable
+                        && IsUnlocked(item))
+                .Select(item => new { Listing = item, Part = ResolvePart(item) })
+                .Where(item => item.Part?.Definition != null
+                    && item.Part.Definition.Category == category
+                    && (standard.IsEmpty
+                        || item.Part.Definition.CompatibilityStandards.Contains(standard)))
+                .Select(item => item.Listing.askingPrice)
+                .DefaultIfEmpty(0)
+                .Min();
+        }
+
+        public int CalculateBasicReconPartCost(out bool continuousStock)
+        {
+            return CalculateRequiredPartCost(
+                DroneFrameDefinition.DefaultRequirements(DroneAirframeClass.Compact),
+                out continuousStock);
+        }
+
+        public int CalculateRequiredPartCost(
+            DroneFrameDefinition frame,
+            out bool continuousStock)
+        {
+            if (frame == null)
+            {
+                continuousStock = false;
+                return 0;
+            }
+
+            var requirements = frame.SocketRequirements.Count > 0
+                ? frame.SocketRequirements
+                : DroneFrameDefinition.DefaultRequirements(frame.AirframeClass);
+            return CalculateRequiredPartCost(requirements, out continuousStock);
+        }
+
+        private int CalculateRequiredPartCost(
+            IReadOnlyList<DroneSocketRequirement> requirements,
+            out bool continuousStock)
+        {
+            continuousStock = true;
+            var total = 0;
+            foreach (var requirement in requirements)
+            {
+                var unitPrice = CheapestRenewablePartPrice(requirement.category, requirement.standard);
+                if (unitPrice <= 0)
+                {
+                    continuousStock = false;
+                    continue;
+                }
+                total += unitPrice * Mathf.Max(0, requirement.count);
+            }
+            return total;
+        }
+
+        public int CalculateExpectedRestoreCost(DroneActor actor)
+        {
+            if (actor?.FrameDefinition == null)
+            {
+                return 0;
+            }
+
+            var total = 0;
+            var requirements = actor.FrameDefinition.SocketRequirements.Count > 0
+                ? actor.FrameDefinition.SocketRequirements
+                : DroneFrameDefinition.DefaultRequirements(actor.FrameDefinition.AirframeClass);
+            foreach (var requirement in requirements)
+            {
+                var serviceable = actor.InstalledParts.Count(part => part?.Definition != null
+                    && part.Definition.Category == requirement.category
+                    && part.IsServiceable
+                    && (requirement.standard.IsEmpty
+                        || part.Definition.CompatibilityStandards.Contains(requirement.standard)));
+                var replacements = Mathf.Max(0, requirement.count - serviceable);
+                if (replacements == 0)
+                {
+                    continue;
+                }
+
+                var unitPrice = CheapestRenewablePartPrice(requirement.category, requirement.standard);
+                if (unitPrice <= 0)
+                {
+                    unitPrice = actor.InstalledParts
+                        .Where(part => part?.Definition?.Category == requirement.category)
+                        .Select(part => part.Definition.MonetaryValue)
+                        .DefaultIfEmpty(0)
+                        .Min();
+                }
+                total += Mathf.Max(0, unitPrice) * replacements;
+            }
+            return total;
+        }
+
+        public int EstimateAircraftReplacementCost(DroneActor actor)
+        {
+            if (actor?.FrameDefinition == null)
+            {
+                return 0;
+            }
+
+            var readyCost = listings.Where(item => item.category == MarketListingCategory.CompleteDrone
+                        && item.isAvailable
+                        && IsUnlocked(item))
+                .Select(item => new { Listing = item, Actor = ResolveDrone(item) })
+                .Where(item => item.Actor?.FrameDefinition?.AirframeClass
+                    == actor.FrameDefinition.AirframeClass)
+                .Select(item => item.Listing.askingPrice)
+                .DefaultIfEmpty(0)
+                .Min();
+            var partCost = CalculateRequiredPartCost(actor.FrameDefinition, out var continuous);
+            var frameCost = listings.Where(item => item.category == MarketListingCategory.EmptyFrame
+                        && item.isAvailable
+                        && IsUnlocked(item))
+                .Select(item => new { Listing = item, Actor = ResolveDrone(item) })
+                .Where(item => item.Actor?.FrameDefinition?.AirframeClass
+                    == actor.FrameDefinition.AirframeClass)
+                .Select(item => item.Listing.askingPrice)
+                .DefaultIfEmpty(0)
+                .Min();
+            var scratchCost = continuous && frameCost > 0 ? partCost + frameCost : 0;
+            var replacement = new[] { readyCost, scratchCost }
+                .Where(value => value > 0)
+                .DefaultIfEmpty(actor.Stats.ComponentValue)
+                .Min();
+
+            if (actor.HasArmedPayload)
+            {
+                replacement += CheapestRenewablePartPrice(PartCategory.StrikeRack);
+                replacement += CheapestRenewablePartPrice(PartCategory.Payload);
+            }
+            return Mathf.Max(0, replacement);
+        }
+
+        public string StorageBlockerFor(MarketListingRuntimeData listing)
+        {
+            if (listing == null)
+            {
+                return "Listing unavailable";
+            }
+            if (listing.category == MarketListingCategory.Part)
+            {
+                var part = ResolvePart(listing);
+                return part == null
+                    ? "Part identity unavailable"
+                    : inventory?.HasCapacityFor(part, out _) == true
+                        ? string.Empty
+                        : "Part storage full";
+            }
+            return fleet?.HasFreeLockerSlot == true ? string.Empty : "Drone locker full";
         }
 
         private int CalculateWholeDroneMarketValue(DroneActor actor)

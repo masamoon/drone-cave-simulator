@@ -35,14 +35,14 @@ namespace UnderStatic.Lab
                 "part.market.scout.professional.motor",
                 "Compact Professional Motor",
                 CompatibilityStandardId.CompactMotor,
-                300,
+                260,
                 new PartStatModifiers { control = 0.045f, reliability = 0.03f });
             var batteryDefinition = CreateUpgradePartDefinition(
                 PartCategory.Battery,
                 "part.market.scout.professional.battery",
                 "Compact Professional Battery",
                 CompatibilityStandardId.CompactBattery,
-                250,
+                230,
                 new PartStatModifiers { endurance = 0.08f, reliability = 0.025f });
             var motor = InteractionLabFactory.CreateComponentPart(
                 "MarketScoutMotorUpgrade",
@@ -76,8 +76,8 @@ namespace UnderStatic.Lab
 
             var listings = new List<MarketListingRuntimeData>
             {
-                PartListing("market.initial.scout-motor-upgrade", motor, 300, MarketAccessTier.Trusted),
-                PartListing("market.initial.scout-battery-upgrade", battery, 250, MarketAccessTier.Trusted)
+                PartListing("market.initial.scout-motor-upgrade", motor, 260, MarketAccessTier.Trusted),
+                PartListing("market.initial.scout-battery-upgrade", battery, 230, MarketAccessTier.Trusted)
             };
             var marketParts = new List<InstallablePart> { motor, battery };
             var retrofitBatteryDefinition = PartDefinition.CreateTransient(
@@ -96,7 +96,7 @@ namespace UnderStatic.Lab
                 },
                 equipmentGrade: EquipmentGrade.Field,
                 modifiers: new PartStatModifiers { speed = -0.1f, endurance = 0.24f, control = -0.05f },
-                value: 360,
+                value: 300,
                 retrofitClearanceRequired: true);
             var retrofitBattery = InteractionLabFactory.CreateComponentPart(
                 "MarketHighCapacityRetrofitBattery",
@@ -112,7 +112,7 @@ namespace UnderStatic.Lab
             retrofitBattery.gameObject.SetActive(false);
             allParts.Add(retrofitBattery);
             saveSystem.RegisterParts(new[] { retrofitBattery });
-            listings.Add(PartListing("market.initial.retrofit-battery", retrofitBattery, 360, MarketAccessTier.Field));
+            listings.Add(PartListing("market.initial.retrofit-battery", retrofitBattery, 300, MarketAccessTier.Field));
             marketParts.Add(retrofitBattery);
             PsxVisualFactory.EnhancePart(retrofitBattery, visualKit);
             AddPartStock(marketParts, listings, allParts, stockMaterial, visualKit);
@@ -138,7 +138,7 @@ namespace UnderStatic.Lab
                 listings.Add(DroneListing(
                     "market.initial.utility-salvage",
                     salvageActor,
-                    520,
+                    450,
                     MarketListingCategory.SalvageDrone,
                     MarketAccessTier.Field,
                     true));
@@ -291,22 +291,22 @@ namespace UnderStatic.Lab
         {
             var specs = new[]
             {
-                new PartStockSpec(PartCategory.Motor, "Compact Field Motor", CompatibilityStandardId.CompactMotor, EquipmentGrade.Field, 140, MarketAccessTier.Field),
-                new PartStockSpec(PartCategory.Propeller, "Compact Field Propeller", CompatibilityStandardId.CompactPropeller, EquipmentGrade.Field, 45, MarketAccessTier.Field),
-                new PartStockSpec(PartCategory.Battery, "Compact Field Battery", CompatibilityStandardId.CompactBattery, EquipmentGrade.Field, 180, MarketAccessTier.Field),
-                new PartStockSpec(PartCategory.Camera, "Shared Field Camera", CompatibilityStandardId.SharedCamera, EquipmentGrade.Field, 160, MarketAccessTier.Field),
-                new PartStockSpec(PartCategory.Antenna, "Shared Field Antenna", CompatibilityStandardId.SharedAntenna, EquipmentGrade.Field, 90, MarketAccessTier.Field),
-                new PartStockSpec(PartCategory.Esc, "Shared Field ESC", CompatibilityStandardId.SharedEsc, EquipmentGrade.Field, 170, MarketAccessTier.Field),
-                new PartStockSpec(PartCategory.FlightController, "Shared Field Flight Controller", CompatibilityStandardId.SharedFlightController, EquipmentGrade.Field, 210, MarketAccessTier.Field),
-                new PartStockSpec(PartCategory.Propeller, "Compact Professional Propeller", CompatibilityStandardId.CompactPropeller, EquipmentGrade.Professional, 105, MarketAccessTier.Trusted),
-                new PartStockSpec(PartCategory.Camera, "Shared Professional Camera", CompatibilityStandardId.SharedCamera, EquipmentGrade.Professional, 330, MarketAccessTier.Trusted),
-                new PartStockSpec(PartCategory.Antenna, "Shared Professional Antenna", CompatibilityStandardId.SharedAntenna, EquipmentGrade.Professional, 190, MarketAccessTier.Trusted),
-                new PartStockSpec(PartCategory.Motor, "Endurance Field Motor", CompatibilityStandardId.SurveyMotor, EquipmentGrade.Field, 260, MarketAccessTier.Trusted),
-                new PartStockSpec(PartCategory.Propeller, "Endurance Field Propeller", CompatibilityStandardId.SurveyPropeller, EquipmentGrade.Field, 80, MarketAccessTier.Trusted),
-                new PartStockSpec(PartCategory.Battery, "Endurance Field Battery", CompatibilityStandardId.SurveyBattery, EquipmentGrade.Field, 340, MarketAccessTier.Trusted),
-                new PartStockSpec(PartCategory.Motor, "Heavy-Lift Field Motor", CompatibilityStandardId.HeavyMotor, EquipmentGrade.Field, 320, MarketAccessTier.Professional),
-                new PartStockSpec(PartCategory.Propeller, "Heavy-Lift Field Propeller", CompatibilityStandardId.HeavyPropeller, EquipmentGrade.Field, 100, MarketAccessTier.Professional),
-                new PartStockSpec(PartCategory.Battery, "Heavy-Lift Field Battery", CompatibilityStandardId.HeavyBattery, EquipmentGrade.Field, 420, MarketAccessTier.Professional)
+                new PartStockSpec(PartCategory.Motor, "Compact Field Motor", CompatibilityStandardId.CompactMotor, EquipmentGrade.Field, 110, MarketAccessTier.Field),
+                new PartStockSpec(PartCategory.Propeller, "Compact Field Propeller", CompatibilityStandardId.CompactPropeller, EquipmentGrade.Field, 35, MarketAccessTier.Field),
+                new PartStockSpec(PartCategory.Battery, "Compact Field Battery", CompatibilityStandardId.CompactBattery, EquipmentGrade.Field, 150, MarketAccessTier.Field),
+                new PartStockSpec(PartCategory.Camera, "Shared Field Camera", CompatibilityStandardId.SharedCamera, EquipmentGrade.Field, 140, MarketAccessTier.Field),
+                new PartStockSpec(PartCategory.Antenna, "Shared Field Antenna", CompatibilityStandardId.SharedAntenna, EquipmentGrade.Field, 80, MarketAccessTier.Field),
+                new PartStockSpec(PartCategory.Esc, "Shared Field ESC", CompatibilityStandardId.SharedEsc, EquipmentGrade.Field, 140, MarketAccessTier.Field),
+                new PartStockSpec(PartCategory.FlightController, "Shared Field Flight Controller", CompatibilityStandardId.SharedFlightController, EquipmentGrade.Field, 170, MarketAccessTier.Field),
+                new PartStockSpec(PartCategory.Propeller, "Compact Professional Propeller", CompatibilityStandardId.CompactPropeller, EquipmentGrade.Professional, 85, MarketAccessTier.Trusted),
+                new PartStockSpec(PartCategory.Camera, "Shared Professional Camera", CompatibilityStandardId.SharedCamera, EquipmentGrade.Professional, 280, MarketAccessTier.Trusted),
+                new PartStockSpec(PartCategory.Antenna, "Shared Professional Antenna", CompatibilityStandardId.SharedAntenna, EquipmentGrade.Professional, 165, MarketAccessTier.Trusted),
+                new PartStockSpec(PartCategory.Motor, "Endurance Field Motor", CompatibilityStandardId.SurveyMotor, EquipmentGrade.Field, 220, MarketAccessTier.Trusted),
+                new PartStockSpec(PartCategory.Propeller, "Endurance Field Propeller", CompatibilityStandardId.SurveyPropeller, EquipmentGrade.Field, 65, MarketAccessTier.Trusted),
+                new PartStockSpec(PartCategory.Battery, "Endurance Field Battery", CompatibilityStandardId.SurveyBattery, EquipmentGrade.Field, 290, MarketAccessTier.Trusted),
+                new PartStockSpec(PartCategory.Motor, "Heavy-Lift Field Motor", CompatibilityStandardId.HeavyMotor, EquipmentGrade.Field, 290, MarketAccessTier.Professional),
+                new PartStockSpec(PartCategory.Propeller, "Heavy-Lift Field Propeller", CompatibilityStandardId.HeavyPropeller, EquipmentGrade.Field, 90, MarketAccessTier.Professional),
+                new PartStockSpec(PartCategory.Battery, "Heavy-Lift Field Battery", CompatibilityStandardId.HeavyBattery, EquipmentGrade.Field, 380, MarketAccessTier.Professional)
             };
 
             for (var index = 0; index < specs.Length; index++)
@@ -349,7 +349,7 @@ namespace UnderStatic.Lab
                 "Market_EmptyStrikeRack",
                 "market-part-empty-strike-rack-stock",
                 "market.stock.empty-strike-rack",
-                120,
+                100,
                 marketParts,
                 listings,
                 allParts);
@@ -358,7 +358,7 @@ namespace UnderStatic.Lab
                 "Market_SealedStrikePayload",
                 "market-part-sealed-strike-payload-stock",
                 "market.stock.sealed-strike-payload",
-                160,
+                140,
                 marketParts,
                 listings,
                 allParts);
@@ -450,14 +450,14 @@ namespace UnderStatic.Lab
         {
             var specs = new[]
             {
-                new DroneStockSpec("scout-field-ready", "ScoutField", true, 0, 0.97f, 980, MarketAccessTier.Field, true),
-                new DroneStockSpec("survey-field-ready", "SurveyField", true, 0, 0.95f, 2050, MarketAccessTier.Trusted, false),
-                new DroneStockSpec("utility-professional-ready", "UtilityProfessional", true, 0, 0.96f, 4650, MarketAccessTier.Professional, false),
-                new DroneStockSpec("scout-field-damaged-a", "ScoutField", false, 2, 0.68f, 430, MarketAccessTier.Field, true),
-                new DroneStockSpec("scout-field-damaged-b", "ScoutField", false, 4, 0.41f, 290, MarketAccessTier.Field, true),
-                new DroneStockSpec("survey-field-damaged", "SurveyField", false, 3, 0.57f, 760, MarketAccessTier.Trusted, false),
-                new DroneStockSpec("utility-field-damaged", "UtilityField", false, 4, 0.49f, 940, MarketAccessTier.Trusted, false),
-                new DroneStockSpec("survey-professional-damaged", "SurveyProfessional", false, 5, 0.52f, 1380, MarketAccessTier.Professional, false)
+                new DroneStockSpec("scout-field-ready", "ScoutField", true, 0, 0.97f, 850, MarketAccessTier.Field, true),
+                new DroneStockSpec("survey-field-ready", "SurveyField", true, 0, 0.95f, 1780, MarketAccessTier.Trusted, false),
+                new DroneStockSpec("utility-professional-ready", "UtilityProfessional", true, 0, 0.96f, 4100, MarketAccessTier.Professional, false),
+                new DroneStockSpec("scout-field-damaged-a", "ScoutField", false, 2, 0.68f, 320, MarketAccessTier.Field, true),
+                new DroneStockSpec("scout-field-damaged-b", "ScoutField", false, 4, 0.41f, 220, MarketAccessTier.Field, true),
+                new DroneStockSpec("survey-field-damaged", "SurveyField", false, 3, 0.57f, 650, MarketAccessTier.Trusted, false),
+                new DroneStockSpec("utility-field-damaged", "UtilityField", false, 4, 0.49f, 820, MarketAccessTier.Trusted, false),
+                new DroneStockSpec("survey-professional-damaged", "SurveyProfessional", false, 5, 0.52f, 1220, MarketAccessTier.Professional, false)
             };
 
             foreach (var spec in specs)
@@ -622,7 +622,7 @@ namespace UnderStatic.Lab
                 listings.Add(DroneListing(
                     $"market.stock.expendable-strike-{sequence:00}",
                     actor,
-                    460 + (sequence % 3) * 10,
+                    420 + (sequence % 3) * 10,
                     MarketListingCategory.StrikeDrone,
                     MarketAccessTier.Field,
                     sequence <= 2));

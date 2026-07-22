@@ -303,8 +303,11 @@ namespace UnderStatic.UI
                          && (location == StorageLocationId.SafeHouseParts || location == StorageLocationId.SafeHouseReturns)))
             {
                 var value = market.CalculateLoosePartSaleValue(part);
+                var compromise = part.Compromise.IsPresent
+                    ? $" · {part.Compromise.ShortLabel}"
+                    : string.Empty;
                 if (GUI.Button(new Rect(panel.x + 22f, y, 600f, 34f),
-                        $"SELL {part.Definition.DisplayName} · {part.Runtime.condition:P0} · {value}"))
+                        $"SELL {part.Definition.DisplayName} · {part.Runtime.condition:P0}{compromise} · {value}"))
                 {
                     market.TrySellPart(part);
                 }
@@ -338,6 +341,9 @@ namespace UnderStatic.UI
                 var part = market.ResolvePart(listing);
                 if (part?.Definition == null) return "Part record unavailable";
                 var modifiers = part.Definition.StatModifiers;
+                var compromise = part.Compromise.IsPresent
+                    ? $"\nCOMPROMISE · {part.Compromise.ShortLabel} · resale value reduced"
+                    : "\nNO KNOWN COMPROMISE";
                 return $"{part.Definition.Category} · {part.Definition.Grade}\n" +
                        $"Condition {part.Runtime.condition:P0} · reliability {part.Definition.BaseReliability:P0}\n" +
                        $"Mass {part.Definition.Mass:0.00} kg · power {part.Definition.PowerDraw:0.00} PU · " +
@@ -345,6 +351,7 @@ namespace UnderStatic.UI
                        $"Standards {string.Join(", ", part.Definition.CompatibilityStandards)}\n\n" +
                        $"END {modifiers.endurance:+0.000;-0.000;0}  OBS {modifiers.observation:+0.000;-0.000;0}  " +
                        $"CTL {modifiers.control:+0.000;-0.000;0}  REL {modifiers.reliability:+0.000;-0.000;0}\n" +
+                       compromise + "\n" +
                        "Full specification and condition are disclosed before purchase.";
             }
 
@@ -358,12 +365,16 @@ namespace UnderStatic.UI
                 ? "EMPTY FRAME · No components included\n"
                 : $"{actor.ConfigurationLabel}\n";
             var conversion = actor.CivilianConversion;
+            var expectedRestore = listing.category == MarketListingCategory.SalvageDrone
+                ? $"EXPECTED FIELD-PART RESTORE · {market.CalculateExpectedRestoreCost(actor)} FUNDS\n"
+                : string.Empty;
             var origin = conversion != null
                 ? $"{conversion.Definition.DisplayName} · {conversion.StatusLabel}\n"
                 : string.Empty;
             return $"{actor.FrameDefinition.AirframeClassName} AIRFRAME · {actor.FrameDefinition.Grade}\n" +
                    origin +
                    role +
+                   expectedRestore +
                    $"Frame {actor.Runtime.frameCondition:P0} · {actor.Readiness.InstalledCount}/{actor.Readiness.RequiredCount} components\n" +
                    $"MASS {stats.TotalMass:0.00}/{stats.MaximumMass:0.00} kg  POWER {stats.PowerDraw:0.00}/{stats.PowerBudget:0.00} PU\n" +
                    $"SPD {stats.Speed:0.00}  END {stats.Endurance:0.00}  OBS {stats.Observation:0.00}\n" +
@@ -375,6 +386,11 @@ namespace UnderStatic.UI
         {
             if (market.IsUnlocked(listing))
             {
+                var blocker = market.StorageBlockerFor(listing);
+                if (!string.IsNullOrEmpty(blocker))
+                {
+                    return $"STORAGE BLOCKED · {blocker.ToUpperInvariant()} · Clear capacity before purchase.";
+                }
                 return listing.category == MarketListingCategory.SalvageDrone
                     ? "DAMAGED STOCK · Contents and faults vary. Purchased aircraft is delivered to an empty drone locker."
                     : listing.category == MarketListingCategory.EmptyFrame

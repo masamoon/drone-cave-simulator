@@ -70,3 +70,6 @@ stock, parts, or aircraft.
 The milestone is complete when the economy remains understandable and recoverable across representative multi-day
 runs, required parts cannot disappear behind rotation, ownership remains deterministic, automated tests pass, and
 the remaining subjective balance risks are documented.
+
+Implementation and automated validation are recorded in `MILESTONE_08_IMPLEMENTATION.md`. Human balance and feel
+acceptance remains intentionally deferred.

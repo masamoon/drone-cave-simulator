@@ -210,8 +210,8 @@ namespace UnderStatic.Tests.EditMode
             var flow = Track(new GameObject("SalvageFlow")).AddComponent<SalvageFlowSystem>();
             flow.Configure(candidates, slots, null, null, null, null, 991);
 
-            Assert.That(flow.DeliveredParts.Count, Is.EqualTo(4));
-            Assert.That(flow.DeliveredParts.All(part => part.Runtime.condition is >= 0.45f and <= 0.75f), Is.True);
+            Assert.That(flow.DeliveredParts.Count, Is.EqualTo(3));
+            Assert.That(flow.DeliveredParts.All(part => part.Runtime.condition is >= 0.48f and <= 0.78f), Is.True);
             Assert.That(flow.DeliveredParts.All(part => part.Compromise.IsPresent), Is.True);
             Assert.That(flow.CaptureState().deliveredPartIds,
                 Is.EquivalentTo(flow.DeliveredParts.Select(part => part.Runtime.uniqueInstanceId)));

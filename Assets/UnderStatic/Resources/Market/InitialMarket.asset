@@ -12,12 +12,17 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c889005ceddbc4f47a6099f91103b462, type: 3}
   m_Name: InitialMarket
   m_EditorClassIdentifier: UnderStatic.Runtime::UnderStatic.Economy.MarketDefinition
-  startingFunds: 600
-  scrapTokenValue: 10
-  saleFraction: 0.55
-  trustedReputation: 250
-  professionalReputation: 700
-  rotatingPartCount: 6
-  rotatingStrikeDroneCount: 2
-  rotatingCompleteDroneCount: 2
-  rotatingDamagedDroneCount: 3
+  startingFunds: 1100
+  scrapTokenValue: 18
+  saleFraction: 0.42
+  compromisedSaleMultiplier: 0.7
+  trustedReputation: 200
+  professionalReputation: 1000
+  rotatingPartCount: 4
+  rotatingStrikeDroneCount: 1
+  rotatingCompleteDroneCount: 1
+  rotatingDamagedDroneCount: 2
+  initialSalvageCount: 3
+  sortiesPerSalvageDelivery: 2
+  sortieSalvageCount: 2
+  dailySalvageCount: 2

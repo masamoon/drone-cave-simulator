@@ -68,6 +68,8 @@ Future generators must report triangle counts and fail validation when the relev
 ## Texture rules
 
 - Authored asset-family textures are **128×128 RGBA** unless an explicit milestone approves another size.
+- The runtime-generated physical tactical map in the Safe House is an approved exception: **512×512 RGBA**,
+  bilinear filtered with mipmaps. The terminal preview remains 128×128 and point filtered.
 - Use point/nearest-neighbour filtering and anisotropic level `0` in Unity.
 - Use padded UV islands so atlas swatches do not bleed at service distance.
 - Prefer a deterministic compact atlas or palette texture for each coherent asset family.

@@ -1577,6 +1577,7 @@ namespace UnderStatic.Interaction
             ServiceInspectionSeverity.Failed => new Color(0.86f, 0.18f, 0.14f),
             ServiceInspectionSeverity.Depleted => new Color(0.75f, 0.3f, 0.12f),
             ServiceInspectionSeverity.Missing => new Color(0.82f, 0.18f, 0.18f),
+            ServiceInspectionSeverity.Compromised => new Color(0.78f, 0.34f, 0.88f),
             _ => new Color(0.48f, 0.68f, 0.72f)
         };
 
@@ -1593,22 +1594,25 @@ namespace UnderStatic.Interaction
             var maximumY = supportsSalvage ? scrapRect.yMin - 10f : Screen.height - 50f;
             foreach (var part in available)
             {
-                if (y + 58f > maximumY)
+                if (y + 74f > maximumY)
                 {
                     GUI.Label(new Rect(30f, y, 300f, 24f), $"+ {available.Length - Array.IndexOf(available, part)} more parts");
                     break;
                 }
 
-                var row = new Rect(30f, y, 308f, 54f);
+                var row = new Rect(30f, y, 308f, 70f);
                 GUI.Box(row, string.Empty);
                 GUI.Label(
                     new Rect(row.x + 10f, row.y + 5f, row.width - 20f, 22f),
                     part.Definition?.DisplayName ?? part.name);
                 GUI.Label(
-                    new Rect(row.x + 10f, row.y + 27f, row.width - 20f, 22f),
+                    new Rect(row.x + 10f, row.y + 25f, row.width - 20f, 22f),
+                    part.ServiceDescription);
+                GUI.Label(
+                    new Rect(row.x + 10f, row.y + 45f, row.width - 20f, 22f),
                     $"{part.Definition.Mass:0.00}kg · {part.Definition.PowerDraw:0.00}PU · " +
                     $"SPD {part.Definition.StatModifiers.speed:+0.00;-0.00;0.00} · {FormatLocation(part.Runtime.storageLocation)}");
-                y += 62f;
+                y += 78f;
             }
 
             if (available.Length == 0)

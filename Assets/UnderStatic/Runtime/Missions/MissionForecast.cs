@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using UnderStatic.Core;
+using UnderStatic.Economy;
 using UnderStatic.Fleet;
 using UnderStatic.Parts;
 using UnityEngine;
@@ -53,7 +54,8 @@ namespace UnderStatic.Missions
             EnemyActivityRuntimeData activity,
             float routeDistanceKilometres,
             float secondsUntilAdvance,
-            MissionEconomyDefinition economy = null)
+            MissionEconomyDefinition economy = null,
+            MarketSystem market = null)
         {
             if (actor == null)
             {
@@ -75,8 +77,10 @@ namespace UnderStatic.Missions
                 + arrivalPenalty;
             var payload = parts.FirstOrDefault(item => item.Definition.Category == PartCategory.Payload);
             var payloadValue = payload?.Definition.MonetaryValue ?? 0;
+            var replacementValue = market?.EstimateAircraftReplacementCost(actor)
+                ?? actor.Stats.ComponentValue;
             var committed = sortieType == SortieType.KamikazeStrike
-                ? Mathf.Max(0, actor.Stats.ComponentValue - payloadValue)
+                ? Mathf.Max(0, replacementValue - payloadValue)
                 : 0;
             var wear = sortieType == SortieType.KamikazeStrike
                 ? 0

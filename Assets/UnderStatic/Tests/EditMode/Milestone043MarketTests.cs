@@ -43,13 +43,13 @@ namespace UnderStatic.Tests.EditMode
             var result = market.TryBuy("listing.motor");
 
             Assert.That(result.Succeeded, Is.True, result.Message);
-            Assert.That(market.Funds, Is.EqualTo(480));
+            Assert.That(market.Funds, Is.EqualTo(980));
             Assert.That(stock.Runtime.uniqueInstanceId, Is.EqualTo(identity));
             Assert.That(stock.Runtime.storageLocation, Is.EqualTo(StorageLocationId.SafeHouseParts));
             Assert.That(inventory.FindLocation(StorageLocationId.SafeHouseParts).Contains(stock), Is.True);
             Assert.That(market.TryBuy("listing.motor").Failure,
                 Is.EqualTo(MarketTransactionFailure.ListingUnavailable));
-            Assert.That(market.Funds, Is.EqualTo(480));
+            Assert.That(market.Funds, Is.EqualTo(980));
         }
 
         [Test]
@@ -73,7 +73,7 @@ namespace UnderStatic.Tests.EditMode
             Assert.That(purchased.All(part => part.Definition == stock.Definition), Is.True);
             Assert.That(stock.Runtime.storageLocation, Is.EqualTo(StorageLocationId.MarketStock));
             Assert.That(market.FindListing(listing.listingId).isAvailable, Is.True);
-            Assert.That(market.Funds, Is.EqualTo(400));
+            Assert.That(market.Funds, Is.EqualTo(900));
         }
 
         [Test]
@@ -115,7 +115,7 @@ namespace UnderStatic.Tests.EditMode
             var result = market.TryBuy("listing.motor");
 
             Assert.That(result.Failure, Is.EqualTo(MarketTransactionFailure.StorageFull));
-            Assert.That(market.Funds, Is.EqualTo(600));
+            Assert.That(market.Funds, Is.EqualTo(1100));
             Assert.That(market.FindListing("listing.motor").isAvailable, Is.True);
             Assert.That(stock.Runtime.storageLocation, Is.EqualTo(StorageLocationId.MarketStock));
         }
@@ -126,12 +126,12 @@ namespace UnderStatic.Tests.EditMode
             var inventory = CreateInventory(1);
             var stock = CreatePart("stock.motor", 0.95f, 200);
             var market = CreateMarket(inventory, CreateFleet(), new[] { stock }, null,
-                PartListing("listing.motor", stock, 700));
+                PartListing("listing.motor", stock, 1200));
 
             var result = market.TryBuy("listing.motor");
 
             Assert.That(result.Failure, Is.EqualTo(MarketTransactionFailure.InsufficientFunds));
-            Assert.That(market.Funds, Is.EqualTo(600));
+            Assert.That(market.Funds, Is.EqualTo(1100));
             Assert.That(stock.Runtime.storageLocation, Is.EqualTo(StorageLocationId.MarketStock));
         }
 
@@ -151,7 +151,7 @@ namespace UnderStatic.Tests.EditMode
 
             Assert.That(result.Failure, Is.EqualTo(MarketTransactionFailure.StorageFull));
             Assert.That(fleet.ContainsActor(stock), Is.False);
-            Assert.That(market.Funds, Is.EqualTo(600));
+            Assert.That(market.Funds, Is.EqualTo(1100));
         }
 
         [Test]
@@ -161,17 +161,17 @@ namespace UnderStatic.Tests.EditMode
             var part = CreatePart("owned.motor", 0.75f, 200);
             Assert.That(inventory.TryAcquirePart(part), Is.True);
             var market = CreateMarket(inventory, CreateFleet(), new[] { part }, null);
-            var expected = Mathf.RoundToInt(200f * 0.8f * 0.55f);
+            var expected = Mathf.RoundToInt(200f * 0.8f * 0.42f);
 
             var result = market.TrySellPart(part);
 
             Assert.That(result.Succeeded, Is.True, result.Message);
-            Assert.That(market.Funds, Is.EqualTo(600 + expected));
+            Assert.That(market.Funds, Is.EqualTo(1100 + expected));
             Assert.That(part.Runtime.storageLocation, Is.EqualTo(StorageLocationId.MarketStock));
             var resale = market.Listings.Single(item => item.partInstanceId == part.Runtime.uniqueInstanceId);
             Assert.That(resale.askingPrice, Is.GreaterThan(expected));
             Assert.That(market.TryBuy(resale.listingId).Succeeded, Is.True);
-            Assert.That(market.Funds, Is.LessThan(600));
+            Assert.That(market.Funds, Is.LessThan(1100));
             Assert.That(part.Runtime.uniqueInstanceId, Is.EqualTo("owned.motor"));
         }
 
@@ -190,7 +190,7 @@ namespace UnderStatic.Tests.EditMode
             var result = market.TrySellPart(part);
 
             Assert.That(result.Failure, Is.EqualTo(MarketTransactionFailure.IneligibleAsset));
-            Assert.That(market.Funds, Is.EqualTo(600));
+            Assert.That(market.Funds, Is.EqualTo(1100));
         }
 
         [Test]
@@ -206,7 +206,7 @@ namespace UnderStatic.Tests.EditMode
 
             Assert.That(expected, Is.GreaterThan(0));
             Assert.That(result.Succeeded, Is.True, result.Message);
-            Assert.That(market.Funds, Is.EqualTo(600 + expected));
+            Assert.That(market.Funds, Is.EqualTo(1100 + expected));
             Assert.That(fleet.ContainsActor(actor), Is.False);
             Assert.That(market.Listings.Single().droneInstanceId, Is.EqualTo(actor.Runtime.droneInstanceId));
         }
@@ -256,15 +256,15 @@ namespace UnderStatic.Tests.EditMode
             var market = CreateMarket(inventory, CreateFleet(), new[] { stock }, null, listing);
 
             var locked = market.TryBuy(listing.listingId);
-            market.AwardFunds(700, "mission rewards");
+            market.AwardFunds(1000, "mission rewards");
             var purchased = market.TryBuy(listing.listingId);
 
             Assert.That(locked.Failure, Is.EqualTo(MarketTransactionFailure.AccessLocked));
             Assert.That(market.AccessTier, Is.EqualTo(MarketAccessTier.Professional));
-            Assert.That(market.Reputation, Is.EqualTo(700));
+            Assert.That(market.Reputation, Is.EqualTo(1000));
             Assert.That(purchased.Succeeded, Is.True, purchased.Message);
-            Assert.That(market.Reputation, Is.EqualTo(700), "Purchasing must not spend reputation");
-            Assert.That(market.CaptureState().reputation, Is.EqualTo(700));
+            Assert.That(market.Reputation, Is.EqualTo(1000), "Purchasing must not spend reputation");
+            Assert.That(market.CaptureState().reputation, Is.EqualTo(1000));
         }
 
         [Test]
@@ -315,7 +315,7 @@ namespace UnderStatic.Tests.EditMode
             Assert.That(market.TrySellPart(stock).Succeeded, Is.True);
             Assert.That(save.RestoreAllFromJson(json, new[] { stock }, Array.Empty<PartSocket>()),
                 Is.True, save.LastStatus);
-            Assert.That(market.Funds, Is.EqualTo(480));
+            Assert.That(market.Funds, Is.EqualTo(980));
             Assert.That(market.FindListing("listing.schema").isAvailable, Is.False);
             Assert.That(inventory.FindLocation(StorageLocationId.SafeHouseParts).Contains(stock), Is.True);
             Assert.That(stock.Runtime.uniqueInstanceId, Is.EqualTo("schema.stock"));

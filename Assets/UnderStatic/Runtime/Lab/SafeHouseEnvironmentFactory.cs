@@ -1,3 +1,4 @@
+using System.Linq;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -171,7 +172,7 @@ namespace UnderStatic.Lab
             }
 
             Create("MapShelf", PrimitiveType.Cube, station.transform, new Vector3(-2.92f, 0.92f, -0.65f), new Vector3(0.55f, 0.08f, 1.95f), metal);
-            if (CreateArtPocAsset(
+            var mapArt = CreateArtPocAsset(
                     "TacticalMapArt",
                     "SH_POC_TacticalMap",
                     station.transform,
@@ -179,10 +180,33 @@ namespace UnderStatic.Lab
                     Quaternion.Euler(0f, 90f, 0f),
                     Vector3.one,
                     artPocMaterial,
-                    false) != null)
+                    false);
+            if (mapArt != null)
             {
                 DisableLegacyVisuals(station.transform, "MapFrame", "TacticalMap", "MapRoute", "MapShelf");
+                foreach (var renderer in mapArt.GetComponentsInChildren<Renderer>(true))
+                {
+                    renderer.enabled = false;
+                }
+                SetLegacyVisualsEnabled(station.transform, true, "MapFrame", "MapShelf");
             }
+
+            var dynamicSurface = Create(
+                "TacticalMapDynamicSurface",
+                PrimitiveType.Cube,
+                station.transform,
+                new Vector3(-2.975f, 1.55f, -0.65f),
+                new Vector3(0.025f, 1.18f, 1.58f),
+                map);
+            InteractionLabFactory.DisableCollider(dynamicSurface);
+            Create("MapFrameTop", PrimitiveType.Cube, station.transform,
+                new Vector3(-2.94f, 2.18f, -0.65f), new Vector3(0.07f, 0.08f, 1.76f), metal);
+            Create("MapFrameBottom", PrimitiveType.Cube, station.transform,
+                new Vector3(-2.94f, 0.92f, -0.65f), new Vector3(0.07f, 0.08f, 1.76f), metal);
+            Create("MapFrameLeft", PrimitiveType.Cube, station.transform,
+                new Vector3(-2.94f, 1.55f, -1.49f), new Vector3(0.07f, 1.34f, 0.08f), metal);
+            Create("MapFrameRight", PrimitiveType.Cube, station.transform,
+                new Vector3(-2.94f, 1.55f, 0.19f), new Vector3(0.07f, 1.34f, 0.08f), metal);
         }
 
         private static void CreateRadioStation(
@@ -526,6 +550,20 @@ namespace UnderStatic.Lab
                         renderer.enabled = false;
                         break;
                     }
+                }
+            }
+        }
+
+        private static void SetLegacyVisualsEnabled(
+            Transform parent,
+            bool enabled,
+            params string[] objectNames)
+        {
+            foreach (var renderer in parent.GetComponentsInChildren<Renderer>(true))
+            {
+                if (objectNames.Contains(renderer.gameObject.name))
+                {
+                    renderer.enabled = enabled;
                 }
             }
         }

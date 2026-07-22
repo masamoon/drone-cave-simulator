@@ -26,10 +26,14 @@ namespace UnderStatic.UI
         [SerializeField] private WorkshopRiskSystem workshopRisk;
         [SerializeField] private FieldOperationsSystem fieldOperations;
         [SerializeField] private FrontlineSystem frontline;
+        [SerializeField] private Renderer physicalMapRenderer;
 
         private MaterialPropertyBlock propertyBlock;
+        private MaterialPropertyBlock physicalMapPropertyBlock;
         private Texture2D mapPreview;
-        private int mapPreviewSeed = int.MinValue;
+        private int mapPreviewFingerprint = int.MinValue;
+        private Texture2D physicalMapPreview;
+        private int physicalMapPreviewFingerprint = int.MinValue;
         private Texture2D lineTexture;
         private string selectedReportId = string.Empty;
         private int draggingWaypoint = -1;
@@ -51,7 +55,8 @@ namespace UnderStatic.UI
             MissionReplayDirector reconstructionDirector = null,
             WorkshopRiskSystem riskSystem = null,
             FieldOperationsSystem operations = null,
-            FrontlineSystem frontlineSystem = null)
+            FrontlineSystem frontlineSystem = null,
+            Renderer physicalMapRenderer = null)
         {
             missions = missionSystem;
             battlefield = battlefieldSystem;
@@ -65,6 +70,13 @@ namespace UnderStatic.UI
             workshopRisk = riskSystem;
             fieldOperations = operations;
             frontline = frontlineSystem;
+            this.physicalMapRenderer = physicalMapRenderer;
+            RefreshPhysicalMap();
+        }
+
+        private void Update()
+        {
+            RefreshPhysicalMap();
         }
 
         public void Activate()
@@ -155,6 +167,7 @@ namespace UnderStatic.UI
         private void OnDestroy()
         {
             DestroyRuntimeTexture(mapPreview);
+            DestroyRuntimeTexture(physicalMapPreview);
             DestroyRuntimeTexture(lineTexture);
         }
 
@@ -218,8 +231,11 @@ namespace UnderStatic.UI
             var preview = MapPreview();
             if (preview != null)
             {
+                var previous = GUI.color;
+                GUI.color = new Color(0.62f, 0.68f, 0.62f, 1f);
                 GUI.DrawTexture(new Rect(mapRect.x + 4f, mapRect.y + 4f,
                     mapRect.width - 8f, mapRect.height - 8f), preview, ScaleMode.StretchToFill, false);
+                GUI.color = previous;
             }
             if (frontline != null)
             {
@@ -350,30 +366,21 @@ namespace UnderStatic.UI
             {
                 var position = sectors[activity.currentSectorId].position.ToVector2();
                 var point = MapToGui(mapRect, position);
-                if (!activity.typeIdentified)
+                var selected = string.Equals(
+                    missions.Draft.targetContactId, activity.activityId, StringComparison.Ordinal);
+                var hovered = Vector2.Distance(Event.current.mousePosition, point) <= 20f;
+                DrawActivityIcon(point, activity.typeIdentified
+                    ? activity.actualType
+                    : EnemyActivityType.Unknown, selected);
+                DrawPressurePips(point, activity.pressure);
+                if (hovered || selected)
                 {
-                    var pulse = 22f + Mathf.Sin(Time.unscaledTime * 4f) * 4f;
-                    for (var index = 0; index < 16; index += 2)
-                    {
-                        var a = index / 16f * Mathf.PI * 2f;
-                        var b = (index + 1f) / 16f * Mathf.PI * 2f;
-                        DrawLine(point + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * pulse,
-                            point + new Vector2(Mathf.Cos(b), Mathf.Sin(b)) * pulse,
-                            new Color(1f, 0.7f, 0.15f), 2f);
-                    }
-                    GUI.Box(new Rect(point.x - 12f, point.y - 14f, 24f, 26f), "?");
-                    GUI.Label(new Rect(point.x - 35f, point.y + 26f, 100f, 20f), "△  ▣  ✹  ⬟");
+                    DrawActivityTooltip(mapRect, point, activity, sectors);
                 }
-                else
+                if (activity.intentKnown && sectors.TryGetValue(activity.nextSectorId, out var target))
                 {
-                    GUI.Box(new Rect(point.x - 15f, point.y - 15f, 30f, 30f), ActivityGlyph(activity.actualType));
-                    GUI.Label(new Rect(point.x + 18f, point.y - 16f, 145f, 40f),
-                        $"{activity.actualType.ToString().ToUpperInvariant()}\n{new string('■', activity.pressure)}");
-                    if (activity.intentKnown && sectors.TryGetValue(activity.nextSectorId, out var target))
-                    {
-                        DrawLine(point, MapToGui(mapRect, target.position.ToVector2()),
-                            new Color(1f, 0.48f, 0.12f, 0.9f), 3f);
-                    }
+                    DrawLine(point, MapToGui(mapRect, target.position.ToVector2()),
+                        new Color(1f, 0.48f, 0.12f, 0.9f), 3f);
                 }
                 DrawTimerRing(point, Mathf.Clamp01(frontline.SecondsUntilAdvance
                     / frontline.Definition.AdvanceIntervalSeconds));
@@ -393,13 +400,108 @@ namespace UnderStatic.UI
             }
         }
 
-        private static string ActivityGlyph(EnemyActivityType type) => type switch
+        private void DrawActivityIcon(Vector2 center, EnemyActivityType type, bool selected)
         {
-            EnemyActivityType.Tank => "▣",
-            EnemyActivityType.Artillery => "✹",
-            EnemyActivityType.EnemyBase => "⬟",
-            _ => "△"
-        };
+            var previous = GUI.color;
+            var colour = type == EnemyActivityType.Unknown
+                ? new Color(1f, 0.7f, 0.15f)
+                : new Color(0.96f, 0.42f, 0.18f);
+            GUI.color = new Color(0.05f, 0.065f, 0.055f, 0.92f);
+            GUI.DrawTexture(new Rect(center.x - 15f, center.y - 15f, 30f, 30f), LineTexture());
+            GUI.color = colour;
+            switch (type)
+            {
+                case EnemyActivityType.Infantry:
+                    foreach (var offset in new[] { -7f, 0f, 7f })
+                    {
+                        GUI.DrawTexture(new Rect(center.x + offset - 2f, center.y - 8f, 4f, 4f), LineTexture());
+                        GUI.DrawTexture(new Rect(center.x + offset - 1f, center.y - 3f, 2f, 9f), LineTexture());
+                        DrawLine(center + new Vector2(offset - 3f, 7f), center + new Vector2(offset, 4f), colour, 1.5f);
+                        DrawLine(center + new Vector2(offset + 3f, 7f), center + new Vector2(offset, 4f), colour, 1.5f);
+                    }
+                    break;
+                case EnemyActivityType.Tank:
+                    GUI.DrawTexture(new Rect(center.x - 11f, center.y - 8f, 22f, 4f), LineTexture());
+                    GUI.DrawTexture(new Rect(center.x - 11f, center.y + 5f, 22f, 4f), LineTexture());
+                    GUI.DrawTexture(new Rect(center.x - 8f, center.y - 5f, 16f, 11f), LineTexture());
+                    GUI.DrawTexture(new Rect(center.x - 4f, center.y - 10f, 8f, 6f), LineTexture());
+                    DrawLine(center + new Vector2(2f, -8f), center + new Vector2(12f, -11f), colour, 2f);
+                    break;
+                case EnemyActivityType.Artillery:
+                    DrawCircleOutline(center + new Vector2(-7f, 6f), 4f, colour, 8);
+                    DrawCircleOutline(center + new Vector2(7f, 6f), 4f, colour, 8);
+                    DrawLine(center + new Vector2(-10f, 2f), center + new Vector2(9f, 2f), colour, 3f);
+                    DrawLine(center + new Vector2(-1f, 1f), center + new Vector2(10f, -10f), colour, 3f);
+                    break;
+                case EnemyActivityType.EnemyBase:
+                    GUI.DrawTexture(new Rect(center.x - 10f, center.y - 4f, 20f, 13f), LineTexture());
+                    DrawLine(center + new Vector2(-12f, -4f), center + new Vector2(0f, -12f), colour, 2f);
+                    DrawLine(center + new Vector2(0f, -12f), center + new Vector2(12f, -4f), colour, 2f);
+                    GUI.color = new Color(0.05f, 0.065f, 0.055f, 0.92f);
+                    GUI.DrawTexture(new Rect(center.x - 3f, center.y + 1f, 6f, 8f), LineTexture());
+                    GUI.color = colour;
+                    break;
+                default:
+                    DrawLine(center + new Vector2(0f, -11f), center + new Vector2(11f, 0f), colour, 2f);
+                    DrawLine(center + new Vector2(11f, 0f), center + new Vector2(0f, 11f), colour, 2f);
+                    DrawLine(center + new Vector2(0f, 11f), center + new Vector2(-11f, 0f), colour, 2f);
+                    DrawLine(center + new Vector2(-11f, 0f), center + new Vector2(0f, -11f), colour, 2f);
+                    DrawCircleOutline(center, 3f, colour, 8);
+                    break;
+            }
+            GUI.color = previous;
+            if (selected)
+            {
+                DrawCircleOutline(center, 19f, Color.white, 20);
+            }
+        }
+
+        private void DrawPressurePips(Vector2 center, int pressure)
+        {
+            var previous = GUI.color;
+            GUI.color = new Color(1f, 0.72f, 0.2f);
+            var width = Mathf.Max(0, pressure) * 6f - 2f;
+            var start = center.x - width * 0.5f;
+            for (var index = 0; index < pressure; index++)
+            {
+                GUI.DrawTexture(new Rect(start + index * 6f, center.y + 18f, 4f, 4f), LineTexture());
+            }
+            GUI.color = previous;
+        }
+
+        private void DrawActivityTooltip(
+            Rect mapRect,
+            Vector2 point,
+            EnemyActivityRuntimeData activity,
+            System.Collections.Generic.IReadOnlyDictionary<string, FrontlineSectorDefinition> sectors)
+        {
+            var type = activity.typeIdentified
+                ? SplitName(activity.actualType.ToString()).ToUpperInvariant()
+                : "UNIDENTIFIED ACTIVITY";
+            var intent = activity.intentKnown && sectors.TryGetValue(activity.nextSectorId, out var target)
+                ? $" · MOVING TO {target.displayName.ToUpperInvariant()}"
+                : string.Empty;
+            const float width = 198f;
+            const float height = 42f;
+            var x = point.x > mapRect.center.x ? point.x - width - 24f : point.x + 24f;
+            var y = point.y < mapRect.center.y ? point.y + 26f : point.y - height - 26f;
+            x = Mathf.Clamp(x, mapRect.x + 6f, mapRect.xMax - width - 6f);
+            y = Mathf.Clamp(y, mapRect.y + 6f, mapRect.yMax - height - 28f);
+            GUI.Box(new Rect(x, y, width, height),
+                $"{type} · PRESSURE {activity.pressure}/{activity.maximumPressure}\n" +
+                $"{(activity.typeIdentified ? "IDENTIFIED" : "RECON REQUIRED")}{intent}");
+        }
+
+        private void DrawCircleOutline(Vector2 center, float radius, Color colour, int segments)
+        {
+            for (var index = 0; index < segments; index++)
+            {
+                var a = index / (float)segments * Mathf.PI * 2f;
+                var b = (index + 1f) / segments * Mathf.PI * 2f;
+                DrawLine(center + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * radius,
+                    center + new Vector2(Mathf.Cos(b), Mathf.Sin(b)) * radius, colour, 1.5f);
+            }
+        }
 
         private void DrawRoute(Rect mapRect, SortiePlanData plan, float progress, bool active)
         {
@@ -510,7 +612,7 @@ namespace UnderStatic.UI
                     var activity = frontline.Runtime.activities.FirstOrDefault(item =>
                         string.Equals(item.activityId, plan.targetContactId, StringComparison.Ordinal));
                     var forecast = MissionForecastCalculator.Build(actor, plan.sortieType, activity,
-                        plan.routeDistanceKilometres, frontline.SecondsUntilAdvance, frontline.Economy);
+                        plan.routeDistanceKilometres, frontline.SecondsUntilAdvance, frontline.Economy, market);
                     y += 52f;
                     GUI.Label(new Rect(rect.x + 12f, y, rect.width - 24f, 72f),
                         $"REACH {forecast.Reach} · EFFECT {forecast.Effect} · REL {forecast.Reliability:P0}\n" +
@@ -576,7 +678,13 @@ namespace UnderStatic.UI
                 }
                 y += 34f;
             }
-            DrawSortieLog(new Rect(rect.x + 10f, y, rect.width - 20f, rect.yMax - y - 54f));
+            const float logHeight = 176f;
+            var logBottom = rect.yMax - 50f;
+            DrawSortieLog(new Rect(
+                rect.x + 10f,
+                logBottom - logHeight,
+                rect.width - 20f,
+                logHeight));
 
             GUI.enabled = missions.ActiveMission == null;
             var dayEnded = operationalDay.Runtime.operationsEnded;
@@ -592,17 +700,21 @@ namespace UnderStatic.UI
         {
             GUI.Box(rect, "SORTIE LOG");
             var reports = missions.Missions.Where(item => item.state == MissionRuntimeState.Resolved)
-                .Reverse().Take(4).ToArray();
+                .Reverse().Take(2).ToArray();
             var y = rect.y + 24f;
             foreach (var report in reports)
             {
-                var selected = selectedReportId == report.missionInstanceId;
-                if (GUI.Button(new Rect(rect.x + 8f, y, rect.width - 16f, 28f),
-                        $"{(selected ? "> " : string.Empty)}{report.plan.sortieType} · {report.outcome}"))
+                var selected = string.IsNullOrEmpty(selectedReportId)
+                    ? string.Equals(missions.LatestReport?.missionInstanceId,
+                        report.missionInstanceId, StringComparison.Ordinal)
+                    : selectedReportId == report.missionInstanceId;
+                if (GUI.Button(new Rect(rect.x + 8f, y, rect.width - 16f, 20f),
+                        $"{(selected ? "> " : string.Empty)}{LabelFor(report.plan.sortieType)} · " +
+                        $"{SplitName(report.outcome.ToString()).ToUpperInvariant()}"))
                 {
                     selectedReportId = report.missionInstanceId;
                 }
-                y += 32f;
+                y += 23f;
             }
             var selectedReport = missions.FindMission(selectedReportId) ?? missions.LatestReport;
             if (selectedReport == null)
@@ -613,19 +725,18 @@ namespace UnderStatic.UI
             {
                 alignment = TextAnchor.UpperLeft,
                 wordWrap = true,
-                clipping = TextClipping.Clip
+                clipping = TextClipping.Clip,
+                fontSize = 11,
+                padding = new RectOffset(7, 7, 5, 4)
             };
-            var maintenance = FormatMaintenance(selectedReport);
-            var reportText = $"{selectedReport.outcome} · score {selectedReport.breakdown.finalScore:0.00}\n" +
-                $"REWARD +{selectedReport.fundsAwarded} funds · " +
-                $"{(fieldOperations != null ? $"CACHE {selectedReport.salvageAwarded} salvage" : $"+{selectedReport.salvageAwarded} salvage")}\n" +
-                selectedReport.breakdown.summary + maintenance;
-            var reportY = y + 4f;
-            var buttonY = rect.yMax - 34f;
+            var reportText = TacticalMapPresentation.CompactReportText(
+                selectedReport, fieldOperations != null);
+            var reportY = y + 2f;
+            var buttonY = rect.yMax - 28f;
             GUI.Box(new Rect(rect.x + 8f, reportY, rect.width - 16f,
-                Mathf.Max(0f, buttonY - reportY - 4f)), reportText, reportStyle);
+                Mathf.Max(24f, buttonY - reportY - 3f)), reportText, reportStyle);
             GUI.enabled = !selectedReport.reportAcknowledged;
-            if (GUI.Button(new Rect(rect.x + 8f, buttonY, rect.width - 16f, 26f), "ACKNOWLEDGE"))
+            if (GUI.Button(new Rect(rect.x + 8f, buttonY, rect.width - 16f, 20f), "ACKNOWLEDGE"))
             {
                 missions.TryAcknowledgeReport(selectedReport.missionInstanceId);
             }
@@ -662,24 +773,6 @@ namespace UnderStatic.UI
                 missions.TryRecallActive();
             }
             GUI.enabled = true;
-        }
-
-        private static string FormatMaintenance(MissionRuntimeData report)
-        {
-            if (report?.maintenanceRecords == null || report.maintenanceRecords.Length == 0)
-            {
-                return string.Empty;
-            }
-            var frame = report.maintenanceRecords.FirstOrDefault(item => item?.isFrame == true);
-            var battery = report.maintenanceRecords.FirstOrDefault(item =>
-                item?.category == UnderStatic.Core.PartCategory.Battery);
-            var localized = report.maintenanceRecords
-                .Where(item => item != null && !item.isFrame && item.conditionAfter < item.conditionBefore)
-                .Select(item => $"{item.category} -{item.conditionBefore - item.conditionAfter:P0}")
-                .Distinct().ToArray();
-            return $"\nRETURN · FRAME -{(frame == null ? 0f : frame.conditionBefore - frame.conditionAfter):P0}" +
-                $" · BAT -{(battery == null ? 0f : battery.chargeBefore - battery.chargeAfter):P0}" +
-                (localized.Length == 0 ? string.Empty : $"\nWEAR · {string.Join(" · ", localized)}");
         }
 
         private void HandleMapInput(Rect mapRect)
@@ -794,18 +887,54 @@ namespace UnderStatic.UI
 
         private Texture2D MapPreview()
         {
-            var seed = battlefield?.Runtime.seed ?? int.MinValue;
-            if (mapPreview != null && mapPreviewSeed != seed)
+            if (battlefield?.Map == null)
+            {
+                return null;
+            }
+            var fingerprint = TacticalMapPresentation.StableStateFingerprint(
+                battlefield.Map, frontline?.Definition, frontline?.Runtime);
+            if (mapPreview != null && mapPreviewFingerprint != fingerprint)
             {
                 DestroyRuntimeTexture(mapPreview);
                 mapPreview = null;
             }
-            if (mapPreview == null && battlefield?.Map != null)
+            if (mapPreview == null)
             {
-                mapPreview = MissionTopographyPresentation.BuildPreview(battlefield.Map);
-                mapPreviewSeed = seed;
+                mapPreview = TacticalMapPresentation.BuildTexture(
+                    battlefield.Map, frontline?.Definition, frontline?.Runtime);
+                mapPreviewFingerprint = fingerprint;
             }
             return mapPreview;
+        }
+
+        private void RefreshPhysicalMap()
+        {
+            if (physicalMapRenderer == null || battlefield?.Map == null)
+            {
+                return;
+            }
+
+            var fingerprint = TacticalMapPresentation.StableStateFingerprint(
+                battlefield.Map, frontline?.Definition, frontline?.Runtime);
+            if (physicalMapPreview != null && physicalMapPreviewFingerprint != fingerprint)
+            {
+                DestroyRuntimeTexture(physicalMapPreview);
+                physicalMapPreview = null;
+            }
+            if (physicalMapPreview == null)
+            {
+                physicalMapPreview = TacticalMapPresentation.BuildPhysicalMapTexture(
+                    battlefield.Map, frontline?.Definition, frontline?.Runtime);
+                physicalMapPreviewFingerprint = fingerprint;
+            }
+
+            physicalMapPropertyBlock ??= new MaterialPropertyBlock();
+            physicalMapRenderer.GetPropertyBlock(physicalMapPropertyBlock);
+            physicalMapPropertyBlock.SetTexture("_BaseMap", physicalMapPreview);
+            physicalMapPropertyBlock.SetTexture("_MainTex", physicalMapPreview);
+            physicalMapPropertyBlock.SetColor("_BaseColor", Color.white);
+            physicalMapPropertyBlock.SetColor("_Color", Color.white);
+            physicalMapRenderer.SetPropertyBlock(physicalMapPropertyBlock);
         }
 
         private void DrawContactMarker(Rect mapRect, Vector2 normalized, Color colour, string label, bool crossed)
@@ -836,14 +965,13 @@ namespace UnderStatic.UI
 
         private void DrawLine(Vector2 start, Vector2 end, Color colour, float width)
         {
-            lineTexture ??= CreateLineTexture();
             var matrix = GUI.matrix;
             var previous = GUI.color;
             var delta = end - start;
             var angle = Mathf.Atan2(delta.y, delta.x) * Mathf.Rad2Deg;
             GUI.color = colour;
             GUIUtility.RotateAroundPivot(angle, start);
-            GUI.DrawTexture(new Rect(start.x, start.y - width * 0.5f, delta.magnitude, width), lineTexture);
+            GUI.DrawTexture(new Rect(start.x, start.y - width * 0.5f, delta.magnitude, width), LineTexture());
             GUI.matrix = matrix;
             GUI.color = previous;
         }
@@ -886,6 +1014,13 @@ namespace UnderStatic.UI
             BattlefieldContactType.EnemyBase => "ENEMY BASE",
             _ => "INFANTRY"
         };
+
+        private static string SplitName(string value) => string.Concat(
+            value.Select((character, index) => index > 0 && char.IsUpper(character)
+                ? $" {character}"
+                : character.ToString()));
+
+        private Texture2D LineTexture() => lineTexture ??= CreateLineTexture();
 
         private static Texture2D CreateLineTexture()
         {

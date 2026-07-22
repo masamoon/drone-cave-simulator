@@ -32,7 +32,7 @@ namespace UnderStatic.Tests.PlayMode
 
             Assert.That(market, Is.Not.Null);
             Assert.That(terminal, Is.Not.Null);
-            Assert.That(market.Funds, Is.EqualTo(600));
+            Assert.That(market.Funds, Is.EqualTo(1100));
             Assert.That(market.Listings.Count(item => item.isAvailable), Is.EqualTo(11));
             Assert.That(market.Listings.Where(item => item.category == MarketListingCategory.Part)
                 .Where(item => item.isAvailable)
@@ -96,7 +96,7 @@ namespace UnderStatic.Tests.PlayMode
                 && !knownIdentities.Contains(part.Runtime.uniqueInstanceId));
 
             Assert.That(result.Succeeded, Is.True, result.Message);
-            Assert.That(market.Funds, Is.EqualTo(460));
+            Assert.That(market.Funds, Is.EqualTo(990));
             Assert.That(purchased.Definition, Is.SameAs(stock.Definition));
             Assert.That(purchased.Runtime.uniqueInstanceId, Is.Not.EqualTo(stock.Runtime.uniqueInstanceId));
             Assert.That(purchased.Runtime.storageLocation, Is.EqualTo(StorageLocationId.SafeHouseParts));
@@ -318,7 +318,7 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(save.RestoreAllFromJson(json, parts, sockets), Is.True, save.LastStatus);
             Assert.That(fleet.Locker[2].Runtime.droneInstanceId, Is.EqualTo(identity));
             Assert.That(fleet.Locker[2].Runtime.diagnosticFaultsDisclosed, Is.False);
-            Assert.That(market.Funds, Is.EqualTo(80));
+            Assert.That(market.Funds, Is.EqualTo(650));
             Assert.That(market.FindListing(listing.listingId).isAvailable, Is.False);
         }
 
