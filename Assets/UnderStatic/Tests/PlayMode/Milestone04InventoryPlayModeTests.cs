@@ -103,6 +103,56 @@ namespace UnderStatic.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator ServiceUiKeepsHeadersAndTopActionsInSeparateScreenSpace()
+        {
+            SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var chargerService = Object.FindAnyObjectByType<BatteryChargingStation>()
+                .GetComponent<DroneServiceModeController>();
+            var droneService = GameObject.Find("DroneServiceModeControl")
+                .GetComponent<DroneServiceModeController>();
+
+            AssertServiceUiLayout(chargerService);
+            AssertServiceUiLayout(droneService);
+        }
+
+        [UnityTest]
+        public IEnumerator ServiceInventoryHitTestingFollowsTheScrolledRows()
+        {
+            SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var service = GameObject.Find("DroneServiceModeControl")
+                .GetComponent<DroneServiceModeController>();
+            var type = typeof(DroneServiceModeController);
+            type.GetMethod("UpdateUiRects", BindingFlags.Instance | BindingFlags.NonPublic)
+                ?.Invoke(service, null);
+            var available = (InstallablePart[])type.GetMethod(
+                    "AvailableInventoryParts",
+                    BindingFlags.Instance | BindingFlags.NonPublic)
+                ?.Invoke(service, null);
+            Assert.That(available.Length, Is.GreaterThan(3));
+
+            var rowStride = (float)type.GetField(
+                    "InventoryRowStride",
+                    BindingFlags.Static | BindingFlags.NonPublic)
+                ?.GetRawConstantValue();
+            type.GetField("inventoryPartsScroll", BindingFlags.Instance | BindingFlags.NonPublic)
+                ?.SetValue(service, new Vector2(0f, rowStride * 3f));
+            var viewport = ReadUiRect(type, service, "inventoryPartsViewport");
+            var found = (InstallablePart)type.GetMethod(
+                    "FindInventoryPartAt",
+                    BindingFlags.Instance | BindingFlags.NonPublic)
+                ?.Invoke(service, new object[] { viewport.position + new Vector2(10f, 10f) });
+
+            Assert.That(found, Is.SameAs(available[3]),
+                "Dragging the first visible scrolled row must select that visible part.");
+        }
+
+        [UnityTest]
         public IEnumerator DroneServiceModeShowsInstalledComponentsMissingSlotsAndActionableStatus()
         {
             SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
@@ -827,6 +877,48 @@ namespace UnderStatic.Tests.PlayMode
                 Quaternion.LookRotation(target - cameraPosition, Vector3.up));
             Physics.SyncTransforms();
         }
+
+        private static void AssertServiceUiLayout(DroneServiceModeController service)
+        {
+            var type = typeof(DroneServiceModeController);
+            type.GetMethod("UpdateUiRects", BindingFlags.Instance | BindingFlags.NonPublic)
+                ?.Invoke(service, null);
+
+            var inventoryPanel = ReadUiRect(type, service, "inventoryPanelRect");
+            var header = ReadUiRect(type, service, "serviceHeaderRect");
+            var actions = new[]
+                {
+                    ReadUiRect(type, service, "payloadBayRect"),
+                    ReadUiRect(type, service, "diagnosticRect"),
+                    ReadUiRect(type, service, "exitRect")
+                }
+                .Where(rect => rect.width > 0f)
+                .ToArray();
+
+            Assert.That(header.width, Is.GreaterThan(0f));
+            foreach (var action in actions)
+            {
+                Assert.That(header.Overlaps(action), Is.False,
+                    "The service title must never cover an action button.");
+                Assert.That(action.xMin, Is.GreaterThanOrEqualTo(inventoryPanel.xMax),
+                    "Top service actions must remain clear of the parts panel.");
+            }
+            for (var left = 0; left < actions.Length; left++)
+            {
+                for (var right = left + 1; right < actions.Length; right++)
+                {
+                    Assert.That(actions[left].Overlaps(actions[right]), Is.False,
+                        "Service action buttons must not overlap each other.");
+                }
+            }
+        }
+
+        private static Rect ReadUiRect(
+            System.Type type,
+            DroneServiceModeController service,
+            string fieldName) =>
+            (Rect)type.GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)
+                ?.GetValue(service);
 
         [UnityTest]
         [Ignore("Superseded by the experimental Milestone 07 Safe House pivot; retained until playtest acceptance.")]

@@ -136,13 +136,18 @@ namespace UnderStatic.Interaction
         private MaterialPropertyBlock propertyBlock;
         private string serviceStatus = "Select a component or drag a replacement to an empty socket";
         private ServicePartsTab selectedPartsTab;
+        private Vector2 inventoryPartsScroll;
         private Vector2 installedPartsScroll;
         private Rect inventoryPanelRect;
+        private Rect inventoryPartsViewport;
         private Rect scrapRect;
         private Rect diagnosticRect;
         private Rect payloadBayRect;
         private Rect exitRect;
+        private Rect serviceHeaderRect;
         private Rect loadEnvelopeRect;
+        private const float InventoryRowHeight = 70f;
+        private const float InventoryRowStride = 78f;
         private float PartsRowStartY => CanShowInstalledComponents ? 126f : 92f;
 
         public bool IsActive { get; private set; }
@@ -249,6 +254,7 @@ namespace UnderStatic.Interaction
             }
 
             selectedPartsTab = tab;
+            inventoryPartsScroll = Vector2.zero;
             installedPartsScroll = Vector2.zero;
             serviceStatus = tab == ServicePartsTab.Inventory
                 ? "Drag a replacement from inventory onto a compatible empty socket"
@@ -315,6 +321,7 @@ namespace UnderStatic.Interaction
             Cursor.lockState = CursorLockMode.Confined;
             Cursor.visible = true;
             selectedPartsTab = ServicePartsTab.Inventory;
+            inventoryPartsScroll = Vector2.zero;
             installedPartsScroll = Vector2.zero;
             IsActive = true;
             serviceStatus = filterInventoryCategory
@@ -875,7 +882,7 @@ namespace UnderStatic.Interaction
             }
 
             var scroll = zoomAction?.ReadValue<Vector2>().y ?? 0f;
-            if (Mathf.Abs(scroll) > 0.01f)
+            if (!PointerOverUi(guiPointer) && Mathf.Abs(scroll) > 0.01f)
             {
                 distance = Mathf.Clamp(
                     distance - scroll * zoomSensitivity,
@@ -1352,30 +1359,27 @@ namespace UnderStatic.Interaction
 
         private InstallablePart FindInventoryPartAt(Vector2 guiPointer)
         {
-            if (selectedPartsTab != ServicePartsTab.Inventory)
+            if (selectedPartsTab != ServicePartsTab.Inventory
+                || !inventoryPartsViewport.Contains(guiPointer))
             {
                 return null;
             }
 
             var available = AvailableInventoryParts();
-            var y = PartsRowStartY;
-            var maximumY = supportsSalvage ? scrapRect.yMin - 10f : Screen.height - 50f;
-            foreach (var part in available)
+            var contentPointer = guiPointer - inventoryPartsViewport.position + inventoryPartsScroll;
+            var contentWidth = Mathf.Max(0f, inventoryPartsViewport.width - 18f);
+            if (contentPointer.x < 0f || contentPointer.x > contentWidth || contentPointer.y < 0f)
             {
-                if (y + 58f > maximumY)
-                {
-                    break;
-                }
-
-                if (new Rect(30f, y, 308f, 54f).Contains(guiPointer))
-                {
-                    return part;
-                }
-
-                y += 62f;
+                return null;
             }
 
-            return null;
+            var rowIndex = Mathf.FloorToInt(contentPointer.y / InventoryRowStride);
+            var rowOffset = contentPointer.y - rowIndex * InventoryRowStride;
+            return rowIndex >= 0
+                && rowIndex < available.Length
+                && rowOffset < InventoryRowHeight
+                    ? available[rowIndex]
+                    : null;
         }
 
         private InstallablePart[] AvailableInventoryParts() => inventory == null
@@ -1393,18 +1397,73 @@ namespace UnderStatic.Interaction
 
         private void UpdateUiRects()
         {
+            const float contentLeft = 374f;
+            const float rightMargin = 18f;
+            const float headerButtonGap = 14f;
+            const float minimumInlineHeaderWidth = 260f;
+
             inventoryPanelRect = new Rect(14f, 14f, 340f, Screen.height - 28f);
             scrapRect = supportsSalvage
                 ? new Rect(30f, Screen.height - 142f, 308f, 92f)
                 : Rect.zero;
+            var inventoryMaximumY = supportsSalvage ? scrapRect.yMin - 10f : Screen.height - 50f;
+            inventoryPartsViewport = new Rect(
+                30f,
+                PartsRowStartY,
+                308f,
+                Mathf.Max(80f, inventoryMaximumY - PartsRowStartY));
+            var actionCount = 1 + (supportsDiagnostic ? 1 : 0) + (HasPayloadBay ? 1 : 0);
+            var desiredActionWidth = 136f
+                + (supportsDiagnostic ? 136f : 0f)
+                + (HasPayloadBay ? 142f : 0f);
+            var availableActionWidth = Mathf.Max(0f, Screen.width - contentLeft - rightMargin);
+            var actionGap = desiredActionWidth + (actionCount - 1) * headerButtonGap <= availableActionWidth
+                ? headerButtonGap
+                : 8f;
+            var actionScale = Mathf.Min(
+                1f,
+                Mathf.Max(0f, availableActionWidth - (actionCount - 1) * actionGap)
+                / desiredActionWidth);
+            var actionRight = Screen.width - rightMargin;
+            var exitWidth = 136f * actionScale;
+            exitRect = new Rect(actionRight - exitWidth, 18f, exitWidth, 34f);
+            actionRight = exitRect.x - actionGap;
             diagnosticRect = supportsDiagnostic
-                ? new Rect(Screen.width - 304f, 18f, 136f, 34f)
+                ? new Rect(actionRight - 136f * actionScale, 18f, 136f * actionScale, 34f)
                 : Rect.zero;
+            if (supportsDiagnostic)
+            {
+                actionRight = diagnosticRect.x - actionGap;
+            }
             payloadBayRect = HasPayloadBay
-                ? new Rect(Screen.width - 460f, 18f, 142f, 34f)
+                ? new Rect(actionRight - 142f * actionScale, 18f, 142f * actionScale, 34f)
                 : Rect.zero;
-            exitRect = new Rect(Screen.width - 154f, 18f, 136f, 34f);
-            loadEnvelopeRect = new Rect(Screen.width - 374f, 82f, 356f, 154f);
+
+            var firstActionX = exitRect.x;
+            if (supportsDiagnostic)
+            {
+                firstActionX = Mathf.Min(firstActionX, diagnosticRect.x);
+            }
+            if (HasPayloadBay)
+            {
+                firstActionX = Mathf.Min(firstActionX, payloadBayRect.x);
+            }
+
+            var inlineHeaderWidth = firstActionX - headerButtonGap - contentLeft;
+            var useSecondHeaderRow = inlineHeaderWidth < minimumInlineHeaderWidth;
+            serviceHeaderRect = useSecondHeaderRow
+                ? new Rect(
+                    contentLeft,
+                    60f,
+                    Mathf.Max(0f, Screen.width - contentLeft - rightMargin),
+                    54f)
+                : new Rect(contentLeft, 18f, inlineHeaderWidth, 54f);
+            var loadEnvelopeLeft = Mathf.Max(contentLeft, Screen.width - 374f);
+            loadEnvelopeRect = new Rect(
+                loadEnvelopeLeft,
+                useSecondHeaderRow ? 126f : 82f,
+                Mathf.Max(0f, Screen.width - rightMargin - loadEnvelopeLeft),
+                154f);
         }
 
         private Vector2 GetGuiPointer()
@@ -1475,12 +1534,20 @@ namespace UnderStatic.Interaction
 
             DrawLoadEnvelope();
 
+            var serviceHeaderStyle = new GUIStyle(GUI.skin.box)
+            {
+                alignment = TextAnchor.MiddleCenter,
+                clipping = TextClipping.Clip,
+                fontSize = 12,
+                wordWrap = true
+            };
             GUI.Box(
-                new Rect(374f, 18f, Mathf.Max(300f, Screen.width - 548f), 54f),
-                $"{serviceTitle} · MMB orbit · wheel zoom · LMB interact · RMB loosen · 1 save · 2 load");
+                serviceHeaderRect,
+                $"{serviceTitle} · MMB orbit · wheel zoom · LMB interact · RMB loosen · 1 save · 2 load",
+                serviceHeaderStyle);
             var targetPrompt = hovered?.InteractionPrompt ?? ResolveHoveredSocket()?.InteractionPrompt;
             GUI.Box(
-                new Rect(374f, Screen.height - 78f, Mathf.Max(300f, Screen.width - 392f), 58f),
+                new Rect(374f, Screen.height - 78f, Mathf.Max(0f, Screen.width - 392f), 58f),
                 string.IsNullOrWhiteSpace(targetPrompt)
                     ? serviceStatus
                     : $"{targetPrompt}\n{serviceStatus}");
@@ -1585,22 +1652,30 @@ namespace UnderStatic.Interaction
         {
             if (inventory == null)
             {
-                GUI.Label(new Rect(30f, 94f, 300f, 30f), "Inventory unavailable");
+                GUI.Label(
+                    new Rect(
+                        inventoryPartsViewport.x,
+                        inventoryPartsViewport.y,
+                        inventoryPartsViewport.width,
+                        30f),
+                    "Inventory unavailable");
                 return;
             }
 
             var available = AvailableInventoryParts();
-            var y = PartsRowStartY;
-            var maximumY = supportsSalvage ? scrapRect.yMin - 10f : Screen.height - 50f;
-            foreach (var part in available)
+            var contentWidth = Mathf.Max(0f, inventoryPartsViewport.width - 18f);
+            var contentHeight = Mathf.Max(
+                inventoryPartsViewport.height,
+                available.Length * InventoryRowStride + 4f);
+            var content = new Rect(0f, 0f, contentWidth, contentHeight);
+            inventoryPartsScroll = GUI.BeginScrollView(
+                inventoryPartsViewport,
+                inventoryPartsScroll,
+                content);
+            for (var index = 0; index < available.Length; index++)
             {
-                if (y + 74f > maximumY)
-                {
-                    GUI.Label(new Rect(30f, y, 300f, 24f), $"+ {available.Length - Array.IndexOf(available, part)} more parts");
-                    break;
-                }
-
-                var row = new Rect(30f, y, 308f, 70f);
+                var part = available[index];
+                var row = new Rect(0f, index * InventoryRowStride, contentWidth, InventoryRowHeight);
                 GUI.Box(row, string.Empty);
                 GUI.Label(
                     new Rect(row.x + 10f, row.y + 5f, row.width - 20f, 22f),
@@ -1612,13 +1687,13 @@ namespace UnderStatic.Interaction
                     new Rect(row.x + 10f, row.y + 45f, row.width - 20f, 22f),
                     $"{part.Definition.Mass:0.00}kg · {part.Definition.PowerDraw:0.00}PU · " +
                     $"SPD {part.Definition.StatModifiers.speed:+0.00;-0.00;0.00} · {FormatLocation(part.Runtime.storageLocation)}");
-                y += 78f;
             }
 
             if (available.Length == 0)
             {
-                GUI.Label(new Rect(30f, y, 300f, 28f), "No loose parts in storage");
+                GUI.Label(new Rect(0f, 0f, contentWidth, 28f), "No loose parts in storage");
             }
+            GUI.EndScrollView();
         }
 
         private void DrawInstalledComponentRows()

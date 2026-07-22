@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Reflection;
 using NUnit.Framework;
 using UnderStatic.Core;
 using UnderStatic.Interaction;
@@ -169,6 +170,35 @@ namespace UnderStatic.Tests.EditMode
                 Is.EqualTo("<Mouse>/rightButton"));
             Assert.That(service.FindAction("Orbit", true).bindings[0].effectivePath,
                 Is.EqualTo("<Mouse>/middleButton"));
+        }
+
+        [Test]
+        public void ServiceUi_NarrowViewKeepsHeaderClearOfActionButtons()
+        {
+            var serviceObject = Track(new GameObject("ServiceUiLayout"));
+            var controller = serviceObject.AddComponent<DroneServiceModeController>();
+            controller.ConfigureStation(
+                "BATTERY CHARGER · 1/5 PLUGS",
+                "E: open battery charger",
+                Vector3.zero,
+                1.1f,
+                PartCategory.Battery);
+
+            var type = typeof(DroneServiceModeController);
+            type.GetMethod("UpdateUiRects", BindingFlags.Instance | BindingFlags.NonPublic)
+                ?.Invoke(controller, null);
+            var header = (Rect)type.GetField(
+                    "serviceHeaderRect",
+                    BindingFlags.Instance | BindingFlags.NonPublic)
+                ?.GetValue(controller);
+            var exit = (Rect)type.GetField(
+                    "exitRect",
+                    BindingFlags.Instance | BindingFlags.NonPublic)
+                ?.GetValue(controller);
+
+            Assert.That(header.width, Is.GreaterThan(0f));
+            Assert.That(exit.width, Is.GreaterThan(0f));
+            Assert.That(header.Overlaps(exit), Is.False);
         }
 
         private (PartSocket socket, InstallablePart part, DroneAssemblyState assembly) CreateFastenedMotor()
