@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Linq;
 using NUnit.Framework;
+using UnderStatic.Interaction;
 using UnderStatic.Missions;
 using UnderStatic.UI;
 using UnityEngine;
@@ -28,6 +29,12 @@ namespace UnderStatic.Tests.PlayMode
 
             Assert.That(surface, Is.Not.Null);
             Assert.That(renderer, Is.Not.Null);
+            Assert.That(GameObject.Find("TacticalMapControl"), Is.Null,
+                "The separate yellow map control should no longer exist.");
+            Assert.That(terminal.gameObject, Is.SameAs(surface));
+            Assert.That(terminal.InteractionTransform, Is.SameAs(surface.transform));
+            Assert.That(surface.GetComponent<Collider>().enabled, Is.True,
+                "The physical wall map surface must own the interaction target.");
             Assert.That(physicalTexture, Is.Not.SameAs(terminal.SelectedTopographyPreview),
                 "The wall map should use its dedicated high-resolution live texture");
             Assert.That(physicalTexture.width,
@@ -62,6 +69,49 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(physicalAfter.width,
                 Is.EqualTo(TacticalMapPresentation.PhysicalMapTextureResolution));
             Assert.That(physicalAfter, Is.Not.SameAs(after));
+        }
+
+        [UnityTest]
+        public IEnumerator SafeHouseRadioRestsAboveTheAuthoredDeskAndLatestReportUsesDedicatedPanel()
+        {
+            SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var radio = GameObject.Find("FieldRadio");
+            var radioMinimum = radio.GetComponentsInChildren<Renderer>(true)
+                .Min(item => item.bounds.min.y);
+            Assert.That(radio.transform.position.y, Is.EqualTo(1.08f).Within(0.001f));
+            Assert.That(radioMinimum, Is.GreaterThanOrEqualTo(0.89f),
+                "The authored radio must not sink through the desk surface.");
+
+            var missions = Object.FindAnyObjectByType<MissionSystem>();
+            var terminal = Object.FindAnyObjectByType<TacticalMapTerminal>();
+            var controller = Object.FindAnyObjectByType<FirstPersonController>();
+            var report = new MissionRuntimeData
+            {
+                missionInstanceId = "mission.report-panel",
+                sortieProfileId = "sortie.kamikaze",
+                state = MissionRuntimeState.Resolved,
+                outcome = MissionOutcome.Success,
+                reportAcknowledged = false,
+                plan = new SortiePlanData { sortieType = SortieType.KamikazeStrike }
+            };
+            Assert.That(missions.RestoreState(new MissionSaveData
+            {
+                missions = new[] { report },
+                draft = new SortieDraftData { sortieType = SortieType.Recon }
+            }), Is.True);
+
+            Assert.That(terminal.OpenLatestReport(), Is.True);
+            Assert.That(terminal.IsReportOpen, Is.True);
+            Assert.That(controller.enabled, Is.False);
+            Assert.That(Cursor.visible, Is.True);
+            Assert.That(terminal.AcknowledgeDisplayedReport(), Is.True);
+            Assert.That(terminal.IsReportOpen, Is.False);
+            Assert.That(missions.LatestReport.reportAcknowledged, Is.True);
+            Assert.That(controller.enabled, Is.True);
+            Assert.That(Cursor.visible, Is.False);
         }
     }
 }

@@ -242,12 +242,12 @@ namespace UnderStatic.Lab
                     "FieldRadio",
                     "SH_POC_FieldRadio",
                     station.transform,
-                    new Vector3(-2.22f, 0.94f, 2.42f),
+                    new Vector3(-2.22f, 1.08f, 2.42f),
                     Quaternion.Euler(0f, 180f, 0f),
                     Vector3.one,
                     artPocMaterial) == null)
             {
-                Create("FieldRadio", PrimitiveType.Cube, station.transform, new Vector3(-2.22f, 0.94f, 2.42f), new Vector3(0.8f, 0.42f, 0.42f), metal);
+                Create("FieldRadio", PrimitiveType.Cube, station.transform, new Vector3(-2.22f, 1.08f, 2.42f), new Vector3(0.8f, 0.42f, 0.42f), metal);
                 Create("RadioSpeaker", PrimitiveType.Cylinder, station.transform, new Vector3(-2.22f, 0.96f, 2.19f), new Vector3(0.14f, 0.025f, 0.14f), bareMetal).transform.rotation = Quaternion.Euler(90f, 0f, 0f);
                 Create("RadioIndicator", PrimitiveType.Sphere, station.transform, new Vector3(-1.95f, 1.03f, 2.18f), Vector3.one * 0.045f, redGlow);
                 var antenna = Create("RadioAntenna", PrimitiveType.Cylinder, station.transform, new Vector3(-2.48f, 1.45f, 2.42f), new Vector3(0.018f, 0.52f, 0.018f), bareMetal);

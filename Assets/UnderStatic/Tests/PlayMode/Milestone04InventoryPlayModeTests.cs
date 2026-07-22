@@ -219,6 +219,9 @@ namespace UnderStatic.Tests.PlayMode
             yield return new WaitForSeconds(0.4f);
             var socketScreen = camera.WorldToScreenPoint(charger.Socket.SeatedPosition);
             var socketPointer = new Vector2(socketScreen.x, Screen.height - socketScreen.y);
+            Assert.That(Vector3.Distance(camera.transform.position, charger.Socket.SeatedPosition),
+                Is.GreaterThanOrEqualTo(1f),
+                "The battery charger service view must start wide enough to align a pack comfortably.");
             Assert.That(socketScreen.z, Is.GreaterThan(0f));
             Assert.That(service.BeginServiceDrag(battery), Is.True);
             Assert.That(service.PromoteServiceDragToWorld(socketPointer), Is.True);

@@ -13,6 +13,7 @@ namespace UnderStatic.Lab
     {
         private const string ChargerModelPath = "Art/SafeHousePoC/Models/SH_POC_BatteryCharger";
         private const string ChargerTexturePath = "Art/SafeHousePoC/Textures/SH_POC_Utility_128";
+        private const float ServiceViewDistance = 1.1f;
 
         public static BatteryChargingStation Build(
             InventorySystem inventory,
@@ -162,7 +163,7 @@ namespace UnderStatic.Lab
                 "BATTERY CHARGER · 1/5 PLUGS",
                 "E: open battery charger",
                 new Vector3(-0.24f, 0.13f, -0.02f),
-                0.72f,
+                ServiceViewDistance,
                 PartCategory.Battery,
                 dragTargetRadiusPixels: 160f);
 

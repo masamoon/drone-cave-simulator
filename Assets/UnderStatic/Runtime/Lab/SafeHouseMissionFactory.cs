@@ -96,20 +96,14 @@ namespace UnderStatic.Lab
             var replay = replayObject.AddComponent<MissionReplayDirector>();
             replay.Configure(missions, battlefield, controller, replayDefinition, visualKit);
 
-            var controlMaterial = InteractionLabFactory.CreateMaterial(
-                "Tactical Map Control",
-                new Color(0.48f, 0.35f, 0.08f));
-            var tacticalControl = InteractionLabFactory.CreatePrimitive(
-                "TacticalMapControl",
-                PrimitiveType.Cube,
-                GameObject.Find("TacticalMapStation")?.transform,
-                new Vector3(-2.92f, 0.98f, -0.65f),
-                new Vector3(0.12f, 0.16f, 0.22f),
-                controlMaterial,
-                true);
-            var terminal = tacticalControl.AddComponent<TacticalMapTerminal>();
-            PsxVisualFactory.EnhanceTacticalTerminal(tacticalControl.transform, visualKit);
-            var mapSurface = GameObject.Find("TacticalMapDynamicSurface")?.GetComponent<Renderer>();
+            var mapSurfaceObject = GameObject.Find("TacticalMapDynamicSurface");
+            var mapSurface = mapSurfaceObject?.GetComponent<Renderer>();
+            var mapCollider = mapSurfaceObject?.GetComponent<Collider>();
+            if (mapCollider != null)
+            {
+                mapCollider.enabled = true;
+            }
+            var terminal = mapSurfaceObject.AddComponent<TacticalMapTerminal>();
             terminal.Configure(
                 missions,
                 battlefield,
@@ -118,7 +112,7 @@ namespace UnderStatic.Lab
                 market,
                 inventory,
                 controller,
-                tacticalControl.GetComponent<Renderer>(),
+                mapSurface,
                 replay,
                 frontlineSystem: frontline,
                 physicalMapRenderer: mapSurface);

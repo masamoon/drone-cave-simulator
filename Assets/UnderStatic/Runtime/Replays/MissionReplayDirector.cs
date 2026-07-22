@@ -163,13 +163,13 @@ namespace UnderStatic.Replays
             {
                 workshopCamera.enabled = false;
             }
+            previousCursorLock = Cursor.lockState;
+            previousCursorVisible = Cursor.visible;
             controllerWasEnabled = controller != null && controller.enabled;
             if (controller != null)
             {
                 controller.enabled = false;
             }
-            previousCursorLock = Cursor.lockState;
-            previousCursorVisible = Cursor.visible;
             Cursor.lockState = CursorLockMode.Confined;
             Cursor.visible = true;
             staticRefreshElapsed = 0f;
@@ -340,8 +340,8 @@ namespace UnderStatic.Replays
                 controller.enabled = controllerWasEnabled;
             }
             ResumeWorkshopPresentation();
-            Cursor.lockState = previousCursorLock;
-            Cursor.visible = previousCursorVisible;
+            Cursor.lockState = controllerWasEnabled ? CursorLockMode.Locked : previousCursorLock;
+            Cursor.visible = controllerWasEnabled ? false : previousCursorVisible;
             DestroyReconstruction();
             ActiveMission = null;
             ActiveMap = null;

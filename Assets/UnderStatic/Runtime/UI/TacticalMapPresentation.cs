@@ -136,6 +136,93 @@ namespace UnderStatic.UI
             return string.Join("\n", lines.Take(4));
         }
 
+        public static string FullReportText(MissionRuntimeData report, bool cacheTerminology)
+        {
+            if (report == null)
+            {
+                return string.Empty;
+            }
+
+            var breakdown = report.breakdown ?? new MissionResultBreakdown();
+            var target = !breakdown.positiveIdentification
+                ? "No positive target classification"
+                : SplitName(report.targetType.ToString());
+            var reportLines = new List<string>
+            {
+                "MISSION RESULT",
+                $"Outcome: {SplitName(report.outcome.ToString())}",
+                $"Sortie: {SplitName(report.plan?.sortieType.ToString() ?? "Unknown")}",
+                $"Aircraft: {(string.IsNullOrWhiteSpace(report.assignedDroneId) ? "Unassigned" : report.assignedDroneId)}",
+                $"Route flown: {report.executedDistanceKilometres:0.00} km",
+                string.Empty,
+                "OPERATIONAL ASSESSMENT",
+                string.IsNullOrWhiteSpace(breakdown.summary) ? "No additional field summary." : breakdown.summary.Trim(),
+                $"Target: {target}",
+                $"Positive identification: {(breakdown.positiveIdentification ? "Confirmed" : "Not confirmed")}",
+                $"Effect applied: {report.damageApplied}",
+                $"Final score: {breakdown.finalScore:0.00}",
+                $"Readiness {breakdown.readiness:0.00}  Observation {breakdown.observation:0.00}  " +
+                $"Endurance {breakdown.endurance:0.00}",
+                $"Control {breakdown.control:0.00}  Payload {breakdown.payload:0.00}  " +
+                $"Reliability {breakdown.reliability:0.00}",
+                $"Distance effect {breakdown.distanceEffect:0.00}  Uncertainty {breakdown.uncertaintyRoll:0.00}",
+                string.Empty,
+                "RESOURCE OUTCOME",
+                $"Funds awarded: +{report.fundsAwarded}",
+                $"{(cacheTerminology ? "Salvage cache" : "Salvage")} awarded: +{report.salvageAwarded}",
+                $"Aircraft: {(report.aircraftExpended ? "Expended" : "Recovered")}",
+                $"Ordnance: {(report.ordnanceRefunded ? "Refunded" : report.ordnanceConsumed ? "Consumed" : "Retained")}",
+                $"Workshop exposure: +{report.exposureContribution:0.00}",
+                string.Empty,
+                "RETURN CONDITION"
+            };
+
+            var maintenance = report.maintenanceRecords?.Where(item => item != null).ToArray()
+                ?? Array.Empty<SortieMaintenanceRecord>();
+            if (maintenance.Length == 0)
+            {
+                reportLines.Add(report.aircraftExpended
+                    ? "No aircraft returned for inspection."
+                    : "No maintenance changes recorded.");
+            }
+            else
+            {
+                foreach (var record in maintenance)
+                {
+                    var component = record.isFrame ? "Frame" : SplitName(record.category.ToString());
+                    var conditionChange = Mathf.RoundToInt((record.conditionAfter - record.conditionBefore) * 100f);
+                    var conditionPercent = Mathf.RoundToInt(record.conditionAfter * 100f);
+                    var detail = $"{component}: {conditionPercent}% condition ({conditionChange:+#;-#;0}%)";
+                    if (record.category == UnderStatic.Core.PartCategory.Battery)
+                    {
+                        var chargeChange = Mathf.RoundToInt((record.chargeAfter - record.chargeBefore) * 100f);
+                        var chargePercent = Mathf.RoundToInt(record.chargeAfter * 100f);
+                        detail += $", {chargePercent}% charge ({chargeChange:+#;-#;0}%)";
+                    }
+                    reportLines.Add(detail);
+                }
+            }
+
+            reportLines.Add(string.Empty);
+            reportLines.Add("INTELLIGENCE");
+            if (report.discoveredContactIds == null || report.discoveredContactIds.Length == 0)
+            {
+                reportLines.Add("No new contacts recorded.");
+            }
+            else
+            {
+                for (var index = 0; index < report.discoveredContactIds.Length; index++)
+                {
+                    var type = report.discoveredTypes != null && index < report.discoveredTypes.Length
+                        ? SplitName(report.discoveredTypes[index].ToString())
+                        : "Unclassified";
+                    reportLines.Add($"{index + 1}. {type} · {report.discoveredContactIds[index]}");
+                }
+            }
+
+            return string.Join("\n", reportLines);
+        }
+
         private static void DrawTerrain(MissionTopographyMap map, RasterCanvas canvas)
         {
             var gridSpacing = Mathf.Max(1, canvas.Resolution / 8);

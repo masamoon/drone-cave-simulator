@@ -35,10 +35,13 @@ namespace UnderStatic.UI
         private Texture2D physicalMapPreview;
         private int physicalMapPreviewFingerprint = int.MinValue;
         private Texture2D lineTexture;
-        private string selectedReportId = string.Empty;
+        private string displayedReportId = string.Empty;
+        private string pendingReportId = string.Empty;
+        private Vector2 reportScroll;
         private int draggingWaypoint = -1;
 
         public bool IsOpen { get; private set; }
+        public bool IsReportOpen { get; private set; }
         public string InteractionPrompt => "E: plan battlefield sortie";
         public Transform InteractionTransform => transform;
         public Texture2D SelectedTopographyPreview => MapPreview();
@@ -58,6 +61,10 @@ namespace UnderStatic.UI
             FrontlineSystem frontlineSystem = null,
             Renderer physicalMapRenderer = null)
         {
+            if (missions != null)
+            {
+                missions.MissionResolved -= HandleMissionResolved;
+            }
             missions = missionSystem;
             battlefield = battlefieldSystem;
             operationalDay = daySystem;
@@ -71,12 +78,25 @@ namespace UnderStatic.UI
             fieldOperations = operations;
             frontline = frontlineSystem;
             this.physicalMapRenderer = physicalMapRenderer;
+            if (missions != null)
+            {
+                missions.MissionResolved += HandleMissionResolved;
+            }
             RefreshPhysicalMap();
         }
 
         private void Update()
         {
             RefreshPhysicalMap();
+            if (!string.IsNullOrEmpty(pendingReportId) && replayDirector?.IsPlaying != true)
+            {
+                var report = missions?.FindMission(pendingReportId);
+                pendingReportId = string.Empty;
+                if (report != null && !report.reportAcknowledged)
+                {
+                    OpenReport(report);
+                }
+            }
         }
 
         public void Activate()
@@ -86,24 +106,45 @@ namespace UnderStatic.UI
                 return;
             }
             IsOpen = true;
-            if (controller != null)
-            {
-                controller.enabled = false;
-            }
-            Cursor.lockState = CursorLockMode.Confined;
-            Cursor.visible = true;
+            AcquireUiFocus();
         }
 
         public void Close()
         {
             IsOpen = false;
             draggingWaypoint = -1;
-            if (controller != null)
+            if (!IsReportOpen)
             {
-                controller.enabled = true;
+                ReleaseUiFocus();
             }
-            Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible = false;
+        }
+
+        public bool OpenLatestReport()
+        {
+            var report = missions?.LatestReport;
+            if (report == null)
+            {
+                return false;
+            }
+            OpenReport(report);
+            return true;
+        }
+
+        public bool AcknowledgeDisplayedReport()
+        {
+            var report = missions?.FindMission(displayedReportId);
+            if (report == null || missions.TryAcknowledgeReport(report.missionInstanceId) != true)
+            {
+                return false;
+            }
+            IsReportOpen = false;
+            displayedReportId = string.Empty;
+            reportScroll = Vector2.zero;
+            if (!IsOpen)
+            {
+                ReleaseUiFocus();
+            }
+            return true;
         }
 
         public bool SelectSortieType(SortieType type) => missions?.SetDraftType(type) == true;
@@ -142,6 +183,48 @@ namespace UnderStatic.UI
         public bool EndOperations() => operationalDay?.TryEndOperations() == true;
         public bool BeginNextDay() => operationalDay?.TryBeginNextDay() == true;
 
+        private void HandleMissionResolved(MissionRuntimeData report)
+        {
+            if (report == null || report.reportAcknowledged)
+            {
+                return;
+            }
+            if (replayDirector?.IsPlaying == true)
+            {
+                pendingReportId = report.missionInstanceId;
+                return;
+            }
+            OpenReport(report);
+        }
+
+        private void OpenReport(MissionRuntimeData report)
+        {
+            displayedReportId = report.missionInstanceId;
+            reportScroll = Vector2.zero;
+            IsReportOpen = true;
+            AcquireUiFocus();
+        }
+
+        private void AcquireUiFocus()
+        {
+            if (controller != null)
+            {
+                controller.enabled = false;
+            }
+            Cursor.lockState = CursorLockMode.Confined;
+            Cursor.visible = true;
+        }
+
+        private void ReleaseUiFocus()
+        {
+            if (controller != null)
+            {
+                controller.enabled = true;
+            }
+            Cursor.lockState = CursorLockMode.Locked;
+            Cursor.visible = false;
+        }
+
         public void SetFocused(bool focused)
         {
             if (focusRenderer == null)
@@ -158,14 +241,22 @@ namespace UnderStatic.UI
 
         private void OnDisable()
         {
-            if (IsOpen)
+            if (IsOpen || IsReportOpen)
             {
-                Close();
+                IsOpen = false;
+                IsReportOpen = false;
+                displayedReportId = string.Empty;
+                pendingReportId = string.Empty;
+                ReleaseUiFocus();
             }
         }
 
         private void OnDestroy()
         {
+            if (missions != null)
+            {
+                missions.MissionResolved -= HandleMissionResolved;
+            }
             DestroyRuntimeTexture(mapPreview);
             DestroyRuntimeTexture(physicalMapPreview);
             DestroyRuntimeTexture(lineTexture);
@@ -177,14 +268,19 @@ namespace UnderStatic.UI
             {
                 return;
             }
+            if (IsReportOpen)
+            {
+                DrawMissionReport();
+                return;
+            }
             if (!IsOpen)
             {
                 DrawActiveStatus();
                 return;
             }
 
-            var panelWidth = Mathf.Min(1120f, Screen.width - 24f);
-            var panelHeight = Mathf.Min(720f, Screen.height - 24f);
+            var panelWidth = Mathf.Min(1380f, Screen.width - 24f);
+            var panelHeight = Mathf.Min(860f, Screen.height - 24f);
             var panel = new Rect(
                 (Screen.width - panelWidth) * 0.5f,
                 (Screen.height - panelHeight) * 0.5f,
@@ -208,6 +304,95 @@ namespace UnderStatic.UI
             DrawPlannerPanel(new Rect(mapRect.xMax + 14f, mapRect.y,
                 panel.xMax - mapRect.xMax - 32f, mapRect.height));
             HandleMapInput(mapRect);
+        }
+
+        private void DrawMissionReport()
+        {
+            var report = missions.FindMission(displayedReportId) ?? missions.LatestReport;
+            if (report == null)
+            {
+                IsReportOpen = false;
+                if (!IsOpen)
+                {
+                    ReleaseUiFocus();
+                }
+                return;
+            }
+
+            var panelWidth = Mathf.Min(980f, Screen.width - 32f);
+            var panelHeight = Mathf.Min(820f, Screen.height - 32f);
+            var panel = new Rect(
+                (Screen.width - panelWidth) * 0.5f,
+                (Screen.height - panelHeight) * 0.5f,
+                panelWidth,
+                panelHeight);
+            GUI.Box(panel, string.Empty);
+
+            var titleStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 22,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleLeft,
+                clipping = TextClipping.Overflow
+            };
+            var subtitleStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 13,
+                alignment = TextAnchor.MiddleLeft,
+                wordWrap = false,
+                clipping = TextClipping.Clip
+            };
+            GUI.Label(new Rect(panel.x + 24f, panel.y + 16f, panel.width - 48f, 32f),
+                "AFTER-ACTION REPORT", titleStyle);
+            GUI.Label(new Rect(panel.x + 24f, panel.y + 48f, panel.width - 48f, 24f),
+                $"{LabelFor(report.plan.sortieType)} · {SplitName(report.outcome.ToString()).ToUpperInvariant()} · " +
+                $"{report.missionInstanceId}", subtitleStyle);
+
+            var viewport = new Rect(panel.x + 24f, panel.y + 82f, panel.width - 48f, panel.height - 154f);
+            var reportText = TacticalMapPresentation.FullReportText(report, fieldOperations != null);
+            var bodyStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 14,
+                alignment = TextAnchor.UpperLeft,
+                wordWrap = true,
+                clipping = TextClipping.Clip,
+                padding = new RectOffset(14, 14, 12, 12)
+            };
+            var contentWidth = Mathf.Max(120f, viewport.width - 24f);
+            var textHeight = bodyStyle.CalcHeight(new GUIContent(reportText), contentWidth - 28f);
+            var contentHeight = Mathf.Max(viewport.height, textHeight + 24f);
+            reportScroll = GUI.BeginScrollView(
+                viewport,
+                reportScroll,
+                new Rect(0f, 0f, contentWidth, contentHeight),
+                false,
+                true);
+            GUI.Box(new Rect(0f, 0f, contentWidth, contentHeight), string.Empty);
+            GUI.Label(new Rect(0f, 0f, contentWidth, textHeight + 24f), reportText, bodyStyle);
+            GUI.EndScrollView();
+
+            var buttonWidth = 230f;
+            var buttonRect = new Rect(
+                panel.xMax - buttonWidth - 24f,
+                panel.yMax - 52f,
+                buttonWidth,
+                34f);
+            if (GUI.Button(buttonRect, report.reportAcknowledged ? "CLOSE REPORT" : "ACKNOWLEDGE REPORT"))
+            {
+                if (report.reportAcknowledged)
+                {
+                    IsReportOpen = false;
+                    displayedReportId = string.Empty;
+                    if (!IsOpen)
+                    {
+                        ReleaseUiFocus();
+                    }
+                }
+                else
+                {
+                    AcknowledgeDisplayedReport();
+                }
+            }
         }
 
         private void DrawSortieTypeButtons(Rect panel)
@@ -640,7 +825,6 @@ namespace UnderStatic.UI
             }
 
             var transmitterAllowsLaunch = true;
-            var remoteAvailable = true;
             GUI.enabled = eligibility.Eligible;
             var launchLabel = "LAUNCH PLANNED SORTIE";
             if (GUI.Button(new Rect(rect.x + 12f, y, rect.width - 24f, 36f), launchLabel))
@@ -678,13 +862,13 @@ namespace UnderStatic.UI
                 }
                 y += 34f;
             }
-            const float logHeight = 176f;
-            var logBottom = rect.yMax - 50f;
-            DrawSortieLog(new Rect(
-                rect.x + 10f,
-                logBottom - logHeight,
-                rect.width - 20f,
-                logHeight));
+            var latestReport = missions.LatestReport;
+            if (latestReport != null
+                && GUI.Button(new Rect(rect.x + 12f, rect.yMax - 80f, rect.width - 24f, 30f),
+                    latestReport.reportAcknowledged ? "VIEW LATEST REPORT" : "REPORT READY · REVIEW"))
+            {
+                OpenReport(latestReport);
+            }
 
             GUI.enabled = missions.ActiveMission == null;
             var dayEnded = operationalDay.Runtime.operationsEnded;
@@ -692,53 +876,6 @@ namespace UnderStatic.UI
                     dayEnded ? "BEGIN NEXT DAY" : "END OPERATIONS"))
             {
                 if (dayEnded) BeginNextDay(); else EndOperations();
-            }
-            GUI.enabled = true;
-        }
-
-        private void DrawSortieLog(Rect rect)
-        {
-            GUI.Box(rect, "SORTIE LOG");
-            var reports = missions.Missions.Where(item => item.state == MissionRuntimeState.Resolved)
-                .Reverse().Take(2).ToArray();
-            var y = rect.y + 24f;
-            foreach (var report in reports)
-            {
-                var selected = string.IsNullOrEmpty(selectedReportId)
-                    ? string.Equals(missions.LatestReport?.missionInstanceId,
-                        report.missionInstanceId, StringComparison.Ordinal)
-                    : selectedReportId == report.missionInstanceId;
-                if (GUI.Button(new Rect(rect.x + 8f, y, rect.width - 16f, 20f),
-                        $"{(selected ? "> " : string.Empty)}{LabelFor(report.plan.sortieType)} · " +
-                        $"{SplitName(report.outcome.ToString()).ToUpperInvariant()}"))
-                {
-                    selectedReportId = report.missionInstanceId;
-                }
-                y += 23f;
-            }
-            var selectedReport = missions.FindMission(selectedReportId) ?? missions.LatestReport;
-            if (selectedReport == null)
-            {
-                return;
-            }
-            var reportStyle = new GUIStyle(GUI.skin.box)
-            {
-                alignment = TextAnchor.UpperLeft,
-                wordWrap = true,
-                clipping = TextClipping.Clip,
-                fontSize = 11,
-                padding = new RectOffset(7, 7, 5, 4)
-            };
-            var reportText = TacticalMapPresentation.CompactReportText(
-                selectedReport, fieldOperations != null);
-            var reportY = y + 2f;
-            var buttonY = rect.yMax - 28f;
-            GUI.Box(new Rect(rect.x + 8f, reportY, rect.width - 16f,
-                Mathf.Max(24f, buttonY - reportY - 3f)), reportText, reportStyle);
-            GUI.enabled = !selectedReport.reportAcknowledged;
-            if (GUI.Button(new Rect(rect.x + 8f, buttonY, rect.width - 16f, 20f), "ACKNOWLEDGE"))
-            {
-                missions.TryAcknowledgeReport(selectedReport.missionInstanceId);
             }
             GUI.enabled = true;
         }

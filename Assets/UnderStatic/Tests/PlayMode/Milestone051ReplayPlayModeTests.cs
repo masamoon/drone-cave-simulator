@@ -147,6 +147,8 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(director.IsPlaying, Is.False);
             Assert.That(controller.enabled, Is.True);
             Assert.That(workshopCamera.enabled, Is.True);
+            Assert.That(Cursor.visible, Is.False,
+                "Leaving the FPV kamikaze feed must restore first-person cursor capture.");
             yield return null;
         }
 

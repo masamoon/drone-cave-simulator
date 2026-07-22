@@ -110,6 +110,60 @@ namespace UnderStatic.Tests
             Assert.That(text, Does.Not.Contain("clip through nearby controls"));
         }
 
+        [Test]
+        public void FullReport_RetainsCompleteSummaryAndAllReadableSections()
+        {
+            const string summary = "A complete operational explanation that must remain readable without truncation in the dedicated report panel.";
+            var report = new MissionRuntimeData
+            {
+                missionInstanceId = "mission.full-report",
+                assignedDroneId = "drone.workshop.01",
+                outcome = MissionOutcome.LimitedSuccess,
+                executedDistanceKilometres = 3.42f,
+                fundsAwarded = 320,
+                salvageAwarded = 1,
+                targetType = BattlefieldContactType.Artillery,
+                damageApplied = 2,
+                plan = new SortiePlanData { sortieType = SortieType.Recon },
+                breakdown = new MissionResultBreakdown
+                {
+                    finalScore = 0.67f,
+                    positiveIdentification = true,
+                    summary = summary
+                },
+                maintenanceRecords = new[]
+                {
+                    new SortieMaintenanceRecord
+                    {
+                        isFrame = true,
+                        conditionBefore = 1f,
+                        conditionAfter = 0.91f
+                    },
+                    new SortieMaintenanceRecord
+                    {
+                        category = UnderStatic.Core.PartCategory.Battery,
+                        conditionBefore = 0.95f,
+                        conditionAfter = 0.93f,
+                        chargeBefore = 1f,
+                        chargeAfter = 0.18f
+                    }
+                },
+                discoveredContactIds = new[] { "contact.artillery.01" },
+                discoveredTypes = new[] { BattlefieldContactType.Artillery }
+            };
+
+            var text = TacticalMapPresentation.FullReportText(report, true);
+
+            Assert.That(text, Does.Contain(summary));
+            Assert.That(text, Does.Contain("OPERATIONAL ASSESSMENT"));
+            Assert.That(text, Does.Contain("RESOURCE OUTCOME"));
+            Assert.That(text, Does.Contain("RETURN CONDITION"));
+            Assert.That(text, Does.Contain("INTELLIGENCE"));
+            Assert.That(text, Does.Contain("Frame: 91% condition (-9%)"));
+            Assert.That(text, Does.Contain("Battery: 93% condition (-2%), 18% charge (-82%)"));
+            Assert.That(text, Does.Contain("contact.artillery.01"));
+        }
+
         private T Track<T>(T value) where T : Object
         {
             created.Add(value);
