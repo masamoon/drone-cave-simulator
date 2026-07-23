@@ -21,6 +21,8 @@ namespace UnderStatic.Missions
     {
         public string id;
         public EnemyActivityType type;
+        public FrontlineHexCoordinate startHex;
+        public FrontlineHexCoordinate initialTargetHex;
         public string startSectorId;
         public string initialTargetSectorId;
         [Min(1)] public int pressure;
@@ -36,6 +38,9 @@ namespace UnderStatic.Missions
         [SerializeField] private string displayName = "Road Watch Evacuation";
         [SerializeField, Min(10f)] private float advanceIntervalSeconds = 90f;
         [SerializeField, Min(1)] private int objectivePulseCount = 8;
+        [SerializeField, Min(5)] private int hexColumns = 11;
+        [SerializeField, Min(5)] private int hexRows = 9;
+        [SerializeField] private FrontlineHexCoordinate workshopHex = new(1, 1);
         [SerializeField] private string workshopSectorId = "sector.workshop";
         [SerializeField] private FrontlineSectorDefinition[] sectors = Array.Empty<FrontlineSectorDefinition>();
         [SerializeField] private EnemyActivityDefinition[] activities = Array.Empty<EnemyActivityDefinition>();
@@ -44,37 +49,31 @@ namespace UnderStatic.Missions
         public string DisplayName => displayName;
         public float AdvanceIntervalSeconds => Mathf.Max(10f, advanceIntervalSeconds);
         public int ObjectivePulseCount => Mathf.Max(1, objectivePulseCount);
+        public int ObjectiveDayCount => Mathf.Max(1, objectivePulseCount);
+        public int HexColumns => Mathf.Max(5, hexColumns);
+        public int HexRows => Mathf.Max(5, hexRows);
+        public FrontlineHexCoordinate WorkshopHex => workshopHex;
         public string WorkshopSectorId => workshopSectorId;
         public IReadOnlyList<FrontlineSectorDefinition> Sectors => sectors;
         public IReadOnlyList<EnemyActivityDefinition> Activities => activities;
 
         public bool IsValid(out string reason)
         {
-            if (string.IsNullOrWhiteSpace(id) || sectors == null || sectors.Length == 0)
+            if (string.IsNullOrWhiteSpace(id)
+                || !FrontlineHexGrid.Contains(workshopHex, HexColumns, HexRows))
             {
-                reason = "Frontline scenario requires an ID and sectors";
+                reason = "Frontline scenario requires an ID and a valid workshop hex";
                 return false;
             }
 
-            var ids = sectors.Select(item => item.id).ToArray();
-            if (ids.Any(string.IsNullOrWhiteSpace)
-                || ids.Distinct(StringComparer.Ordinal).Count() != ids.Length
-                || !ids.Contains(workshopSectorId, StringComparer.Ordinal))
-            {
-                reason = "Frontline sector IDs must be unique and include the workshop";
-                return false;
-            }
-
-            var known = ids.ToHashSet(StringComparer.Ordinal);
-            if (sectors.Any(item => item.connections == null
-                    || item.connections.Any(connection => !known.Contains(connection)))
-                || activities == null
+            if (activities == null || activities.Length == 0
                 || activities.Any(item => string.IsNullOrWhiteSpace(item.id)
-                    || !known.Contains(item.startSectorId)
-                    || (!string.IsNullOrWhiteSpace(item.initialTargetSectorId)
-                        && !known.Contains(item.initialTargetSectorId))))
+                    || !FrontlineHexGrid.Contains(item.startHex, HexColumns, HexRows)
+                    || !FrontlineHexGrid.Contains(item.initialTargetHex, HexColumns, HexRows))
+                || activities.Select(item => item.id).Distinct(StringComparer.Ordinal).Count()
+                    != activities.Length)
             {
-                reason = "Frontline connections and activities must reference known sectors";
+                reason = "Frontline activities require unique IDs and valid hex coordinates";
                 return false;
             }
 
@@ -89,6 +88,9 @@ namespace UnderStatic.Missions
             definition.displayName = "Road Watch Evacuation";
             definition.advanceIntervalSeconds = 90f;
             definition.objectivePulseCount = 8;
+            definition.hexColumns = 11;
+            definition.hexRows = 9;
+            definition.workshopHex = new FrontlineHexCoordinate(1, 1);
             definition.workshopSectorId = "sector.workshop";
             definition.sectors = new[]
             {
@@ -113,12 +115,18 @@ namespace UnderStatic.Missions
             };
             definition.activities = new[]
             {
-                Activity("activity.base", EnemyActivityType.EnemyBase, "sector.enemy-base", string.Empty, 3, 0, 1, true),
-                Activity("activity.artillery", EnemyActivityType.Artillery, "sector.artillery-grove", "sector.east-crossing", 2, 0, 2, true),
-                Activity("activity.infantry.01", EnemyActivityType.Infantry, "sector.radio-hill", "sector.mill-road", 1, 0, 1, false),
-                Activity("activity.tank.01", EnemyActivityType.Tank, "sector.village", "sector.east-crossing", 3, 1, 2, false),
-                Activity("activity.infantry.02", EnemyActivityType.Infantry, "sector.north-ridge", "sector.radio-hill", 1, 3, 1, false),
-                Activity("activity.tank.02", EnemyActivityType.Tank, "sector.artillery-grove", "sector.village", 2, 5, 2, false)
+                Activity("activity.base", EnemyActivityType.EnemyBase, 9, 7, 9, 7,
+                    "sector.enemy-base", string.Empty, 3, 0, 1, true),
+                Activity("activity.artillery", EnemyActivityType.Artillery, 8, 5, 7, 5,
+                    "sector.artillery-grove", "sector.east-crossing", 2, 0, 1, false),
+                Activity("activity.infantry.01", EnemyActivityType.Infantry, 7, 6, 6, 5,
+                    "sector.radio-hill", "sector.mill-road", 1, 0, 1, false),
+                Activity("activity.tank.01", EnemyActivityType.Tank, 9, 4, 8, 4,
+                    "sector.village", "sector.east-crossing", 3, 1, 1, false),
+                Activity("activity.infantry.02", EnemyActivityType.Infantry, 8, 8, 7, 7,
+                    "sector.north-ridge", "sector.radio-hill", 1, 3, 1, false),
+                Activity("activity.tank.02", EnemyActivityType.Tank, 10, 6, 9, 6,
+                    "sector.artillery-grove", "sector.village", 2, 5, 1, false)
             };
             return definition;
         }
@@ -143,6 +151,10 @@ namespace UnderStatic.Missions
         private static EnemyActivityDefinition Activity(
             string id,
             EnemyActivityType type,
+            int startColumn,
+            int startRow,
+            int targetColumn,
+            int targetRow,
             string sector,
             string target,
             int pressure,
@@ -152,6 +164,8 @@ namespace UnderStatic.Missions
         {
             id = id,
             type = type,
+            startHex = new FrontlineHexCoordinate(startColumn, startRow),
+            initialTargetHex = new FrontlineHexCoordinate(targetColumn, targetRow),
             startSectorId = sector,
             initialTargetSectorId = target,
             pressure = pressure,

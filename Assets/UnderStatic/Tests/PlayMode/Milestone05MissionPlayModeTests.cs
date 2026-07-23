@@ -130,7 +130,7 @@ namespace UnderStatic.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator SchemaThirteenSaveContainsFieldStateAndRejectsSchemaTwelve()
+        public IEnumerator SchemaFifteenSaveContainsFieldStateAndRejectsUnsupportedSchema()
         {
             SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
             yield return null;
@@ -143,7 +143,7 @@ namespace UnderStatic.Tests.PlayMode
                 Object.FindObjectsByType<InstallablePart>(FindObjectsSortMode.None),
                 Object.FindObjectsByType<PartSocket>(FindObjectsSortMode.None));
 
-            Assert.That(json, Does.Contain("\"version\": 14"));
+            Assert.That(json, Does.Contain("\"version\": 15"));
             Assert.That(json, Does.Contain("battlefield"));
             Assert.That(json, Does.Contain("waypoints"));
             Assert.That(json, Does.Contain("workshopRisk"));

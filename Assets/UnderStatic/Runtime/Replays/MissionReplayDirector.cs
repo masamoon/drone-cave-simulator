@@ -32,6 +32,7 @@ namespace UnderStatic.Replays
         private GameObject engagementFlash;
         private GameObject bombVisual;
         private Camera replayCamera;
+        private RenderTexture liveFeedTexture;
         private Mesh terrainMesh;
         private Texture2D staticTexture;
         private Color32[] staticPixels;
@@ -57,6 +58,8 @@ namespace UnderStatic.Replays
         public bool StaticVisible { get; private set; }
         public bool IsLiveFeed => isLiveFeed;
         public bool LiveResultReceived => liveResultReceived;
+        public RenderTexture LiveFeedTexture => liveFeedTexture;
+        public Texture2D LiveFeedStaticTexture => staticTexture;
         public MissionReplayStrikeType ActiveStrikeType => activePlan.StrikeType;
         public MissionRuntimeData ActiveMission { get; private set; }
         public MissionTopographyMap ActiveMap { get; private set; }
@@ -156,29 +159,32 @@ namespace UnderStatic.Replays
             elapsed = normalizedPlayback * definition.ReplayDuration;
             terminalHoldElapsed = 0f;
             BuildReconstruction();
-            SuspendWorkshopPresentation();
-            workshopCamera = Camera.main;
-            workshopCameraWasEnabled = workshopCamera != null && workshopCamera.enabled;
-            if (workshopCamera != null)
+            if (!liveFeed)
             {
-                workshopCamera.enabled = false;
+                SuspendWorkshopPresentation();
+                workshopCamera = Camera.main;
+                workshopCameraWasEnabled = workshopCamera != null && workshopCamera.enabled;
+                if (workshopCamera != null)
+                {
+                    workshopCamera.enabled = false;
+                }
+                previousCursorLock = Cursor.lockState;
+                previousCursorVisible = Cursor.visible;
+                controllerWasEnabled = controller != null && controller.enabled;
+                if (controller != null)
+                {
+                    controller.enabled = false;
+                }
+                Cursor.lockState = CursorLockMode.Confined;
+                Cursor.visible = true;
+                cancelAction?.Enable();
             }
-            previousCursorLock = Cursor.lockState;
-            previousCursorVisible = Cursor.visible;
-            controllerWasEnabled = controller != null && controller.enabled;
-            if (controller != null)
-            {
-                controller.enabled = false;
-            }
-            Cursor.lockState = CursorLockMode.Confined;
-            Cursor.visible = true;
             staticRefreshElapsed = 0f;
             staticNoiseState = unchecked((uint)runtime.resolutionSeed) | 1u;
             EngagementVisible = false;
             StaticVisible = false;
             IsComplete = false;
             IsPlaying = true;
-            cancelAction?.Enable();
             ApplyPose(normalizedPlayback);
             return true;
         }
@@ -322,6 +328,7 @@ namespace UnderStatic.Replays
             {
                 return;
             }
+            var wasEmbeddedLiveFeed = isLiveFeed;
             IsPlaying = false;
             IsComplete = false;
             EngagementVisible = false;
@@ -330,18 +337,21 @@ namespace UnderStatic.Replays
             liveResultReceived = false;
             normalizedPlayback = 0f;
             terminalHoldElapsed = 0f;
-            cancelAction?.Disable();
-            if (workshopCamera != null)
+            if (!wasEmbeddedLiveFeed)
             {
-                workshopCamera.enabled = workshopCameraWasEnabled;
+                cancelAction?.Disable();
+                if (workshopCamera != null)
+                {
+                    workshopCamera.enabled = workshopCameraWasEnabled;
+                }
+                if (controller != null)
+                {
+                    controller.enabled = controllerWasEnabled;
+                }
+                ResumeWorkshopPresentation();
+                Cursor.lockState = controllerWasEnabled ? CursorLockMode.Locked : previousCursorLock;
+                Cursor.visible = controllerWasEnabled ? false : previousCursorVisible;
             }
-            if (controller != null)
-            {
-                controller.enabled = controllerWasEnabled;
-            }
-            ResumeWorkshopPresentation();
-            Cursor.lockState = controllerWasEnabled ? CursorLockMode.Locked : previousCursorLock;
-            Cursor.visible = controllerWasEnabled ? false : previousCursorVisible;
             DestroyReconstruction();
             ActiveMission = null;
             ActiveMap = null;
@@ -369,7 +379,7 @@ namespace UnderStatic.Replays
 
         private void OnGUI()
         {
-            if (!IsPlaying || ActiveMission == null)
+            if (!IsPlaying || ActiveMission == null || isLiveFeed)
             {
                 return;
             }
@@ -509,6 +519,19 @@ namespace UnderStatic.Replays
             replayCamera.clearFlags = CameraClearFlags.SolidColor;
             replayCamera.backgroundColor = new Color(0.32f, 0.36f, 0.35f);
             replayCamera.depth = 20f;
+            if (isLiveFeed)
+            {
+                liveFeedTexture = new RenderTexture(384, 384, 24, RenderTextureFormat.ARGB32)
+                {
+                    name = "Embedded Mission Live Feed",
+                    hideFlags = HideFlags.HideAndDontSave,
+                    filterMode = FilterMode.Bilinear,
+                    wrapMode = TextureWrapMode.Clamp,
+                    memorylessMode = RenderTextureMemoryless.None
+                };
+                liveFeedTexture.Create();
+                replayCamera.targetTexture = liveFeedTexture;
+            }
         }
 
         private void BuildRoad(Material material)
@@ -896,6 +919,11 @@ namespace UnderStatic.Replays
             {
                 DestroyRuntimeObject(staticTexture);
             }
+            if (liveFeedTexture != null)
+            {
+                liveFeedTexture.Release();
+                DestroyRuntimeObject(liveFeedTexture);
+            }
             reconstructionRoot = null;
             terrainMesh = null;
             replayCamera = null;
@@ -903,6 +931,7 @@ namespace UnderStatic.Replays
             engagementFlash = null;
             bombVisual = null;
             staticTexture = null;
+            liveFeedTexture = null;
             staticPixels = null;
             activeArtAssets = default;
             foreach (var material in runtimeMaterials)

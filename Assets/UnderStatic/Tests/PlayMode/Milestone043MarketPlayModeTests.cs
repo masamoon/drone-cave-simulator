@@ -312,7 +312,7 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(fleet.Locker[2].Runtime.droneInstanceId, Is.EqualTo(identity));
             Assert.That(stock.Runtime.diagnosticFaultsDisclosed, Is.False);
             var json = save.CaptureAllToJson(parts, sockets);
-            Assert.That(json, Does.Contain("\"version\": 14"));
+            Assert.That(json, Does.Contain("\"version\": 15"));
             Assert.That(fleet.TrySwapLockerIntoService(2, false), Is.True);
 
             Assert.That(save.RestoreAllFromJson(json, parts, sockets), Is.True, save.LastStatus);

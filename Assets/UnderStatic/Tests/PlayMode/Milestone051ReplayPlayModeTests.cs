@@ -5,8 +5,6 @@ using UnderStatic.Missions;
 using UnderStatic.Replays;
 using UnderStatic.UI;
 using UnityEngine;
-using UnityEngine.InputSystem;
-using UnityEngine.InputSystem.LowLevel;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
 
@@ -30,7 +28,7 @@ namespace UnderStatic.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator ReconLiveFeedAutomaticallyRestoresWorkshopStateAfterResult()
+        public IEnumerator ReconLiveFeedStaysEmbeddedAndPreservesWorkshopStateAfterResult()
         {
             SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
             yield return null;
@@ -49,8 +47,9 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(controller.enabled, Is.False);
             Assert.That(director.TryPlayLiveFeed(runtime), Is.True);
             Assert.That(controller.enabled, Is.False);
-            Assert.That(workshopCamera.enabled, Is.False);
-            Assert.That(interactions.enabled, Is.False);
+            Assert.That(workshopCamera.enabled, Is.True);
+            Assert.That(interactions.enabled, Is.True);
+            Assert.That(director.LiveFeedTexture, Is.Not.Null);
             Assert.That(GameObject.Find("FPVLiveFeedCamera"), Is.Not.Null);
             Assert.That(GameObject.Find("ReconstructionTarget"), Is.Not.Null);
             runtime.state = MissionRuntimeState.Resolved;
@@ -63,9 +62,12 @@ namespace UnderStatic.Tests.PlayMode
             yield return null;
 
             Assert.That(director.IsPlaying, Is.False);
-            Assert.That(controller.enabled, Is.True);
+            Assert.That(controller.enabled, Is.False,
+                "The tactical terminal still owns UI focus after its embedded feed ends.");
             Assert.That(workshopCamera.enabled, Is.True);
             Assert.That(interactions.enabled, Is.True);
+            terminal.Close();
+            Assert.That(controller.enabled, Is.True);
         }
 
         [UnityTest]
@@ -153,7 +155,7 @@ namespace UnderStatic.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator EscapeReturnsFromLiveFeedImmediately()
+        public IEnumerator EmbeddedLiveFeedCanStopWithoutChangingFirstPersonState()
         {
             SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
             yield return null;
@@ -163,14 +165,9 @@ namespace UnderStatic.Tests.PlayMode
             var workshopCamera = Camera.main;
 
             Assert.That(director.TryPlayLiveFeed(ActiveRuntime(SortieType.Recon)), Is.True);
-            var keyboard = Keyboard.current ?? InputSystem.AddDevice<Keyboard>();
-            InputSystem.QueueStateEvent(keyboard, new KeyboardState());
-            InputSystem.Update();
-            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.Escape));
-            InputSystem.Update();
+            Assert.That(director.LiveFeedTexture, Is.Not.Null);
+            director.StopReplay();
             yield return null;
-            InputSystem.QueueStateEvent(keyboard, new KeyboardState());
-            InputSystem.Update();
 
             Assert.That(director.IsPlaying, Is.False);
             Assert.That(controller.enabled, Is.True);

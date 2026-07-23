@@ -22,13 +22,11 @@ namespace UnderStatic.UI
         private static readonly Color32 Contested = new(207, 154, 43, 255);
         private static readonly Color32 Enemy = new(184, 55, 39, 255);
         private static readonly Color32 Target = new(240, 191, 72, 255);
+        private static readonly Color32 Detection = new(145, 112, 48, 255);
 
-        public static Texture2D BuildTexture(
-            MissionTopographyMap map,
-            FrontlineScenarioDefinition definition,
-            FrontlineRuntimeData runtime)
-            => BuildTexture(map, definition, runtime, TextureResolution, FilterMode.Point, false,
-                "Tactical Frontline Map 128");
+        public static Texture2D BuildDetailedMapBackground(MissionTopographyMap map)
+            => BuildTexture(map, null, null, TextureResolution, FilterMode.Point, false,
+                "Tactical Terrain Background 128");
 
         public static Texture2D BuildPhysicalMapTexture(
             MissionTopographyMap map,
@@ -84,14 +82,15 @@ namespace UnderStatic.UI
                     return hash;
                 }
 
-                hash = hash * 31 + runtime.completedPulses;
+                hash = hash * 31 + runtime.completedDays;
                 hash = hash * 31 + (int)runtime.outcome;
-                foreach (var sector in runtime.sectors.Where(item => item != null)
-                             .OrderBy(item => item.sectorId, StringComparer.Ordinal))
+                foreach (var hex in runtime.hexes.Where(item => item != null)
+                             .OrderBy(item => item.row).ThenBy(item => item.column))
                 {
-                    hash = hash * 31 + StableHash(sector.sectorId);
-                    hash = hash * 31 + (int)sector.control;
-                    hash = hash * 31 + sector.defense;
+                    hash = hash * 31 + hex.column;
+                    hash = hash * 31 + hex.row;
+                    hash = hash * 31 + (int)hex.control;
+                    hash = hash * 31 + hex.defense;
                 }
                 foreach (var activity in runtime.activities.Where(item => item != null)
                              .OrderBy(item => item.activityId, StringComparer.Ordinal))
@@ -99,10 +98,15 @@ namespace UnderStatic.UI
                     hash = hash * 31 + StableHash(activity.activityId);
                     hash = hash * 31 + (activity.active ? 1 : 0);
                     hash = hash * 31 + activity.pressure;
-                    hash = hash * 31 + StableHash(activity.currentSectorId);
+                    hash = hash * 31 + (activity.exactHexKnown ? 1 : 0);
+                    hash = hash * 31 + (activity.exactHexKnown ? activity.currentColumn : 0);
+                    hash = hash * 31 + (activity.exactHexKnown ? activity.currentRow : 0);
+                    hash = hash * 31 + activity.detectedColumn;
+                    hash = hash * 31 + activity.detectedRow;
                     hash = hash * 31 + (activity.typeIdentified ? 1 : 0);
                     hash = hash * 31 + (activity.typeIdentified ? (int)activity.actualType : 0);
-                    hash = hash * 31 + (activity.intentKnown ? StableHash(activity.nextSectorId) : 0);
+                    hash = hash * 31 + (activity.intentKnown ? activity.nextColumn : 0);
+                    hash = hash * 31 + (activity.intentKnown ? activity.nextRow : 0);
                 }
                 return hash;
             }
@@ -269,80 +273,98 @@ namespace UnderStatic.UI
             RasterCanvas canvas)
         {
             var scale = canvas.Scale;
-            var definitions = definition.Sectors.ToDictionary(item => item.id, StringComparer.Ordinal);
-            var sectors = runtime.sectors.Where(item => item != null)
-                .ToDictionary(item => item.sectorId, StringComparer.Ordinal);
-
-            foreach (var sector in definition.Sectors)
+            var boardSpan = canvas.Resolution * 0.9f;
+            var radiusX = Mathf.Max(4 * scale,
+                Mathf.RoundToInt(boardSpan / (definition.HexColumns + 0.5f) * 0.48f));
+            var radiusY = Mathf.Max(5 * scale,
+                Mathf.RoundToInt(boardSpan / definition.HexRows * 0.48f));
+            foreach (var hex in runtime.hexes.Where(item => item != null))
             {
-                foreach (var connection in sector.connections ?? Array.Empty<string>())
+                var center = canvas.Point(FrontlineHexGrid.ToNormalized(
+                    hex.Coordinate, definition.HexColumns, definition.HexRows));
+                var colour = ControlColour(hex.control);
+                canvas.BlendHex(center, radiusX, radiusY, colour, 0.13f);
+                canvas.DrawHex(center, radiusX, radiusY,
+                    hex.control == FrontlineSectorControl.Enemy ? Enemy : Ink,
+                    hex.control == FrontlineSectorControl.Enemy ? 2 * scale : scale);
+                if (hex.defense > 0)
                 {
-                    if (string.CompareOrdinal(sector.id, connection) >= 0
-                        || !definitions.TryGetValue(connection, out var other))
-                    {
-                        continue;
-                    }
-                    canvas.DrawLine(canvas.Point(sector.position.ToVector2()),
-                        canvas.Point(other.position.ToVector2()), Ink, scale);
+                    canvas.FillCircle(center, Mathf.Max(scale, hex.defense * scale), Friendly);
                 }
             }
 
-            foreach (var sector in runtime.sectors.Where(item => item != null))
+            foreach (var activity in runtime.activities.Where(item => item != null
+                         && item.active && item.pressure > 0 && !item.exactHexKnown))
             {
-                if (!definitions.TryGetValue(sector.sectorId, out var sectorDefinition))
+                foreach (var hex in runtime.hexes.Where(item => item != null
+                             && FrontlineHexGrid.Distance(
+                                 item.Coordinate, activity.DetectedHex) == activity.detectionRadius))
                 {
-                    continue;
+                    var zoneCenter = canvas.Point(FrontlineHexGrid.ToNormalized(
+                        hex.Coordinate, definition.HexColumns, definition.HexRows));
+                    canvas.DrawHex(zoneCenter, radiusX - scale, radiusY - scale, Detection, scale);
                 }
-                var colour = ControlColour(sector.control);
-                var center = canvas.Point(sectorDefinition.position.ToVector2());
-                canvas.BlendCircle(center, 12 * scale, colour, 0.14f);
-                canvas.FillCircle(center, 4 * scale, Ink);
-                canvas.FillCircle(center, 3 * scale, colour);
             }
 
-            foreach (var sector in runtime.sectors.Where(item => item != null
-                         && item.control == FrontlineSectorControl.Enemy))
+            foreach (var activity in runtime.activities.Where(item => item != null
+                         && item.active && item.pressure > 0
+                         && item.intentKnown && item.exactHexKnown))
             {
-                if (!definitions.TryGetValue(sector.sectorId, out var from))
-                {
-                    continue;
-                }
-                foreach (var connection in from.connections ?? Array.Empty<string>())
-                {
-                    if (!sectors.TryGetValue(connection, out var other)
-                        || other.control == FrontlineSectorControl.Enemy
-                        || !definitions.TryGetValue(connection, out var targetDefinition))
-                    {
-                        continue;
-                    }
-                    var a = canvas.Point(Vector2.Lerp(from.position.ToVector2(), targetDefinition.position.ToVector2(), 0.4f));
-                    var b = canvas.Point(Vector2.Lerp(from.position.ToVector2(), targetDefinition.position.ToVector2(), 0.6f));
-                    canvas.DrawLine(a, b, Enemy, 2 * scale);
-                }
+                var source = canvas.Point(FrontlineHexGrid.ToNormalized(
+                    activity.CurrentHex, definition.HexColumns, definition.HexRows));
+                var destination = canvas.Point(FrontlineHexGrid.ToNormalized(
+                    activity.NextHex, definition.HexColumns, definition.HexRows));
+                DrawIntentArrow(canvas, source, destination);
             }
 
             foreach (var activity in runtime.activities.Where(item => item != null
                          && item.active && item.pressure > 0))
             {
-                if (!definitions.TryGetValue(activity.currentSectorId, out var sector))
-                {
-                    continue;
-                }
-                var offset = ActivityOffset(activity.activityId) * scale;
-                var center = canvas.Point(sector.position.ToVector2()) + offset;
+                var visibleHex = activity.exactHexKnown ? activity.CurrentHex : activity.DetectedHex;
+                var center = canvas.Point(FrontlineHexGrid.ToNormalized(
+                    visibleHex, definition.HexColumns, definition.HexRows));
                 DrawTargetIcon(canvas, center,
                     activity.typeIdentified ? activity.actualType : EnemyActivityType.Unknown);
             }
 
-            if (definitions.TryGetValue(definition.WorkshopSectorId, out var workshop))
+            canvas.DrawDiamond(canvas.Point(FrontlineHexGrid.ToNormalized(
+                definition.WorkshopHex, definition.HexColumns, definition.HexRows)),
+                6 * scale, Friendly, true);
+        }
+
+        private static void DrawIntentArrow(
+            RasterCanvas canvas,
+            Vector2Int sourceCenter,
+            Vector2Int destinationCenter)
+        {
+            var delta = (Vector2)(destinationCenter - sourceCenter);
+            if (delta.sqrMagnitude < 1f)
             {
-                canvas.DrawDiamond(canvas.Point(workshop.position.ToVector2()), 6 * scale, Friendly, true);
+                return;
             }
+
+            var direction = delta.normalized;
+            var perpendicular = new Vector2(-direction.y, direction.x);
+            var endpointOffset = canvas.Scale * 3.5f;
+            var start = (Vector2)sourceCenter + direction * endpointOffset;
+            var tip = (Vector2)destinationCenter - direction * endpointOffset;
+            var headBase = tip - direction * (canvas.Scale * 2f);
+            var headLeft = headBase + perpendicular * (canvas.Scale * 1.25f);
+            var headRight = headBase - perpendicular * (canvas.Scale * 1.25f);
+            var outlineWidth = Mathf.Max(3, canvas.Scale);
+            var intentWidth = Mathf.Max(2, canvas.Scale / 2);
+
+            canvas.DrawLine(Round(start), Round(tip), Ink, outlineWidth);
+            canvas.DrawLine(Round(headLeft), Round(tip), Ink, outlineWidth);
+            canvas.DrawLine(Round(headRight), Round(tip), Ink, outlineWidth);
+            canvas.DrawLine(Round(start), Round(tip), Target, intentWidth);
+            canvas.DrawLine(Round(headLeft), Round(tip), Target, intentWidth);
+            canvas.DrawLine(Round(headRight), Round(tip), Target, intentWidth);
         }
 
         private static void DrawTargetIcon(RasterCanvas canvas, Vector2Int center, EnemyActivityType type)
         {
-            var scale = canvas.Scale;
+            var scale = Mathf.Max(1, Mathf.RoundToInt(canvas.Scale * 0.5f));
             canvas.FillCircle(center, 6 * scale, Ink);
             switch (type)
             {
@@ -381,6 +403,9 @@ namespace UnderStatic.UI
                     break;
             }
         }
+
+        private static Vector2Int Round(Vector2 value) =>
+            new(Mathf.RoundToInt(value.x), Mathf.RoundToInt(value.y));
 
         private static string CompactMaintenance(MissionRuntimeData report)
         {
@@ -431,12 +456,6 @@ namespace UnderStatic.UI
             _ => Enemy
         };
 
-        private static Vector2Int ActivityOffset(string id)
-        {
-            var hash = StableHash(id) & int.MaxValue;
-            return new Vector2Int((hash % 9) - 4, ((hash / 9) % 9) - 4);
-        }
-
         private static int StableHash(string value)
         {
             unchecked
@@ -462,9 +481,14 @@ namespace UnderStatic.UI
             public int Resolution { get; }
             public int Scale => Mathf.Max(1, Mathf.RoundToInt(Resolution / (float)TextureResolution));
 
-            public Vector2Int Point(Vector2 normalized) => new(
-                Mathf.RoundToInt(Mathf.Clamp01(normalized.x) * (Resolution - 1)),
-                Mathf.RoundToInt(Mathf.Clamp01(normalized.y) * (Resolution - 1)));
+            public Vector2Int Point(Vector2 normalized)
+            {
+                var padding = Mathf.RoundToInt(Resolution * 0.05f);
+                var span = Resolution - 1 - padding * 2;
+                return new Vector2Int(
+                    padding + Mathf.RoundToInt(Mathf.Clamp01(normalized.x) * span),
+                    padding + Mathf.RoundToInt(Mathf.Clamp01(normalized.y) * span));
+            }
 
             public void DrawLine(Vector2Int start, Vector2Int end, Color32 colour, int thickness)
             {
@@ -539,6 +563,53 @@ namespace UnderStatic.UI
                         var index = py * Resolution + px;
                         Pixels[index] = Blend(Pixels[index], colour, amount);
                     }
+                }
+            }
+
+            public void BlendHex(
+                Vector2Int center,
+                int radiusX,
+                int radiusY,
+                Color32 colour,
+                float amount)
+            {
+                for (var y = -radiusY; y <= radiusY; y++)
+                {
+                    var normalizedY = Mathf.Abs(y) / (float)Mathf.Max(1, radiusY);
+                    var width = normalizedY <= 0.5f
+                        ? radiusX
+                        : Mathf.RoundToInt(radiusX * 2f * (1f - normalizedY));
+                    for (var x = -width; x <= width; x++)
+                    {
+                        var px = center.x + x;
+                        var py = center.y + y;
+                        if (px < 0 || py < 0 || px >= Resolution || py >= Resolution) continue;
+                        var index = py * Resolution + px;
+                        Pixels[index] = Blend(Pixels[index], colour, amount);
+                    }
+                }
+            }
+
+            public void DrawHex(
+                Vector2Int center,
+                int radiusX,
+                int radiusY,
+                Color32 colour,
+                int thickness)
+            {
+                var halfY = Mathf.RoundToInt(radiusY * 0.5f);
+                var points = new[]
+                {
+                    center + new Vector2Int(0, -radiusY),
+                    center + new Vector2Int(radiusX, -halfY),
+                    center + new Vector2Int(radiusX, halfY),
+                    center + new Vector2Int(0, radiusY),
+                    center + new Vector2Int(-radiusX, halfY),
+                    center + new Vector2Int(-radiusX, -halfY)
+                };
+                for (var index = 0; index < points.Length; index++)
+                {
+                    DrawLine(points[index], points[(index + 1) % points.Length], colour, thickness);
                 }
             }
 

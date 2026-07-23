@@ -58,13 +58,14 @@ namespace UnderStatic.Tests.PlayMode
 
             var before = terminal.SelectedTopographyPreview;
             var activity = frontline.Runtime.activities.First(item => item.active && !item.typeIdentified);
-            activity.typeIdentified = true;
+            Assert.That(frontline.IdentifyActivity(activity.activityId), Is.True);
             yield return null;
 
             var after = terminal.SelectedTopographyPreview;
             renderer.GetPropertyBlock(block);
             var physicalAfter = block.GetTexture("_BaseMap") as Texture2D;
-            Assert.That(after, Is.Not.SameAs(before));
+            Assert.That(after, Is.SameAs(before),
+                "Recon state must not rebuild or add low-resolution overlays to the detailed background");
             Assert.That(physicalAfter, Is.Not.SameAs(physicalTexture));
             Assert.That(physicalAfter.width,
                 Is.EqualTo(TacticalMapPresentation.PhysicalMapTextureResolution));

@@ -214,6 +214,40 @@ namespace UnderStatic.Tests
         }
 
         [Test]
+        public void HexTaskingUsesSelectedDroneStagingAndOffersEverySupportedMission()
+        {
+            var setup = CreateSetup(
+                SortieType.KamikazeStrike,
+                includeRack: true,
+                expendable: true,
+                endurance: 2f);
+            var definition = Track(FrontlineScenarioDefinition.CreateRoadWatchPrototype());
+            var frontline = Track(new GameObject("Hex tasking frontline")).AddComponent<FrontlineSystem>();
+            frontline.Configure(definition, 441);
+            setup.missions.ConfigureFrontline(frontline);
+            var activity = frontline.Runtime.activities.First(item => item.active && item.pressure > 0);
+            Assert.That(frontline.IdentifyActivity(activity.activityId, 1), Is.True);
+
+            Assert.That(setup.missions.SelectedDraftDrone, Is.SameAs(setup.actor));
+            Assert.That(setup.missions.EvaluateHexMission(
+                setup.actor, SortieType.Recon, activity.CurrentHex).Eligible, Is.False);
+            Assert.That(setup.missions.SetDraftStagingHex(definition.WorkshopHex), Is.True);
+            Assert.That(setup.missions.EvaluateHexMission(
+                setup.actor, SortieType.Recon, activity.CurrentHex).Eligible, Is.True);
+            Assert.That(setup.missions.EvaluateHexMission(
+                setup.actor, SortieType.KamikazeStrike, activity.CurrentHex).Eligible, Is.True);
+
+            Assert.That(setup.missions.TryPlanHexMission(
+                SortieType.Recon, activity.CurrentHex), Is.True);
+            var reconPlan = setup.missions.PreviewPlan();
+            Assert.That(reconPlan.hasStagingPoint, Is.True);
+            Assert.That(reconPlan.stagingPoint.ToVector2(),
+                Is.EqualTo(frontline.PositionFor(definition.WorkshopHex)));
+            Assert.That(reconPlan.route[^1].ToVector2(),
+                Is.EqualTo(BattlefieldSystem.WorkshopPosition));
+        }
+
+        [Test]
         public void KamikazeConsumesAirframeWhileGrenadeDropReturnsReusableDrone()
         {
             var kamikaze = CreateSetup(SortieType.KamikazeStrike, includeRack: true, expendable: true);

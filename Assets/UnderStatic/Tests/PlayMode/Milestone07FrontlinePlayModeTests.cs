@@ -31,7 +31,7 @@ namespace UnderStatic.Tests.PlayMode
             var fleet = Object.FindAnyObjectByType<FleetSystem>();
 
             Assert.That(frontline, Is.Not.Null);
-            Assert.That(frontline.Definition.Sectors.Count, Is.EqualTo(9));
+            Assert.That(frontline.Runtime.hexes.Length, Is.EqualTo(99));
             Assert.That(salvage, Is.Not.Null);
             Assert.That(salvage.DeliveredParts.Count, Is.EqualTo(3));
             Assert.That(salvage.DeliveredParts.All(part => part.Runtime.condition is >= 0.48f and <= 0.78f), Is.True);
@@ -220,7 +220,7 @@ namespace UnderStatic.Tests.PlayMode
                 .Min(renderer => renderer.bounds.min.y);
 
         [UnityTest]
-        public IEnumerator FrontlineClockContinuesWhileTacticalMapIsOpen()
+        public IEnumerator FrontlineBoardDoesNotAdvanceUntilOperationalDayChanges()
         {
             SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
             yield return null;
@@ -228,17 +228,88 @@ namespace UnderStatic.Tests.PlayMode
 
             var frontline = Object.FindAnyObjectByType<FrontlineSystem>();
             var terminal = Object.FindAnyObjectByType<TacticalMapTerminal>();
-            var before = frontline.Runtime.secondsIntoPulse;
+            var before = frontline.Runtime.completedDays;
             terminal.Activate();
             yield return new WaitForSeconds(0.1f);
 
             Assert.That(terminal.IsOpen, Is.True);
-            Assert.That(frontline.Runtime.secondsIntoPulse, Is.GreaterThan(before));
+            Assert.That(frontline.Runtime.completedDays, Is.EqualTo(before));
+            Assert.That(frontline.Runtime.secondsIntoPulse, Is.Zero);
             terminal.Close();
         }
 
         [UnityTest]
-        public IEnumerator SchemaFourteenRejectsSchemaThirteenForFrontlineLoop()
+        public IEnumerator TacticalMapSelectsDroneThenStagesAndEvaluatesHexReachability()
+        {
+            SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var frontline = Object.FindAnyObjectByType<FrontlineSystem>();
+            var terminal = Object.FindAnyObjectByType<TacticalMapTerminal>();
+            var missions = Object.FindAnyObjectByType<MissionSystem>();
+            var fleet = Object.FindAnyObjectByType<FleetSystem>();
+            var stage = frontline.Definition.WorkshopHex;
+
+            PrepareServiceDrone(fleet.ServiceDrone);
+            Assert.That(fleet.TryMoveServiceToReady(false), Is.True, fleet.LastStatus);
+            Assert.That(missions.PlanningDrones.Count, Is.EqualTo(1));
+            Assert.That(terminal.SelectActiveDrone(fleet.ReadyDrone.Runtime.droneInstanceId), Is.True);
+            Assert.That(terminal.SelectStagingHex(stage), Is.True);
+            Assert.That(missions.Draft.hasStagingPoint, Is.True);
+            Assert.That(terminal.IsHexReachable(stage), Is.True);
+            Assert.That(missions.EvaluateHexMission(
+                missions.SelectedDraftDrone, SortieType.Recon, stage).Eligible, Is.True);
+        }
+
+        private static void PrepareServiceDrone(DroneActor actor)
+        {
+            foreach (var part in actor.InstalledParts)
+            {
+                part.Runtime.condition = 1f;
+                part.Runtime.tested = true;
+                part.Runtime.currentState = InteractionState.Tested;
+                part.Runtime.lastStableState = InteractionState.Installed;
+                if (part.Definition.Category == PartCategory.Battery)
+                {
+                    part.Runtime.chargeLevel = 1f;
+                }
+            }
+            actor.Runtime.frameCondition = 1f;
+            actor.Assembly.RecordDiagnostic(true);
+            Assert.That(actor.IsReadyForShelf, Is.True, actor.Readiness.MaintenanceSummary);
+        }
+
+        [UnityTest]
+        public IEnumerator ReconConfirmedHexGatesStrikeSelectionAndForecastsNextDayMove()
+        {
+            SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var frontline = Object.FindAnyObjectByType<FrontlineSystem>();
+            var terminal = Object.FindAnyObjectByType<TacticalMapTerminal>();
+            var day = Object.FindAnyObjectByType<OperationalDaySystem>();
+            var activity = frontline.Runtime.activities.First(item =>
+                item.active && !item.stationary && item.moveEveryPulses == 1);
+
+            Assert.That(terminal.SelectSortieType(SortieType.KamikazeStrike), Is.True);
+            Assert.That(terminal.SelectTarget(activity.activityId), Is.False);
+            Assert.That(frontline.IdentifyActivity(activity.activityId, day.Runtime.dayIndex), Is.True);
+            Assert.That(terminal.SelectTarget(activity.activityId), Is.True);
+            var forecastHex = activity.NextHex;
+
+            Assert.That(day.TryEndOperations(), Is.True);
+            Assert.That(day.TryBeginNextDay(8844), Is.True);
+            yield return null;
+
+            Assert.That(activity.CurrentHex, Is.EqualTo(forecastHex));
+            Assert.That(activity.exactHexKnown, Is.True);
+            Assert.That(activity.intentKnown, Is.False);
+        }
+
+        [UnityTest]
+        public IEnumerator SchemaFifteenAcceptsFourteenMigrationAndRejectsThirteen()
         {
             SceneManager.LoadScene("SafeHouse", LoadSceneMode.Single);
             yield return null;
@@ -249,8 +320,10 @@ namespace UnderStatic.Tests.PlayMode
             var sockets = Object.FindObjectsByType<PartSocket>(FindObjectsInactive.Include, FindObjectsSortMode.None);
             var json = save.CaptureAllToJson(parts, sockets);
 
-            Assert.That(json, Does.Contain("\"version\": 14"));
-            Assert.That(save.RestoreAllFromJson(json.Replace("\"version\": 14", "\"version\": 13"),
+            Assert.That(json, Does.Contain("\"version\": 15"));
+            Assert.That(save.RestoreAllFromJson(json.Replace("\"version\": 15", "\"version\": 14"),
+                parts, sockets), Is.True, save.LastStatus);
+            Assert.That(save.RestoreAllFromJson(json.Replace("\"version\": 15", "\"version\": 13"),
                 parts, sockets), Is.False);
             Assert.That(save.LastStatus, Does.Contain("schema 14"));
         }

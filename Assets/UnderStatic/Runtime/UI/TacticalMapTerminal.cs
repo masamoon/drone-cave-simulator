@@ -38,7 +38,9 @@ namespace UnderStatic.UI
         private string displayedReportId = string.Empty;
         private string pendingReportId = string.Empty;
         private Vector2 reportScroll;
-        private int draggingWaypoint = -1;
+        private bool contextMenuOpen;
+        private FrontlineHexCoordinate contextMenuHex;
+        private Vector2 contextMenuPosition;
 
         public bool IsOpen { get; private set; }
         public bool IsReportOpen { get; private set; }
@@ -88,6 +90,12 @@ namespace UnderStatic.UI
         private void Update()
         {
             RefreshPhysicalMap();
+            var active = missions?.ActiveMission;
+            if (IsOpen && active != null && replayDirector?.IsPlaying != true
+                && replayDirector?.CanStartLiveFeed(active) == true)
+            {
+                replayDirector.TryPlayLiveFeed(active);
+            }
             if (!string.IsNullOrEmpty(pendingReportId) && replayDirector?.IsPlaying != true)
             {
                 var report = missions?.FindMission(pendingReportId);
@@ -112,7 +120,7 @@ namespace UnderStatic.UI
         public void Close()
         {
             IsOpen = false;
-            draggingWaypoint = -1;
+            contextMenuOpen = false;
             if (!IsReportOpen)
             {
                 ReleaseUiFocus();
@@ -152,6 +160,20 @@ namespace UnderStatic.UI
         public bool MoveReconWaypoint(int index, Vector2 normalized) => missions?.MoveWaypoint(index, normalized) == true;
         public bool RemoveReconWaypoint(int index) => missions?.RemoveWaypoint(index) == true;
         public bool SelectTarget(string contactId) => missions?.SelectTarget(contactId) == true;
+        public bool SelectActiveDrone(string droneInstanceId) =>
+            missions?.SelectDraftDrone(droneInstanceId) == true;
+        public bool SelectStagingHex(FrontlineHexCoordinate coordinate) =>
+            missions?.SetDraftStagingHex(coordinate) == true;
+        public bool IsHexReachable(FrontlineHexCoordinate coordinate) =>
+            missions?.IsHexReachable(missions.SelectedDraftDrone, coordinate) == true;
+        public bool ChooseHexMission(SortieType type, FrontlineHexCoordinate coordinate)
+        {
+            if (missions?.TryPlanHexMission(type, coordinate) != true)
+            {
+                return false;
+            }
+            return LaunchDraft();
+        }
 
         public bool LaunchDraft()
         {
@@ -287,23 +309,61 @@ namespace UnderStatic.UI
                 panelWidth,
                 panelHeight);
             GUI.Box(panel, string.Empty);
-            GUI.Label(new Rect(panel.x + 18f, panel.y + 14f, panel.width - 140f, 28f),
-                $"FRONTLINE · EVACUATION {frontline?.Runtime.completedPulses ?? 0}/" +
-                $"{frontline?.Definition.ObjectivePulseCount ?? 0} · NEXT ADVANCE {frontline?.SecondsUntilAdvance ?? 0:0}s · " +
+            GUI.Label(new Rect(panel.x + 18f, panel.y + 14f, panel.width - 480f, 28f),
+                $"HEX FRONT · DAY {frontline?.Runtime.currentDay ?? operationalDay?.Runtime.dayIndex ?? 1} · " +
+                $"EVACUATION {frontline?.Runtime.completedDays ?? 0}/" +
+                $"{frontline?.Definition.ObjectiveDayCount ?? 0} DAYS · " +
                 $"FUNDS {market?.Funds ?? 0} · SALVAGE {inventory?.ScrapCount ?? 0}");
-            if (GUI.Button(new Rect(panel.xMax - 104f, panel.y + 10f, 86f, 32f), "CLOSE"))
+            if (DrawHeaderControls(panel)) return;
+
+            const float dronePanelWidth = 270f;
+            var mapRect = new Rect(panel.x + 18f, panel.y + 52f,
+                panel.width - dronePanelWidth - 50f, panel.height - 70f);
+            DrawMap(mapRect);
+            DrawActiveDronePanel(new Rect(mapRect.xMax + 14f, mapRect.y,
+                panel.xMax - mapRect.xMax - 32f, mapRect.height));
+            DrawLiveFeedInset(panel);
+            var coordinateRect = frontline != null ? FrontlineCoordinateRect(mapRect) : mapRect;
+            DrawMissionContextMenu(coordinateRect);
+            HandleMapInput(coordinateRect);
+        }
+
+        private bool DrawHeaderControls(Rect panel)
+        {
+            var x = panel.xMax - 92f;
+            if (GUI.Button(new Rect(x, panel.y + 10f, 76f, 32f), "CLOSE"))
             {
                 Close();
-                return;
+                return true;
             }
-
-            DrawSortieTypeButtons(panel);
-            var mapRect = new Rect(panel.x + 18f, panel.y + 86f,
-                Mathf.Min(730f, panel.width * 0.67f), panel.height - 108f);
-            DrawMap(mapRect);
-            DrawPlannerPanel(new Rect(mapRect.xMax + 14f, mapRect.y,
-                panel.xMax - mapRect.xMax - 32f, mapRect.height));
-            HandleMapInput(mapRect);
+            x -= 96f;
+            var dayEnded = operationalDay?.Runtime.operationsEnded == true;
+            GUI.enabled = missions.ActiveMission == null;
+            if (GUI.Button(new Rect(x, panel.y + 10f, 90f, 32f), dayEnded ? "NEXT DAY" : "END DAY"))
+            {
+                if (dayEnded) BeginNextDay(); else EndOperations();
+            }
+            GUI.enabled = true;
+            x -= 98f;
+            var latest = missions.LatestReport;
+            GUI.enabled = latest != null;
+            if (GUI.Button(new Rect(x, panel.y + 10f, 92f, 32f),
+                    latest?.reportAcknowledged == false ? "REPORT !" : "REPORT"))
+            {
+                OpenLatestReport();
+            }
+            GUI.enabled = true;
+            if (missions.ActiveMission != null)
+            {
+                x -= 90f;
+                GUI.enabled = missions.CanRecallActive();
+                if (GUI.Button(new Rect(x, panel.y + 10f, 84f, 32f), "RECALL"))
+                {
+                    missions.TryRecallActive();
+                }
+                GUI.enabled = true;
+            }
+            return false;
         }
 
         private void DrawMissionReport()
@@ -413,6 +473,7 @@ namespace UnderStatic.UI
         private void DrawMap(Rect mapRect)
         {
             GUI.Box(mapRect, string.Empty);
+            var coordinateRect = frontline != null ? FrontlineCoordinateRect(mapRect) : mapRect;
             var preview = MapPreview();
             if (preview != null)
             {
@@ -424,18 +485,14 @@ namespace UnderStatic.UI
             }
             if (frontline != null)
             {
-                DrawFrontline(mapRect);
+                DrawFrontline(coordinateRect);
             }
 
             var active = missions.ActiveTask;
-            if (active == null && missions.Draft.sortieType == SortieType.Recon)
-            {
-                DrawReconRangeEnvelope(mapRect, fleet.ReadyDrone);
-            }
             var plan = active?.plan ?? missions.PreviewPlan();
             if (plan != null && plan.route?.Length >= 2)
             {
-                DrawRoute(mapRect, plan, active?.pathProgress ?? 0f, active != null);
+                DrawRoute(coordinateRect, plan, active?.pathProgress ?? 0f, active != null);
             }
             if (frontline == null)
             {
@@ -444,28 +501,121 @@ namespace UnderStatic.UI
             }
             if (fieldOperations != null)
             {
-                DrawContactMarker(mapRect, fieldOperations.RemoteSite.position.ToVector2(),
+                DrawContactMarker(coordinateRect, fieldOperations.RemoteSite.position.ToVector2(),
                     new Color(0.35f, 0.8f, 0.55f), "REMOTE CACHE", false);
                 foreach (var cache in fieldOperations.SalvageCaches.Where(item => item.remainingTokens > 0))
                 {
-                    DrawContactMarker(mapRect, cache.position.ToVector2(),
+                    DrawContactMarker(coordinateRect, cache.position.ToVector2(),
                         new Color(0.86f, 0.64f, 0.18f), $"SALVAGE {cache.remainingTokens}", false);
                 }
             }
             foreach (var contact in frontline == null ? battlefield.VisibleContacts : Array.Empty<BattlefieldContactView>())
             {
-                DrawContact(mapRect, contact);
+                DrawContact(coordinateRect, contact);
+            }
+            if (frontline != null && active == null && missions.Draft.hasStagingPoint)
+            {
+                DrawReachabilityMask(coordinateRect, missions.SelectedDraftDrone);
+                DrawStagingMarker(coordinateRect);
             }
             if (active != null && active.plan.route.Length >= 2)
             {
-                DrawContactMarker(mapRect, RoutePoint(active.plan, active.pathProgress),
+                DrawContactMarker(coordinateRect, RoutePoint(active.plan, active.pathProgress),
                     Color.white, "DRONE", false);
             }
+            var instruction = active == null
+                ? missions.SelectedDraftDrone == null
+                    ? "SELECT AN ACTIVE DRONE"
+                    : missions.Draft.hasStagingPoint
+                        ? "LMB: MOVE STAGING · RMB: CHOOSE MISSION"
+                        : "LMB: SET STAGING AREA"
+                : $"SORTIE ACTIVE · {active.telemetryPathProgress:P0}";
+            GUI.Box(new Rect(mapRect.x + 10f, mapRect.y + 10f, 326f, 26f), instruction);
             GUI.Label(new Rect(mapRect.x + 8f, mapRect.yMax - 24f, mapRect.width - 16f, 20f),
                 frontline == null
                     ? $"4 × 4 KM · {battlefield.VisibleContacts.Count} KNOWN CONTACTS"
-                    : $"ADVANCE IN {frontline.SecondsUntilAdvance:0}s · HOLD WORKSHOP FOR " +
-                      $"{frontline.Definition.ObjectivePulseCount - frontline.Runtime.completedPulses} PULSES");
+                    : $"11 × 9 OPERATIONAL HEXES · UNIT MOVEMENT AT NEXT DAY · HOLD FOR " +
+                      $"{frontline.Definition.ObjectiveDayCount - frontline.Runtime.completedDays} DAYS");
+        }
+
+        private void DrawReachabilityMask(Rect mapRect, DroneActor actor)
+        {
+            if (actor == null)
+            {
+                return;
+            }
+            var definition = frontline.Definition;
+            var radiusX = mapRect.width / (definition.HexColumns + 0.5f) * 0.48f;
+            var radiusY = mapRect.height / definition.HexRows * 0.48f;
+            foreach (var hex in frontline.Runtime.hexes.Where(item => item != null
+                         && !missions.IsHexReachable(actor, item.Coordinate)))
+            {
+                DrawHexFill(MapToGui(mapRect, frontline.PositionFor(hex.Coordinate)),
+                    radiusX, radiusY, new Color(0.08f, 0.09f, 0.085f, 0.72f));
+            }
+        }
+
+        private void DrawStagingMarker(Rect mapRect)
+        {
+            var definition = frontline.Definition;
+            var coordinate = FrontlineHexGrid.ClosestToNormalized(
+                missions.Draft.stagingPoint.ToVector2(),
+                definition.HexColumns,
+                definition.HexRows);
+            var center = MapToGui(mapRect, frontline.PositionFor(coordinate));
+            var radiusX = mapRect.width / (definition.HexColumns + 0.5f) * 0.48f;
+            var radiusY = mapRect.height / definition.HexRows * 0.48f;
+            DrawHexOutline(center, radiusX - 1f, radiusY - 1f, new Color(0.2f, 0.95f, 1f), 4f);
+            var style = new GUIStyle(GUI.skin.label)
+            {
+                alignment = TextAnchor.MiddleCenter,
+                fontStyle = FontStyle.Bold
+            };
+            GUI.Box(new Rect(center.x - 30f, center.y - 11f, 60f, 22f), string.Empty);
+            GUI.Label(new Rect(center.x - 30f, center.y - 11f, 60f, 22f), "STAGE", style);
+        }
+
+        private void DrawHexFill(Vector2 center, float radiusX, float radiusY, Color colour)
+        {
+            const int bands = 18;
+            var previous = GUI.color;
+            GUI.color = colour;
+            var bandHeight = radiusY * 2f / bands + 1f;
+            for (var index = 0; index < bands; index++)
+            {
+                var normalizedY = Mathf.Lerp(-1f, 1f, (index + 0.5f) / bands);
+                var absoluteY = Mathf.Abs(normalizedY);
+                var halfWidth = absoluteY <= 0.5f
+                    ? radiusX
+                    : radiusX * Mathf.Clamp01(2f * (1f - absoluteY));
+                GUI.DrawTexture(new Rect(center.x - halfWidth,
+                    center.y + normalizedY * radiusY - bandHeight * 0.5f,
+                    halfWidth * 2f, bandHeight), LineTexture());
+            }
+            GUI.color = previous;
+        }
+
+        private void DrawLiveFeedInset(Rect panel)
+        {
+            if (replayDirector?.IsPlaying != true || !replayDirector.IsLiveFeed
+                || replayDirector.LiveFeedTexture == null)
+            {
+                return;
+            }
+            var size = Mathf.Clamp(panel.height * 0.24f, 142f, 188f);
+            var frame = new Rect(panel.xMax - size - 22f, panel.yMax - size - 44f, size, size);
+            GUI.Box(new Rect(frame.x - 4f, frame.y - 4f, frame.width + 8f, frame.height + 30f),
+                string.Empty);
+            GUI.DrawTexture(frame, replayDirector.LiveFeedTexture, ScaleMode.ScaleAndCrop, false);
+            if (replayDirector.StaticVisible && replayDirector.LiveFeedStaticTexture != null)
+            {
+                var previous = GUI.color;
+                GUI.color = new Color(1f, 1f, 1f, 0.75f);
+                GUI.DrawTexture(frame, replayDirector.LiveFeedStaticTexture, ScaleMode.StretchToFill, false);
+                GUI.color = previous;
+            }
+            GUI.Label(new Rect(frame.x, frame.yMax + 2f, frame.width, 20f),
+                replayDirector.StaticVisible ? "LIVE · SIGNAL LOST" : "LIVE · DEGRADED");
         }
 
         private void DrawReconRangeEnvelope(Rect mapRect, DroneActor actor)
@@ -501,55 +651,54 @@ namespace UnderStatic.UI
 
         private void DrawFrontline(Rect mapRect)
         {
-            var sectors = frontline.Definition.Sectors.ToDictionary(item => item.id, StringComparer.Ordinal);
-            foreach (var sector in frontline.Definition.Sectors)
+            var definition = frontline.Definition;
+            var radiusX = mapRect.width / (definition.HexColumns + 0.5f) * 0.48f;
+            var radiusY = mapRect.height / definition.HexRows * 0.48f;
+            foreach (var hex in frontline.Runtime.hexes.Where(item => item != null))
             {
-                foreach (var connection in sector.connections ?? Array.Empty<string>())
+                var point = MapToGui(mapRect, frontline.PositionFor(hex.Coordinate));
+                var colour = hex.control switch
                 {
-                    if (string.CompareOrdinal(sector.id, connection) >= 0 || !sectors.TryGetValue(connection, out var other))
-                    {
-                        continue;
-                    }
-                    DrawLine(MapToGui(mapRect, sector.position.ToVector2()),
-                        MapToGui(mapRect, other.position.ToVector2()), new Color(0.38f, 0.36f, 0.3f, 0.75f), 4f);
-                }
-            }
-
-            foreach (var sector in frontline.Runtime.sectors)
-            {
-                var definition = sectors[sector.sectorId];
-                var point = MapToGui(mapRect, definition.position.ToVector2());
-                var colour = sector.control switch
-                {
-                    FrontlineSectorControl.Friendly => new Color(0.1f, 0.55f, 0.62f, 0.65f),
-                    FrontlineSectorControl.Contested => new Color(0.72f, 0.55f, 0.12f, 0.65f),
-                    _ => new Color(0.68f, 0.16f, 0.12f, 0.65f)
+                    FrontlineSectorControl.Friendly => new Color(0.2f, 0.75f, 0.78f, 0.48f),
+                    FrontlineSectorControl.Contested => new Color(0.92f, 0.68f, 0.16f, 0.52f),
+                    _ => new Color(0.92f, 0.25f, 0.16f, 0.62f)
                 };
-                var previous = GUI.color;
-                GUI.color = colour;
-                GUI.Box(new Rect(point.x - 24f, point.y - 15f, 48f, 30f), string.Empty);
-                GUI.color = previous;
-                GUI.Label(new Rect(point.x - 48f, point.y + 15f, 120f, 20f),
-                    $"{definition.displayName} {(sector.defense > 0 ? new string('◆', sector.defense) : string.Empty)}");
+                DrawHexOutline(point, radiusX, radiusY, colour,
+                    hex.control == FrontlineSectorControl.Enemy ? 2f : 1f);
+                if (hex.defense > 0)
+                {
+                    DrawPressurePips(point + new Vector2(0f, radiusY * 0.44f), hex.defense);
+                }
             }
 
-            foreach (var sector in frontline.Runtime.sectors.Where(item => item.control == FrontlineSectorControl.Enemy))
+            foreach (var activity in frontline.Runtime.activities.Where(item =>
+                         item.active && item.pressure > 0 && !item.exactHexKnown))
             {
-                var from = sectors[sector.sectorId];
-                foreach (var connection in from.connections ?? Array.Empty<string>())
+                foreach (var hex in frontline.Runtime.hexes.Where(item => item != null
+                             && FrontlineHexGrid.Distance(
+                                 item.Coordinate, activity.DetectedHex) == activity.detectionRadius))
                 {
-                    var other = frontline.Runtime.sectors.First(item => item.sectorId == connection);
-                    if (other.control == FrontlineSectorControl.Enemy) continue;
-                    var a = MapToGui(mapRect, from.position.ToVector2());
-                    var b = MapToGui(mapRect, sectors[connection].position.ToVector2());
-                    DrawLine(Vector2.Lerp(a, b, 0.42f), Vector2.Lerp(a, b, 0.58f),
-                        new Color(1f, 0.18f, 0.1f), 5f);
+                    DrawHexOutline(
+                        MapToGui(mapRect, frontline.PositionFor(hex.Coordinate)),
+                        radiusX - 2f,
+                        radiusY - 2f,
+                        new Color(0.72f, 0.56f, 0.2f, 0.42f),
+                        1.5f);
                 }
+            }
+
+            foreach (var activity in frontline.Runtime.activities.Where(item =>
+                         item.active && item.pressure > 0
+                         && item.intentKnown && item.exactHexKnown))
+            {
+                DrawIntentArrow(
+                    MapToGui(mapRect, frontline.ActivityPosition(activity)),
+                    MapToGui(mapRect, frontline.PositionFor(activity.NextHex)));
             }
 
             foreach (var activity in frontline.Runtime.activities.Where(item => item.active && item.pressure > 0))
             {
-                var position = sectors[activity.currentSectorId].position.ToVector2();
+                var position = frontline.VisibleActivityPosition(activity);
                 var point = MapToGui(mapRect, position);
                 var selected = string.Equals(
                     missions.Draft.targetContactId, activity.activityId, StringComparison.Ordinal);
@@ -560,15 +709,67 @@ namespace UnderStatic.UI
                 DrawPressurePips(point, activity.pressure);
                 if (hovered || selected)
                 {
-                    DrawActivityTooltip(mapRect, point, activity, sectors);
+                    DrawActivityTooltip(mapRect, point, activity);
                 }
-                if (activity.intentKnown && sectors.TryGetValue(activity.nextSectorId, out var target))
-                {
-                    DrawLine(point, MapToGui(mapRect, target.position.ToVector2()),
-                        new Color(1f, 0.48f, 0.12f, 0.9f), 3f);
-                }
-                DrawTimerRing(point, Mathf.Clamp01(frontline.SecondsUntilAdvance
-                    / frontline.Definition.AdvanceIntervalSeconds));
+            }
+
+            var workshop = MapToGui(mapRect, frontline.PositionFor(definition.WorkshopHex));
+            DrawHexOutline(workshop, radiusX - 2f, radiusY - 2f, Color.cyan, 3f);
+            var baseStyle = new GUIStyle(GUI.skin.label)
+            {
+                alignment = TextAnchor.MiddleCenter,
+                fontStyle = FontStyle.Bold
+            };
+            GUI.Label(new Rect(workshop.x - 24f, workshop.y - 10f, 48f, 20f), "BASE", baseStyle);
+        }
+
+        private void DrawIntentArrow(Vector2 sourceCenter, Vector2 destinationCenter)
+        {
+            var delta = destinationCenter - sourceCenter;
+            if (delta.sqrMagnitude < 1f)
+            {
+                return;
+            }
+
+            var direction = delta.normalized;
+            var perpendicular = new Vector2(-direction.y, direction.x);
+            var start = sourceCenter + direction * 20f;
+            var tip = destinationCenter - direction * 15f;
+            var headBase = tip - direction * 13f;
+            var headLeft = headBase + perpendicular * 8f;
+            var headRight = headBase - perpendicular * 8f;
+            var outline = new Color(0.035f, 0.045f, 0.038f, 0.95f);
+            var intent = new Color(1f, 0.52f, 0.12f, 1f);
+
+            DrawLine(start, tip, outline, 7f);
+            DrawLine(headLeft, tip, outline, 7f);
+            DrawLine(headRight, tip, outline, 7f);
+            DrawLine(start, tip, intent, 3f);
+            DrawLine(headLeft, tip, intent, 3f);
+            DrawLine(headRight, tip, intent, 3f);
+        }
+
+        private static Rect FrontlineCoordinateRect(Rect mapRect) => new(
+            mapRect.x + 36f,
+            mapRect.y + 18f,
+            mapRect.width - 72f,
+            mapRect.height - 56f);
+
+        private void DrawHexOutline(Vector2 center, float radiusX, float radiusY, Color colour, float width)
+        {
+            var halfY = radiusY * 0.5f;
+            var points = new[]
+            {
+                center + new Vector2(0f, -radiusY),
+                center + new Vector2(radiusX, -halfY),
+                center + new Vector2(radiusX, halfY),
+                center + new Vector2(0f, radiusY),
+                center + new Vector2(-radiusX, halfY),
+                center + new Vector2(-radiusX, -halfY)
+            };
+            for (var index = 0; index < points.Length; index++)
+            {
+                DrawLine(points[index], points[(index + 1) % points.Length], colour, width);
             }
         }
 
@@ -657,14 +858,16 @@ namespace UnderStatic.UI
         private void DrawActivityTooltip(
             Rect mapRect,
             Vector2 point,
-            EnemyActivityRuntimeData activity,
-            System.Collections.Generic.IReadOnlyDictionary<string, FrontlineSectorDefinition> sectors)
+            EnemyActivityRuntimeData activity)
         {
             var type = activity.typeIdentified
                 ? SplitName(activity.actualType.ToString()).ToUpperInvariant()
                 : "UNIDENTIFIED ACTIVITY";
-            var intent = activity.intentKnown && sectors.TryGetValue(activity.nextSectorId, out var target)
-                ? $" · MOVING TO {target.displayName.ToUpperInvariant()}"
+            var location = activity.exactHexKnown
+                ? $"HEX {activity.CurrentHex}"
+                : $"AREA {activity.DetectedHex} ±{activity.detectionRadius}";
+            var intent = activity.intentKnown && activity.exactHexKnown
+                ? $" · NEXT {activity.NextHex}"
                 : string.Empty;
             const float width = 198f;
             const float height = 42f;
@@ -674,7 +877,7 @@ namespace UnderStatic.UI
             y = Mathf.Clamp(y, mapRect.y + 6f, mapRect.yMax - height - 28f);
             GUI.Box(new Rect(x, y, width, height),
                 $"{type} · PRESSURE {activity.pressure}/{activity.maximumPressure}\n" +
-                $"{(activity.typeIdentified ? "IDENTIFIED" : "RECON REQUIRED")}{intent}");
+                $"{location} · {(activity.exactHexKnown ? "CONFIRMED" : "RECON REQUIRED")}{intent}");
         }
 
         private void DrawCircleOutline(Vector2 center, float radius, Color colour, int segments)
@@ -752,6 +955,120 @@ namespace UnderStatic.UI
                 $"{ShortLabel(contact.Type)}{suffix}", contact.IntelState == BattlefieldIntelState.Destroyed);
         }
 
+        private void DrawActiveDronePanel(Rect rect)
+        {
+            GUI.Box(rect, string.Empty);
+            var titleStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontStyle = FontStyle.Bold,
+                fontSize = 15
+            };
+            GUI.Label(new Rect(rect.x + 12f, rect.y + 12f, rect.width - 24f, 24f),
+                "ACTIVE DRONES", titleStyle);
+            GUI.Label(new Rect(rect.x + 12f, rect.y + 38f, rect.width - 24f, 38f),
+                "Select a ready aircraft, then stage and task it directly on the map.");
+
+            var activeActors = fleet?.Actors.Where(actor => actor != null
+                    && (actor == fleet.ReadyDrone || fleet.DeployedDrones.Contains(actor)))
+                .Distinct().ToArray() ?? Array.Empty<DroneActor>();
+            if (activeActors.Length == 0)
+            {
+                GUI.Label(new Rect(rect.x + 12f, rect.y + 86f, rect.width - 24f, 58f),
+                    "NO ACTIVE AIRCRAFT\nMove a tested drone to the ready shelf.");
+                return;
+            }
+
+            var y = rect.y + 84f;
+            foreach (var actor in activeActors)
+            {
+                var runtime = missions.Missions.FirstOrDefault(item =>
+                    (item.state is MissionRuntimeState.Active or MissionRuntimeState.Returning)
+                    && string.Equals(item.assignedDroneId, actor.Runtime.droneInstanceId,
+                        StringComparison.Ordinal));
+                var ready = actor == fleet.ReadyDrone;
+                var selected = ready && actor == missions.SelectedDraftDrone;
+                var card = new Rect(rect.x + 10f, y, rect.width - 20f, 112f);
+                var previous = GUI.color;
+                GUI.color = selected
+                    ? new Color(0.32f, 0.85f, 0.88f)
+                    : ready ? new Color(0.72f, 0.78f, 0.72f) : new Color(0.65f, 0.48f, 0.2f);
+                GUI.Box(card, string.Empty);
+                GUI.color = previous;
+                if (ready && GUI.Button(card, string.Empty))
+                {
+                    missions.SelectDraftDrone(actor.Runtime.droneInstanceId);
+                    contextMenuOpen = false;
+                }
+
+                var frameName = actor.FrameDefinition != null
+                    ? actor.FrameDefinition.DisplayName
+                    : actor.Runtime.droneInstanceId;
+                GUI.Label(new Rect(card.x + 10f, card.y + 8f, card.width - 20f, 22f),
+                    $"{(selected ? "● " : string.Empty)}{frameName}");
+                GUI.Label(new Rect(card.x + 10f, card.y + 32f, card.width - 20f, 42f),
+                    $"{actor.ConfigurationLabel}\n" +
+                    $"RANGE {MissionSystem.ReconRangeKilometres(actor):0.00} KM · " +
+                    $"OBS {actor.Stats.Observation:0.00}");
+                GUI.Label(new Rect(card.x + 10f, card.y + 78f, card.width - 20f, 24f),
+                    ready
+                        ? selected ? "SELECTED · READY" : "READY"
+                        : $"{runtime?.plan.sortieType.ToString().ToUpperInvariant()} · " +
+                          $"{runtime?.telemetryPathProgress ?? 0f:P0}");
+                y += 122f;
+            }
+        }
+
+        private void DrawMissionContextMenu(Rect mapRect)
+        {
+            if (!contextMenuOpen || frontline == null || missions.ActiveTask != null)
+            {
+                return;
+            }
+            var options = missions.Profiles
+                .Select(profile => new
+                {
+                    profile.SortieType,
+                    Eligibility = missions.EvaluateHexMission(
+                        missions.SelectedDraftDrone, profile.SortieType, contextMenuHex)
+                })
+                .Where(item => item.Eligibility.Eligible)
+                .ToArray();
+            var width = 244f;
+            var height = 52f + Mathf.Max(1, options.Length) * 38f;
+            var x = Mathf.Clamp(contextMenuPosition.x, mapRect.x + 4f, mapRect.xMax - width - 4f);
+            var y = Mathf.Clamp(contextMenuPosition.y, mapRect.y + 4f, mapRect.yMax - height - 4f);
+            var menu = new Rect(x, y, width, height);
+            GUI.Box(menu, string.Empty);
+            GUI.Label(new Rect(menu.x + 10f, menu.y + 7f, menu.width - 20f, 22f),
+                $"HEX {contextMenuHex} · MISSION");
+            if (options.Length == 0)
+            {
+                GUI.Label(new Rect(menu.x + 10f, menu.y + 33f, menu.width - 20f, 34f),
+                    "NO AVAILABLE MISSION");
+            }
+            else
+            {
+                var rowY = menu.y + 34f;
+                foreach (var option in options)
+                {
+                    if (GUI.Button(new Rect(menu.x + 8f, rowY, menu.width - 16f, 32f),
+                            $"LAUNCH {LabelFor(option.SortieType)}"))
+                    {
+                        contextMenuOpen = false;
+                        ChooseHexMission(option.SortieType, contextMenuHex);
+                        Event.current.Use();
+                        break;
+                    }
+                    rowY += 38f;
+                }
+            }
+            if (Event.current.type == EventType.MouseDown
+                && !menu.Contains(Event.current.mousePosition))
+            {
+                contextMenuOpen = false;
+            }
+        }
+
         private void DrawPlannerPanel(Rect rect)
         {
             GUI.Box(rect, string.Empty);
@@ -802,7 +1119,7 @@ namespace UnderStatic.UI
                     GUI.Label(new Rect(rect.x + 12f, y, rect.width - 24f, 72f),
                         $"REACH {forecast.Reach} · EFFECT {forecast.Effect} · REL {forecast.Reliability:P0}\n" +
                         $"ARRIVAL {forecast.ArrivalSeconds:0}s " +
-                        $"{(forecast.ArrivesBeforeAdvance ? "BEFORE ADVANCE" : "TOO LATE")}\n" +
+                        $"{(forecast.ArrivesBeforeAdvance ? "BEFORE DAY END" : "TOO LATE")}\n" +
                         $"REWARD {forecast.Reward} · COMMIT {forecast.CommittedValue + forecast.PayloadValue} · " +
                         $"MARGIN {forecast.SuccessfulMargin:+#;-#;0}");
                 }
@@ -820,7 +1137,7 @@ namespace UnderStatic.UI
             else
             {
                 GUI.Label(new Rect(rect.x + 12f, y, rect.width - 24f, 48f),
-                    "Select any activity marker. Blind strikes are legal; arrival identifies the target.");
+                    "Select an exact recon-confirmed hex. Broad activity areas cannot be targeted.");
                 y += 56f;
             }
 
@@ -914,91 +1231,36 @@ namespace UnderStatic.UI
 
         private void HandleMapInput(Rect mapRect)
         {
-            if (missions.ActiveTask != null || !mapRect.Contains(Event.current.mousePosition))
+            if (frontline == null || missions.ActiveTask != null
+                || !mapRect.Contains(Event.current.mousePosition)
+                || Event.current.type != EventType.MouseDown)
             {
-                if (Event.current.type == EventType.MouseUp)
-                {
-                    draggingWaypoint = -1;
-                }
                 return;
             }
-            var normalized = GuiToMap(mapRect, Event.current.mousePosition);
-            if (missions.Draft.sortieType == SortieType.Recon)
+            var definition = frontline.Definition;
+            var coordinate = FrontlineHexGrid.ClosestToNormalized(
+                GuiToMap(mapRect, Event.current.mousePosition),
+                definition.HexColumns,
+                definition.HexRows);
+            if (Event.current.button == 0)
             {
-                var nearest = FindWaypoint(mapRect, Event.current.mousePosition);
-                if (Event.current.type == EventType.MouseDown && Event.current.button == 0)
-                {
-                    if (nearest >= 0)
-                    {
-                        draggingWaypoint = nearest;
-                    }
-                    else
-                    {
-                        missions.AddWaypoint(normalized);
-                    }
-                    Event.current.Use();
-                }
-                else if (Event.current.type == EventType.MouseDrag && draggingWaypoint >= 0)
-                {
-                    missions.MoveWaypoint(draggingWaypoint, normalized);
-                    Event.current.Use();
-                }
-                else if (Event.current.type == EventType.MouseUp)
-                {
-                    draggingWaypoint = -1;
-                }
-                else if (Event.current.type == EventType.MouseDown && Event.current.button == 1 && nearest >= 0)
-                {
-                    missions.RemoveWaypoint(nearest);
-                    Event.current.Use();
-                }
-                return;
+                contextMenuOpen = false;
+                missions.SetDraftStagingHex(coordinate);
+                Event.current.Use();
             }
-            if (Event.current.type == EventType.MouseDown && Event.current.button == 0)
+            else if (Event.current.button == 1 && missions.Draft.hasStagingPoint
+                     && missions.IsHexReachable(missions.SelectedDraftDrone, coordinate))
             {
-                if (frontline != null)
-                {
-                    var targetActivity = frontline.Runtime.activities
-                        .Where(item => item.active && item.pressure > 0)
-                        .Select(item => new
-                        {
-                            Activity = item,
-                            Position = frontline.Definition.Sectors.First(sector =>
-                                string.Equals(sector.id, item.currentSectorId, StringComparison.Ordinal)).position.ToVector2()
-                        })
-                        .OrderBy(item => Vector2.Distance(MapToGui(mapRect, item.Position), Event.current.mousePosition))
-                        .FirstOrDefault();
-                    if (targetActivity != null
-                        && Vector2.Distance(MapToGui(mapRect, targetActivity.Position), Event.current.mousePosition) <= 28f)
-                    {
-                        missions.SelectTarget(targetActivity.Activity.activityId);
-                        Event.current.Use();
-                    }
-                    return;
-                }
-                var target = battlefield.VisibleContacts
-                    .Where(item => item.IsTargetable)
-                    .OrderBy(item => Vector2.Distance(MapToGui(mapRect, item.Position), Event.current.mousePosition))
-                    .FirstOrDefault();
-                if (!string.IsNullOrEmpty(target.ContactId)
-                    && Vector2.Distance(MapToGui(mapRect, target.Position), Event.current.mousePosition) <= 22f)
-                {
-                    missions.SelectTarget(target.ContactId);
-                    Event.current.Use();
-                }
+                contextMenuHex = coordinate;
+                contextMenuPosition = Event.current.mousePosition;
+                contextMenuOpen = true;
+                Event.current.Use();
             }
-        }
-
-        private int FindWaypoint(Rect mapRect, Vector2 mouse)
-        {
-            for (var index = 0; index < missions.Draft.waypoints.Length; index++)
+            else if (Event.current.button == 1)
             {
-                if (Vector2.Distance(MapToGui(mapRect, missions.Draft.waypoints[index].ToVector2()), mouse) <= 12f)
-                {
-                    return index;
-                }
+                contextMenuOpen = false;
+                Event.current.Use();
             }
-            return -1;
         }
 
         private void DrawActiveStatus()
@@ -1028,8 +1290,7 @@ namespace UnderStatic.UI
             {
                 return null;
             }
-            var fingerprint = TacticalMapPresentation.StableStateFingerprint(
-                battlefield.Map, frontline?.Definition, frontline?.Runtime);
+            var fingerprint = battlefield.Map.StableFingerprint();
             if (mapPreview != null && mapPreviewFingerprint != fingerprint)
             {
                 DestroyRuntimeTexture(mapPreview);
@@ -1037,8 +1298,7 @@ namespace UnderStatic.UI
             }
             if (mapPreview == null)
             {
-                mapPreview = TacticalMapPresentation.BuildTexture(
-                    battlefield.Map, frontline?.Definition, frontline?.Runtime);
+                mapPreview = TacticalMapPresentation.BuildDetailedMapBackground(battlefield.Map);
                 mapPreviewFingerprint = fingerprint;
             }
             return mapPreview;

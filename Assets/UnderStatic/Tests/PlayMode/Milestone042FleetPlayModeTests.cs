@@ -169,7 +169,8 @@ namespace UnderStatic.Tests.PlayMode
             Assert.That(missions.SetDraftType(SortieType.KamikazeStrike), Is.True);
             var eligible = frontline.Runtime.activities
                 .Where(item => item.active && item.pressure > 0)
-                .Any(target => missions.SelectTarget(target.activityId)
+                .Any(target => frontline.IdentifyActivity(target.activityId)
+                    && missions.SelectTarget(target.activityId)
                     && missions.EvaluateDraft().Eligible);
             Assert.That(eligible, Is.True, missions.EvaluateDraft().Reason);
         }
@@ -244,7 +245,7 @@ namespace UnderStatic.Tests.PlayMode
             var originalService = fleet.ServiceDrone.Runtime.droneInstanceId;
             var originalLocker = fleet.Locker[0].Runtime.droneInstanceId;
 
-            Assert.That(json, Does.Contain("\"version\": 14"));
+            Assert.That(json, Does.Contain("\"version\": 15"));
             Assert.That(sockets.Select(socket => socket.PersistenceSocketId).Distinct().Count(),
                 Is.EqualTo(sockets.Length));
             Assert.That(fleet.TrySwapLockerIntoService(0, false), Is.True);

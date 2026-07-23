@@ -81,7 +81,12 @@ namespace UnderStatic.Lab
             var dayObject = new GameObject("OperationalDaySystem");
             dayObject.transform.SetParent(GameObject.Find("Systems")?.transform);
             var day = dayObject.AddComponent<OperationalDaySystem>();
-            day.Configure(missions, market: market, fleet: fleet, battlefield: battlefield);
+            day.Configure(
+                missions,
+                market: market,
+                fleet: fleet,
+                battlefield: battlefield,
+                frontline: frontline);
             saveSystem.ConfigureMissions(missions, day, battlefield);
             var salvageFlow = SafeHouseSalvageFactory.Build(
                 inventory, fleet, missions, day, visualKit, market?.Definition);

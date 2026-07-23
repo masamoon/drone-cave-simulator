@@ -32,10 +32,14 @@ namespace UnderStatic.Tests.EditMode
             var first = CreateFrontline(definition, 17);
             var second = CreateFrontline(definition, 17);
 
-            first.Tick(270f);
-            second.Tick(270f);
+            for (var day = 2; day <= 4; day++)
+            {
+                first.AdvanceDay(day);
+                second.AdvanceDay(day);
+            }
 
-            Assert.That(first.Runtime.completedPulses, Is.EqualTo(3));
+            Assert.That(first.Runtime.hexes.Length, Is.EqualTo(99));
+            Assert.That(first.Runtime.completedDays, Is.EqualTo(3));
             Assert.That(JsonUtility.ToJson(first.CaptureState()), Is.EqualTo(JsonUtility.ToJson(second.CaptureState())));
         }
 
@@ -47,22 +51,27 @@ namespace UnderStatic.Tests.EditMode
             var originalPressure = activity.pressure;
 
             Assert.That(frontline.IdentifyActivity(activity.activityId), Is.True);
+            Assert.That(activity.exactHexKnown, Is.True);
             Assert.That(activity.typeIdentified, Is.True);
             Assert.That(activity.intentKnown, Is.True);
             Assert.That(activity.actualType, Is.EqualTo(EnemyActivityType.Infantry));
             Assert.That(activity.pressure, Is.EqualTo(originalPressure));
 
-            frontline.Tick(90f);
+            var expectedDestination = activity.NextHex;
+            frontline.AdvanceDay(2);
+            Assert.That(activity.CurrentHex, Is.EqualTo(expectedDestination));
+            Assert.That(activity.exactHexKnown, Is.True);
             Assert.That(activity.typeIdentified, Is.True);
             Assert.That(activity.intentKnown, Is.False);
         }
 
         [Test]
-        public void BlindStrike_IdentifiesAndAppliesTargetSpecificDamageOnce()
+        public void ReconConfirmedStrike_AppliesTargetSpecificDamageOnce()
         {
             var frontline = CreateFrontline(Track(FrontlineScenarioDefinition.CreateRoadWatchPrototype()), 31);
-            frontline.Tick(90f);
+            frontline.AdvanceDay(2);
             var tank = frontline.Runtime.activities.Single(item => item.activityId == "activity.tank.01");
+            Assert.That(frontline.IdentifyActivity(tank.activityId), Is.True);
 
             var first = frontline.ApplyStrike(tank.activityId, true);
             var second = frontline.ApplyStrike(tank.activityId, true);
@@ -87,9 +96,12 @@ namespace UnderStatic.Tests.EditMode
                 }
             }
 
-            frontline.Tick(8f * 90f);
+            for (var day = 2; day <= 9; day++)
+            {
+                frontline.AdvanceDay(day);
+            }
 
-            Assert.That(frontline.Runtime.completedPulses, Is.EqualTo(8));
+            Assert.That(frontline.Runtime.completedDays, Is.EqualTo(8));
             Assert.That(frontline.Runtime.outcome, Is.EqualTo(FrontlineOutcome.EvacuationComplete));
         }
 
@@ -102,14 +114,18 @@ namespace UnderStatic.Tests.EditMode
             attacker.active = true;
             attacker.stationary = false;
             attacker.actualType = EnemyActivityType.Infantry;
-            attacker.currentSectorId = "sector.west-depot";
-            attacker.nextSectorId = "sector.workshop";
+            attacker.currentColumn = 2;
+            attacker.currentRow = 1;
+            attacker.nextColumn = frontline.Definition.WorkshopHex.column;
+            attacker.nextRow = frontline.Definition.WorkshopHex.row;
             attacker.pressure = 4;
             attacker.moveEveryPulses = 1;
+            attacker.exactHexKnown = true;
+            attacker.intentKnown = true;
 
-            frontline.Tick(90f);
+            frontline.AdvanceDay(2);
 
-            Assert.That(frontline.Runtime.sectors.Single(item => item.sectorId == "sector.workshop").control,
+            Assert.That(frontline.FindHex(frontline.Definition.WorkshopHex).control,
                 Is.EqualTo(FrontlineSectorControl.Enemy));
             Assert.That(frontline.Runtime.outcome, Is.EqualTo(FrontlineOutcome.WorkshopBreached));
         }

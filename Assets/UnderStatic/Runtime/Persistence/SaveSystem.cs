@@ -133,7 +133,7 @@ namespace UnderStatic.Persistence
 
             return JsonUtility.ToJson(new MilestoneSaveData
             {
-                version = frontlineSystem != null ? 14 : fieldOperationsSystem != null ? 13 : workshopRiskSystem != null ? 12 : missionSystem != null ? 11 : marketSystem != null ? 9 : fleetSystem == null ? 4 : 5,
+                version = frontlineSystem != null ? 15 : fieldOperationsSystem != null ? 13 : workshopRiskSystem != null ? 12 : missionSystem != null ? 11 : marketSystem != null ? 9 : fleetSystem == null ? 4 : 5,
                 parts = records,
                 sockets = socketRecords,
                 inventory = inventorySystem?.CaptureState(),
@@ -167,6 +167,7 @@ namespace UnderStatic.Persistence
                 return false;
             }
 
+            // Schema 14 is the supported migration source for the schema-15 hex board.
             var requiredSchema = frontlineSystem != null ? 14 : fieldOperationsSystem != null ? 13 : workshopRiskSystem != null ? 12 : missionSystem != null ? 11 : 0;
             if (requiredSchema > 0 && data.version < requiredSchema)
             {

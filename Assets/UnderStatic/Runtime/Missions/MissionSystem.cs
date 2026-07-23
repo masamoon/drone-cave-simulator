@@ -54,6 +54,15 @@ namespace UnderStatic.Missions
             item.state == MissionRuntimeState.Returning);
         public MissionRuntimeData LatestReport => missions.LastOrDefault(item =>
             item.state == MissionRuntimeState.Resolved);
+        public IReadOnlyList<DroneActor> PlanningDrones
+        {
+            get
+            {
+                var ready = fleet?.ReadyDrone;
+                return ready == null ? Array.Empty<DroneActor>() : new[] { ready };
+            }
+        }
+        public DroneActor SelectedDraftDrone => ResolveDraftDrone();
         public string LastStatus { get; private set; } = "Sortie planner ready";
 
         public event Action<MissionRuntimeData> MissionResolved;
@@ -107,7 +116,11 @@ namespace UnderStatic.Missions
             market = marketSystem;
             inventory = inventorySystem;
             missions.Clear();
-            draft = new SortieDraftData { sortieType = SortieType.Recon };
+            draft = new SortieDraftData
+            {
+                sortieType = SortieType.Recon,
+                selectedDroneId = fleet?.ReadyDrone?.Runtime.droneInstanceId ?? string.Empty
+            };
             LastStatus = "Plan a sortie from the staged aircraft";
             StateChanged?.Invoke();
         }
@@ -128,6 +141,134 @@ namespace UnderStatic.Missions
             draft.targetContactId = string.Empty;
             draft.waypoints = Array.Empty<BattlefieldMapPoint>();
             LastStatus = $"{ProfileFor(type).DisplayName} planning";
+            StateChanged?.Invoke();
+            return true;
+        }
+
+        public bool SelectDraftDrone(string droneInstanceId)
+        {
+            if (ActiveTask != null)
+            {
+                return false;
+            }
+            var actor = PlanningDrones.FirstOrDefault(item => string.Equals(
+                item.Runtime.droneInstanceId, droneInstanceId, StringComparison.Ordinal));
+            if (actor == null)
+            {
+                LastStatus = "Selected aircraft is not staged and ready";
+                return false;
+            }
+            draft.selectedDroneId = actor.Runtime.droneInstanceId;
+            draft.waypoints = Array.Empty<BattlefieldMapPoint>();
+            draft.targetContactId = string.Empty;
+            LastStatus = $"{actor.FrameDefinition.DisplayName} selected · choose a staging hex";
+            StateChanged?.Invoke();
+            return true;
+        }
+
+        public bool SetDraftStagingHex(FrontlineHexCoordinate coordinate)
+        {
+            if (ActiveTask != null || frontline == null
+                || !FrontlineHexGrid.Contains(coordinate,
+                    frontline.Definition.HexColumns, frontline.Definition.HexRows))
+            {
+                return false;
+            }
+            var actor = ResolveDraftDrone();
+            if (actor == null)
+            {
+                LastStatus = "Select an active drone before choosing a staging hex";
+                return false;
+            }
+            draft.hasStagingPoint = true;
+            draft.stagingPoint = new BattlefieldMapPoint(frontline.PositionFor(coordinate));
+            draft.waypoints = Array.Empty<BattlefieldMapPoint>();
+            draft.targetContactId = string.Empty;
+            LastStatus = $"Staging hex {coordinate} · right-click a reachable target hex";
+            StateChanged?.Invoke();
+            return true;
+        }
+
+        public void ClearDraftStaging()
+        {
+            if (ActiveTask != null)
+            {
+                return;
+            }
+            draft.hasStagingPoint = false;
+            draft.waypoints = Array.Empty<BattlefieldMapPoint>();
+            draft.targetContactId = string.Empty;
+            LastStatus = "Choose a staging hex";
+            StateChanged?.Invoke();
+        }
+
+        public MissionEligibilityResult EvaluateHexMission(
+            DroneActor actor,
+            SortieType type,
+            FrontlineHexCoordinate targetHex)
+        {
+            var common = EvaluateAircraftForType(actor, type);
+            if (!common.Eligible)
+            {
+                return common;
+            }
+            if (!draft.hasStagingPoint)
+            {
+                return new MissionEligibilityResult(false, "Left-click a staging hex first");
+            }
+            if (frontline == null || !FrontlineHexGrid.Contains(targetHex,
+                    frontline.Definition.HexColumns, frontline.Definition.HexRows))
+            {
+                return new MissionEligibilityResult(false, "Target hex is outside the operational map");
+            }
+
+            var targetId = string.Empty;
+            if (type != SortieType.Recon)
+            {
+                var activity = TargetableActivityAt(targetHex);
+                if (activity == null)
+                {
+                    return new MissionEligibilityResult(false,
+                        "Strike missions require an identified activity in this hex");
+                }
+                targetId = activity.activityId;
+            }
+            var targetPoint = new BattlefieldMapPoint(frontline.PositionFor(targetHex));
+            var plan = BuildPlan(actor, type, new[] { targetPoint }, targetId);
+            if (plan == null)
+            {
+                return new MissionEligibilityResult(false, "No valid mission route");
+            }
+            if (plan.routeDistanceKilometres > plan.availableRangeKilometres + 0.0001f)
+            {
+                return new MissionEligibilityResult(false,
+                    $"Route {plan.routeDistanceKilometres:0.00} km exceeds {plan.availableRangeKilometres:0.00} km range");
+            }
+            return new MissionEligibilityResult(true,
+                $"{LabelFor(type)} · {plan.routeDistanceKilometres:0.00}/{plan.availableRangeKilometres:0.00} km");
+        }
+
+        public bool IsHexReachable(DroneActor actor, FrontlineHexCoordinate targetHex) =>
+            profiles.Any(profile => EvaluateHexMission(actor, profile.SortieType, targetHex).Eligible);
+
+        public bool TryPlanHexMission(SortieType type, FrontlineHexCoordinate targetHex)
+        {
+            var actor = ResolveDraftDrone();
+            var eligibility = EvaluateHexMission(actor, type, targetHex);
+            if (!eligibility.Eligible)
+            {
+                LastStatus = eligibility.Reason;
+                return false;
+            }
+
+            draft.sortieType = type;
+            draft.waypoints = type == SortieType.Recon
+                ? new[] { new BattlefieldMapPoint(frontline.PositionFor(targetHex)) }
+                : Array.Empty<BattlefieldMapPoint>();
+            draft.targetContactId = type == SortieType.Recon
+                ? string.Empty
+                : TargetableActivityAt(targetHex)?.activityId ?? string.Empty;
+            LastStatus = eligibility.Reason;
             StateChanged?.Invoke();
             return true;
         }
@@ -183,6 +324,7 @@ namespace UnderStatic.Missions
             }
             draft.waypoints = Array.Empty<BattlefieldMapPoint>();
             draft.targetContactId = string.Empty;
+            draft.hasStagingPoint = false;
             LastStatus = "Sortie geometry cleared";
             StateChanged?.Invoke();
         }
@@ -190,11 +332,12 @@ namespace UnderStatic.Missions
         public bool SelectTarget(string contactId)
         {
             var frontlineTarget = frontline?.Runtime.activities.Any(item => item.active && item.pressure > 0
+                && item.exactHexKnown && item.typeIdentified
                 && string.Equals(item.activityId, contactId, StringComparison.Ordinal)) == true;
             if (draft.sortieType == SortieType.Recon || ActiveTask != null
                 || !frontlineTarget && battlefield?.IsTargetable(contactId) != true)
             {
-                LastStatus = "Select a current or stale discovered contact";
+                LastStatus = "Recon must identify the activity's exact hex before targeting";
                 return false;
             }
             draft.targetContactId = contactId;
@@ -203,46 +346,12 @@ namespace UnderStatic.Missions
             return true;
         }
 
-        public MissionEligibilityResult EvaluateDraft() => EvaluateDraft(fleet?.ReadyDrone);
+        public MissionEligibilityResult EvaluateDraft() => EvaluateDraft(ResolveDraftDrone());
 
         public MissionEligibilityResult EvaluateDraft(DroneActor actor)
         {
-            var profile = ProfileFor(draft.sortieType);
-            if (profile == null || battlefield == null || actor == null)
-            {
-                return new MissionEligibilityResult(false, "Stage a tested mission-ready drone");
-            }
-            if (ActiveTask != null)
-            {
-                return new MissionEligibilityResult(false, "Another sortie is active");
-            }
-            if (fleet?.ReadyDrone != actor || !actor.IsReadyForShelf)
-            {
-                return new MissionEligibilityResult(false, "Only the tested ready-shelf drone can launch");
-            }
-
-            var capabilities = actor.MissionCapabilities;
-            if ((capabilities & profile.RequiredCapabilities) != profile.RequiredCapabilities)
-            {
-                return new MissionEligibilityResult(false, draft.sortieType switch
-                {
-                    SortieType.Recon => "Recon requires a serviceable camera configuration",
-                    SortieType.KamikazeStrike => "One-way strike requires a charged armed payload",
-                    _ => "Grenade drop requires a charged drop payload"
-                });
-            }
-            if (draft.sortieType == SortieType.Recon && actor.HasArmedPayload)
-            {
-                return new MissionEligibilityResult(false, "Remove the armed payload before reconnaissance");
-            }
-            if (draft.sortieType == SortieType.KamikazeStrike && !actor.HasOneWayPayload)
-            {
-                return new MissionEligibilityResult(false, "Seat, strap, connect and diagnose a payload");
-            }
-            if (draft.sortieType == SortieType.GrenadeDrop && actor.HasOneWayPayload)
-            {
-                return new MissionEligibilityResult(false, "Replace the one-way payload with a recoverable drop payload");
-            }
+            var common = EvaluateAircraftForType(actor, draft.sortieType);
+            if (!common.Eligible) return common;
 
             var plan = BuildPlan(actor);
             if (plan == null)
@@ -260,11 +369,11 @@ namespace UnderStatic.Missions
                 $"Ready · {plan.routeDistanceKilometres:0.00}/{plan.availableRangeKilometres:0.00} km");
         }
 
-        public SortiePlanData PreviewPlan() => BuildPlan(fleet?.ReadyDrone);
+        public SortiePlanData PreviewPlan() => BuildPlan(ResolveDraftDrone());
 
         public SortieMaintenanceForecast PreviewMaintenance()
         {
-            var actor = fleet?.ReadyDrone;
+            var actor = ResolveDraftDrone();
             var plan = BuildPlan(actor);
             var profile = ProfileFor(draft.sortieType);
             var utilization = plan == null || plan.availableRangeKilometres <= 0f
@@ -283,7 +392,7 @@ namespace UnderStatic.Missions
 
         public bool TryLaunchDraft()
         {
-            var actor = fleet?.ReadyDrone;
+            var actor = ResolveDraftDrone();
             var remoteLaunch = string.Equals(draft.launchSiteId, FieldOperationsSystem.RemoteSiteId,
                 StringComparison.Ordinal);
             if (remoteLaunch && !remoteLaunchAuthorized)
@@ -352,7 +461,11 @@ namespace UnderStatic.Missions
                 targetType = battlefield.FindVisible(plan.targetContactId)?.Type ?? BattlefieldContactType.Infantry
             };
             missions.Add(runtime);
-            draft = new SortieDraftData { sortieType = runtime.plan.sortieType };
+            draft = new SortieDraftData
+            {
+                sortieType = runtime.plan.sortieType,
+                selectedDroneId = fleet?.ReadyDrone?.Runtime.droneInstanceId ?? string.Empty
+            };
             LastStatus = $"{profile.DisplayName} active · workshop remains available";
             MissionLaunched?.Invoke(runtime);
             StateChanged?.Invoke();
@@ -520,6 +633,15 @@ namespace UnderStatic.Missions
 
         private SortiePlanData BuildPlan(DroneActor actor)
         {
+            return BuildPlan(actor, draft.sortieType, draft.waypoints, draft.targetContactId);
+        }
+
+        private SortiePlanData BuildPlan(
+            DroneActor actor,
+            SortieType type,
+            IReadOnlyList<BattlefieldMapPoint> waypoints,
+            string targetContactId)
+        {
             if (actor == null)
             {
                 return null;
@@ -534,40 +656,48 @@ namespace UnderStatic.Missions
                 ? fieldPosition
                 : BattlefieldSystem.WorkshopPosition;
             var route = new List<Vector2> { launchPosition };
+            if (draft.hasStagingPoint)
+            {
+                var staging = draft.stagingPoint.ToVector2();
+                if (Vector2.Distance(route[^1], staging) > 0.0001f)
+                {
+                    route.Add(staging);
+                }
+            }
             var targetId = string.Empty;
             var aimed = BattlefieldSystem.WorkshopPosition;
-            if (draft.sortieType == SortieType.Recon)
+            if (type == SortieType.Recon)
             {
-                if (draft.waypoints == null || draft.waypoints.Length == 0)
+                if (waypoints == null || waypoints.Count == 0)
                 {
                     return null;
                 }
-                route.AddRange(draft.waypoints.Select(item => item.ToVector2()));
+                route.AddRange(waypoints.Select(item => item.ToVector2()));
                 route.Add(launchPosition);
             }
             else
             {
                 var activity = frontline?.Runtime.activities.FirstOrDefault(item => item.active && item.pressure > 0
-                    && string.Equals(item.activityId, draft.targetContactId, StringComparison.Ordinal));
-                var target = battlefield.FindVisible(draft.targetContactId);
+                    && item.exactHexKnown && item.typeIdentified
+                    && string.Equals(item.activityId, targetContactId, StringComparison.Ordinal));
+                var target = battlefield.FindVisible(targetContactId);
                 if (activity == null && target?.IsTargetable != true)
                 {
                     return null;
                 }
                 targetId = activity?.activityId ?? target.Value.ContactId;
                 aimed = activity != null
-                    ? frontline.Definition.Sectors.First(item => string.Equals(
-                        item.id, activity.currentSectorId, StringComparison.Ordinal)).position.ToVector2()
+                    ? frontline.ActivityPosition(activity)
                     : target.Value.Position;
                 route.Add(aimed);
-                if (draft.sortieType == SortieType.GrenadeDrop)
+                if (type == SortieType.GrenadeDrop)
                 {
                     route.Add(launchPosition);
                 }
             }
             return new SortiePlanData
             {
-                sortieType = draft.sortieType,
+                sortieType = type,
                 route = route.Select(item => new BattlefieldMapPoint(item)).ToArray(),
                 targetContactId = targetId,
                 aimedPosition = new BattlefieldMapPoint(aimed),
@@ -576,14 +706,84 @@ namespace UnderStatic.Missions
                 sensorHalfWidthKilometres = sensor,
                 launchSiteId = launchSiteId,
                 launchPosition = new BattlefieldMapPoint(launchPosition),
-                returnSiteId = launchSiteId
+                returnSiteId = launchSiteId,
+                hasStagingPoint = draft.hasStagingPoint,
+                stagingPoint = draft.stagingPoint
             };
         }
+
+        private MissionEligibilityResult EvaluateAircraftForType(DroneActor actor, SortieType type)
+        {
+            var profile = ProfileFor(type);
+            if (profile == null || battlefield == null || actor == null)
+            {
+                return new MissionEligibilityResult(false, "Stage a tested mission-ready drone");
+            }
+            if (ActiveTask != null)
+            {
+                return new MissionEligibilityResult(false, "Another sortie is active");
+            }
+            if (fleet?.ReadyDrone != actor || !actor.IsReadyForShelf)
+            {
+                return new MissionEligibilityResult(false, "Only a tested ready-shelf drone can launch");
+            }
+
+            var capabilities = actor.MissionCapabilities;
+            if ((capabilities & profile.RequiredCapabilities) != profile.RequiredCapabilities)
+            {
+                return new MissionEligibilityResult(false, type switch
+                {
+                    SortieType.Recon => "Recon requires a serviceable camera configuration",
+                    SortieType.KamikazeStrike => "One-way strike requires a charged armed payload",
+                    _ => "Grenade drop requires a charged drop payload"
+                });
+            }
+            if (type == SortieType.KamikazeStrike && !actor.HasOneWayPayload)
+            {
+                return new MissionEligibilityResult(false, "Seat, strap, connect and diagnose a payload");
+            }
+            if (type == SortieType.GrenadeDrop && actor.HasOneWayPayload)
+            {
+                return new MissionEligibilityResult(false,
+                    "Replace the one-way payload with a recoverable drop payload");
+            }
+            return new MissionEligibilityResult(true, "Aircraft ready");
+        }
+
+        private DroneActor ResolveDraftDrone()
+        {
+            var selected = fleet?.FindActor(draft?.selectedDroneId);
+            if (selected != null && PlanningDrones.Contains(selected))
+            {
+                return selected;
+            }
+            var ready = fleet?.ReadyDrone;
+            if (ready != null && draft != null)
+            {
+                draft.selectedDroneId = ready.Runtime.droneInstanceId;
+            }
+            return ready;
+        }
+
+        private EnemyActivityRuntimeData TargetableActivityAt(FrontlineHexCoordinate coordinate) =>
+            frontline?.Runtime.activities.FirstOrDefault(item => item.active && item.pressure > 0
+                && item.exactHexKnown && item.typeIdentified && item.CurrentHex == coordinate);
+
+        private static string LabelFor(SortieType type) => type switch
+        {
+            SortieType.KamikazeStrike => "Strike",
+            SortieType.GrenadeDrop => "Drop",
+            _ => "Recon"
+        };
 
         private void RevealReconContacts(MissionRuntimeData runtime, float progress)
         {
             var route = runtime.plan.route.Select(item => item.ToVector2()).ToArray();
             RevealFrontlineActivities(runtime, route, progress);
+            if (frontline != null)
+            {
+                return;
+            }
             var discoveries = battlefield.RevealAlongRoute(
                 route,
                 Mathf.Clamp01(progress),
@@ -631,9 +831,7 @@ namespace UnderStatic.Missions
             var changed = false;
             foreach (var activity in frontline.Runtime.activities.Where(item => item.active && item.pressure > 0))
             {
-                var sector = frontline.Definition.Sectors.First(item => string.Equals(
-                    item.id, activity.currentSectorId, StringComparison.Ordinal));
-                var position = sector.position.ToVector2();
+                var position = frontline.ActivityPosition(activity);
                 var observed = Enumerable.Range(0, 25).Any(sample => sample / 24f <= progress
                     && Vector2.Distance(PositionAlongRoute(runtime.plan.route, sample / 24f), position)
                         <= runtime.plan.sensorHalfWidthKilometres / BattlefieldSystem.StrategicSizeKilometres);
@@ -643,10 +841,10 @@ namespace UnderStatic.Missions
                 }
 
                 var newlyIdentified = !activity.typeIdentified;
-                frontline.IdentifyActivity(activity.activityId);
+                frontline.IdentifyActivity(activity.activityId, battlefield.Runtime.currentDay);
                 if (discovered.Add(activity.activityId))
                 {
-                    positions.Add(sector.position);
+                    positions.Add(new BattlefieldMapPoint(position));
                     types.Add(ToLegacyContactType(activity.actualType));
                 }
                 if (newlyIdentified)

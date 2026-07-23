@@ -29,13 +29,19 @@ namespace UnderStatic.Missions
         public BattlefieldMapPoint[] waypoints = Array.Empty<BattlefieldMapPoint>();
         public string targetContactId = string.Empty;
         public string launchSiteId = "workshop";
+        public string selectedDroneId = string.Empty;
+        public bool hasStagingPoint;
+        public BattlefieldMapPoint stagingPoint;
 
         public SortieDraftData Copy() => new()
         {
             sortieType = sortieType,
             waypoints = waypoints?.ToArray() ?? Array.Empty<BattlefieldMapPoint>(),
             targetContactId = targetContactId,
-            launchSiteId = launchSiteId
+            launchSiteId = launchSiteId,
+            selectedDroneId = selectedDroneId,
+            hasStagingPoint = hasStagingPoint,
+            stagingPoint = stagingPoint
         };
     }
 
@@ -52,6 +58,8 @@ namespace UnderStatic.Missions
         public string launchSiteId = "workshop";
         public BattlefieldMapPoint launchPosition;
         public string returnSiteId = "workshop";
+        public bool hasStagingPoint;
+        public BattlefieldMapPoint stagingPoint;
 
         public SortiePlanData Copy() => new()
         {
@@ -64,7 +72,9 @@ namespace UnderStatic.Missions
             sensorHalfWidthKilometres = sensorHalfWidthKilometres,
             launchSiteId = launchSiteId,
             launchPosition = launchPosition,
-            returnSiteId = returnSiteId
+            returnSiteId = returnSiteId,
+            hasStagingPoint = hasStagingPoint,
+            stagingPoint = stagingPoint
         };
     }
 

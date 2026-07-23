@@ -23,7 +23,7 @@ namespace UnderStatic.Tests
         }
 
         [Test]
-        public void FrontlineTexture_IsCompactPointFilteredAndDoesNotRevealUnidentifiedTypes()
+        public void DetailedBackgroundIsTerrainOnlyWhilePhysicalMapRemainsInformationSafe()
         {
             var replay = Track(MissionReplayDefinition.CreateTransient(resolution: 25));
             var map = MissionTopographyGenerator.GenerateBattlefield(441, replay);
@@ -35,38 +35,47 @@ namespace UnderStatic.Tests
             Assert.That(activity.typeIdentified, Is.False);
 
             var hiddenType = activity.actualType;
-            var first = Track(TacticalMapPresentation.BuildTexture(map, definition, frontline.Runtime));
+            var detailed = Track(TacticalMapPresentation.BuildDetailedMapBackground(map));
+            var detailedPixels = detailed.GetPixels32();
+            var first = Track(TacticalMapPresentation.BuildPhysicalMapTexture(
+                map, definition, frontline.Runtime));
             var firstPixels = first.GetPixels32();
             var firstFingerprint = TacticalMapPresentation.StableStateFingerprint(
                 map, definition, frontline.Runtime);
             activity.actualType = hiddenType == EnemyActivityType.Tank
                 ? EnemyActivityType.Artillery
                 : EnemyActivityType.Tank;
-            var second = Track(TacticalMapPresentation.BuildTexture(map, definition, frontline.Runtime));
+            activity.currentColumn = (activity.currentColumn + 3) % definition.HexColumns;
+            activity.currentRow = (activity.currentRow + 2) % definition.HexRows;
+            var second = Track(TacticalMapPresentation.BuildPhysicalMapTexture(
+                map, definition, frontline.Runtime));
 
-            Assert.That(first.width, Is.EqualTo(128));
-            Assert.That(first.height, Is.EqualTo(128));
-            Assert.That(first.filterMode, Is.EqualTo(FilterMode.Point));
-            Assert.That(first.anisoLevel, Is.Zero);
+            Assert.That(detailed.width, Is.EqualTo(128));
+            Assert.That(detailed.height, Is.EqualTo(128));
+            Assert.That(detailed.filterMode, Is.EqualTo(FilterMode.Point));
+            Assert.That(detailed.anisoLevel, Is.Zero);
             Assert.That(second.GetPixels32(), Is.EqualTo(firstPixels),
-                "Changing hidden ground truth must not alter the player-facing texture");
+                "Changing hidden ground truth must not alter the physical player-facing texture");
             Assert.That(TacticalMapPresentation.StableStateFingerprint(map, definition, frontline.Runtime),
                 Is.EqualTo(firstFingerprint));
 
-            activity.typeIdentified = true;
-            var identified = Track(TacticalMapPresentation.BuildTexture(map, definition, frontline.Runtime));
+            Assert.That(frontline.IdentifyActivity(activity.activityId), Is.True);
+            var identified = Track(TacticalMapPresentation.BuildPhysicalMapTexture(
+                map, definition, frontline.Runtime));
             Assert.That(identified.GetPixels32().SequenceEqual(firstPixels), Is.False,
                 "Identified target type should gain its own icon silhouette");
             Assert.That(TacticalMapPresentation.StableStateFingerprint(map, definition, frontline.Runtime),
                 Is.Not.EqualTo(firstFingerprint));
 
-            var physical = Track(TacticalMapPresentation.BuildPhysicalMapTexture(
-                map, definition, frontline.Runtime));
-            Assert.That(physical.width, Is.EqualTo(TacticalMapPresentation.PhysicalMapTextureResolution));
-            Assert.That(physical.height, Is.EqualTo(TacticalMapPresentation.PhysicalMapTextureResolution));
-            Assert.That(physical.filterMode, Is.EqualTo(FilterMode.Bilinear));
-            Assert.That(physical.mipmapCount, Is.GreaterThan(1));
-            Assert.That(physical.anisoLevel, Is.EqualTo(2));
+            var detailedAfterIdentification =
+                Track(TacticalMapPresentation.BuildDetailedMapBackground(map));
+            Assert.That(detailedAfterIdentification.GetPixels32(), Is.EqualTo(detailedPixels),
+                "The detailed terminal background must never contain duplicated hexes, counters, or arrows");
+            Assert.That(identified.width, Is.EqualTo(TacticalMapPresentation.PhysicalMapTextureResolution));
+            Assert.That(identified.height, Is.EqualTo(TacticalMapPresentation.PhysicalMapTextureResolution));
+            Assert.That(identified.filterMode, Is.EqualTo(FilterMode.Bilinear));
+            Assert.That(identified.mipmapCount, Is.GreaterThan(1));
+            Assert.That(identified.anisoLevel, Is.EqualTo(2));
         }
 
         [Test]
